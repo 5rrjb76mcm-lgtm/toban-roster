@@ -1,0 +1,148 @@
+{
+ "profile": {
+  "id": "example-clinic",
+  "label": {
+   "ja": "例: 施設の部品として同梱したプロファイル",
+   "en": "Example: a profile bundled as a facility plug-in"
+  },
+  "calendar": {
+   "holidays": "us",
+   "closure": []
+  },
+  "roles": [
+   {
+    "id": "S",
+    "label": {
+     "ja": "当直担当",
+     "en": "On-duty staff"
+    }
+   }
+  ]
+ },
+ "rules_version": "サンプル 0.1",
+ "doctors": [
+  {
+   "name": "Dr B",
+   "team": "S",
+   "years": 20,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr D",
+   "team": "S",
+   "years": 19,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr E",
+   "team": "S",
+   "years": 18,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr F",
+   "team": "S",
+   "years": 17,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr G",
+   "team": "S",
+   "years": 16,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr H",
+   "team": "S",
+   "years": 15,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr J",
+   "team": "S",
+   "years": 14,
+   "quota": 5,
+   "cath": null
+  },
+  {
+   "name": "Dr K",
+   "team": "S",
+   "years": 13,
+   "quota": 5,
+   "cath": null
+  }
+ ],
+ "name_order": [
+  "Dr B",
+  "Dr D",
+  "Dr E",
+  "Dr F",
+  "Dr G",
+  "Dr H",
+  "Dr J",
+  "Dr K"
+ ],
+ "cath_requirement": {
+  "Mon": {
+   "A_am": 0,
+   "A_pm": 0,
+   "I": 0,
+   "pm_clinic": false
+  },
+  "Tue": {
+   "A_am": 0,
+   "A_pm": 0,
+   "I": 0,
+   "pm_clinic": false
+  },
+  "Wed": {
+   "A_am": 0,
+   "A_pm": 0,
+   "I": 0,
+   "pm_clinic": false
+  },
+  "Thu": {
+   "A_am": 0,
+   "A_pm": 0,
+   "I": 0,
+   "pm_clinic": false
+  },
+  "Fri": {
+   "A_am": 0,
+   "A_pm": 0,
+   "I": 0,
+   "pm_clinic": false
+  }
+ },
+ "friday_night_min": {},
+ "arrhythmia_responsible_night": [],
+ "weekend_dayshift_wish": [],
+ "pm_clinic_arrhythmia_candidates": [],
+ "quota_tolerance": 1,
+ "weekend_balance_max_diff": 1,
+ "max_same_weekday_shifts": null,
+ "arrhythmia_pre_workday_night": "allow",
+ "rest_day_required": false,
+ "same_day_IA": "allow",
+ "pm_external_night": "allow",
+ "rule_states": {
+  "period_charge": "off",
+  "rest_day": "off",
+  "same_day_IA": "off",
+  "arrhythmia_pre_workday_night": "off",
+  "weekend_balance": "off",
+  "same_weekday_cap": "soft",
+  "friday_night_min": "off",
+  "consecutive_work": "hard",
+  "oncall": "off",
+  "same_day_team": "off"
+ },
+ "weights": {},
+ "notes": "オンコール・カテ室・期間責任者を置かない最小の当直表。休日は日勤と夜勤、平日は夜勤の各1名。他施設はここから役割と人数を足していく。"
+}

@@ -1,0 +1,19 @@
+# Python
+tools/.venv/
+__pycache__/
+*.pyc
+# Node（テスト用の highs パッケージは ~/.toban-test か node_modules に入れる）
+node_modules/
+# OS
+.DS_Store
+# 運用データ・試用で生成したものは公開しない（テスト用の写しは webapp/data/ にある）
+/webapp/2*/
+webapp/旧/
+webapp/rules.json
+webapp/施設設定*.json
+/webapp/*.docx
+/webapp/*（確認版）.html
+/webapp/*（確定版）.html
+# 配布物（組み立て結果）はリポジトリに入れず、リリース時に添付する
+webapp/toban.html
+webapp/toban-probe.html

@@ -1,0 +1,119 @@
+body{font-family:"Yu Gothic UI","Meiryo",system-ui,sans-serif;margin:0;color:#222;background:#fafafa;font-size:14px}
+header{background:#1f3a5f;color:#fff;padding:6px 16px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;z-index:5;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+header .hrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0} header small{font-weight:normal;opacity:.8;margin-left:8px}
+nav .tab{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 14px;margin-right:6px;cursor:pointer;border-radius:4px}
+nav .tab.active{background:#fff;color:#1f3a5f;font-weight:bold}
+main{padding:12px 16px 24px}
+.box{background:#fff;border:1px solid #ddd;border-radius:6px;padding:10px 14px;margin-bottom:12px}
+.box h3{margin:0 0 8px;font-size:15px;border-left:4px solid #1f3a5f;padding-left:8px}
+label{margin-right:14px;white-space:nowrap}
+input,select,textarea{font:inherit;padding:2px 4px}
+button{font:inherit;padding:4px 10px;cursor:pointer}
+button.primary{background:#1f3a5f;color:#fff;border:none;padding:8px 20px;font-size:15px}
+table.grid{border-collapse:collapse;margin:6px 0} table.grid th,table.grid td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:middle;font-size:13px} table.grid th{background:#f0f3f7}
+.chip{display:inline-block;background:#eef2f7;border:1px solid #cbd5e1;border-radius:12px;padding:1px 8px;margin:2px}
+.chip button{padding:0 4px;border:none;background:transparent;color:#900}
+.note{color:#555;font-size:12px}
+.plug{display:inline-block;font-size:11px;line-height:16px;background:#e6f0ff;color:#1a4a8a;border:1px solid #9bb8e0;border-radius:4px;padding:0 5px;vertical-align:middle} /* 施設の部品由来の印 */
+tr.plugrow>td:first-child{border-left:3px solid #9bb8e0}
+#toolbar{position:fixed;left:0;right:0;bottom:0;background:#eef2f7;border-top:1px solid #ccc;padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#toolbar .sep{flex:1}
+.filebtn{display:inline-block;padding:4px 10px;border:1px solid #888;background:#fff;border-radius:3px;cursor:pointer}
+.filebtn input{display:none}
+pre#calcLog{background:#f4f4f4;padding:8px;min-height:3em;white-space:pre-wrap}
+table.rep{border-collapse:collapse;margin:6px 0;font-size:13px} table.rep th,table.rep td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top} table.rep th{background:#f0f3f7} table.rep.num td:not(:first-child){text-align:right}
+table.roster td:first-child .sun{color:#b3261e} table.roster td:first-child .sat{color:#1a56db}
+.ok{color:#137333} .ng{color:#b3261e} .chg{color:#b3261e;font-weight:bold}
+section h3{font-size:15px;margin:14px 0 6px;border-left:4px solid #1f3a5f;padding-left:8px} section h4{font-size:13px;margin:8px 0 4px}
+body.standalone{padding:16px 24px;background:#fff} body.standalone h1{font-size:18px}
+@media print{header,#toolbar,nav,#calc,#settings{display:none!important} main{padding:0} body{background:#fff} .pane[hidden]{display:none} }
+.subnav{margin:4px 0 10px} .subnav .sub{background:#fff;border:1px solid #1f3a5f;color:#1f3a5f;padding:5px 12px;margin-right:6px;border-radius:4px} .subnav .sub.active{background:#1f3a5f;color:#fff}
+.docnav{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap} .docnav select{font-size:15px;font-weight:bold}
+table.calendar{border-collapse:collapse;width:100%;table-layout:fixed} table.calendar th{border:1px solid #bbb;background:#f0f3f7;padding:3px} table.calendar th.sun{color:#b3261e} table.calendar th.sat{color:#1a56db}
+table.calendar td{border:1px solid #bbb;vertical-align:top;padding:3px 4px;height:5.6em;font-size:12px} table.calendar td.empty{background:#f4f4f4}
+table.calendar td.sun{background:#fdeee8} table.calendar td.sat{background:#eaf1fb}
+table.calendar td.next{background:#f6f6ee;border:1px dashed #999} table.calendar td.next .dnum{color:#555}
+table.calendar .dnum{font-weight:bold;font-size:14px} table.calendar .dnum small{font-weight:normal;color:#666;margin-left:3px}
+table.calendar select{font-size:12px;padding:0 1px;max-width:5.2em} table.calendar select.un{max-width:9em} table.calendar label.wish{margin:0;font-size:11px} table.calendar label.wish input{vertical-align:middle;margin:0 1px 0 4px}
+@media print{ .subnav{display:none} }
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#1f3a5f;color:#fff;padding:8px 16px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:50;max-width:80%}
+#folderBar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap} #toolbar{row-gap:6px}
+details.box summary{cursor:pointer;font-weight:bold}
+
+#monthTitle{font-size:20px;font-weight:bold;background:#fff;color:#1f3a5f;padding:4px 14px;border-radius:6px}
+#saveState{font-size:13px;padding:4px 10px;border-radius:6px;background:rgba(255,255,255,.15)} #saveState.dirty{background:#f4b400;color:#222;font-weight:bold} #saveState.saved{background:#137333}
+#saveState button{margin-left:8px;padding:2px 8px;font-size:12px}
+
+#fileCluster{min-height:40px;box-sizing:border-box;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:6px}
+#fileCluster #folderBar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap} #fileCluster .note{color:#dde}
+#saveState{background:transparent}
+
+#toolbar{justify-content:flex-end}
+
+#monthTitle{display:flex;align-items:center;gap:6px} #monthTitle select{font-size:18px;font-weight:bold;color:#1f3a5f;border:1px solid #1f3a5f;border-radius:4px;padding:2px 6px;background:#fff;width:9.5em}
+
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:flex;align-items:center;justify-content:center}
+#modalBox{background:#fff;border-radius:8px;padding:18px 22px;max-width:560px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,.35)}
+#modalMsg{white-space:pre-wrap;line-height:1.6;margin-bottom:14px}
+#modalBtns{display:flex;flex-direction:column;gap:8px} #modalBtns button{text-align:left;padding:10px 14px;font-size:14px;border:1px solid #1f3a5f;background:#fff;border-radius:6px;cursor:pointer}
+#modalBtns button.primary{background:#1f3a5f;color:#fff} #modalBtns button.cancel{border-color:#999;color:#444} #modalBtns button small{display:block;color:#666;font-size:12px} #modalBtns button.primary small{color:#dde}
+
+#modal[hidden],#toast[hidden],#startGate[hidden],[hidden]{display:none!important}
+#startGate{position:fixed;inset:0;background:#1f3a5f;z-index:30;display:flex;align-items:center;justify-content:center}
+#startBox{background:#fff;border-radius:10px;padding:24px 28px;max-width:600px;width:92%;box-shadow:0 6px 24px rgba(0,0,0,.4)} #startBox h2{margin:0 0 10px;font-size:20px;color:#1f3a5f}
+#startMsg{white-space:pre-wrap;line-height:1.6;margin-bottom:14px}
+#startBtns{display:flex;flex-direction:column;gap:8px;margin-bottom:12px} #startBtns button{text-align:left;padding:12px 16px;font-size:15px;border:1px solid #1f3a5f;background:#fff;border-radius:6px;cursor:pointer}
+#startBtns button.primary{background:#1f3a5f;color:#fff;font-weight:bold} #startBtns button.cancel{border-color:#999;color:#444;font-size:13px}
+
+#outputs{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:6px}
+#outputs label{margin:0;color:#fff} #outputs input{width:6em}
+
+#help pre{background:#f4f4f4;padding:8px;font-size:12px;white-space:pre} #help li{margin-bottom:4px} #help code{background:#eef;padding:0 3px}
+
+.fixedgrid th{white-space:nowrap} .fixedgrid tr.sun th{color:#c00;background:#fbeeee} .fixedgrid tr.sat th{color:#1a55c0;background:#eaf0fb} .fixedgrid td.empty{background:#f3f3f3} .fixedgrid select{max-width:10.5em}
+/* 4:3 の画面で見出しの1行目が折り返さないように詰める（幅 1200px 以下は少し、1080px 以下はさらに） */
+@media (max-width:1200px){header .hrow{gap:12px} header h1{font-size:17px} header small{margin-left:6px;font-size:12px} #monthTitle{font-size:18px;padding:4px 10px} #monthTitle select{font-size:17px}}
+@media (max-width:1080px){header{padding:6px 10px} header .hrow{gap:8px} header h1{font-size:16px} header small{margin-left:4px} #monthTitle{font-size:16px;padding:4px 8px} #monthTitle select{font-size:16px} #outputs{padding:4px 6px;gap:4px}}
+/* 結果タブ: 医師別の当番カレンダー */
+#docCal h4{margin:6px 0 4px;font-size:15px} #docCal h4 small{font-weight:normal;color:#555}
+table.dccal td{height:auto} .dc-slots{display:flex;flex-direction:column;gap:2px;margin-top:2px} .dc-r{height:18px;display:flex;gap:2px} .dc-r2{height:38px} .dc-r>div{flex:1;margin:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden} table.dccal td.on{box-shadow:inset 0 0 0 2px #8a8a8a}
+.dc-day,.dc-night,.dc-oc,.dc-duty,.dc-ake,.dc-paid{display:block;margin-top:2px;padding:1px 4px;border-radius:3px;font-size:12px;font-weight:bold;text-align:center}
+.dc-day{background:#f6b3ad;color:#5c0f0a} .dc-night{background:#c9302c;color:#fff} .dc-oc{background:#ffe27a;color:#4a3a00} .dc-duty{font-weight:normal;font-size:11px;padding:0 4px} .dc-outpatient{background:#dcebfa;color:#0f3d6b} .dc-ward{background:#dff1de;color:#1d5220} .dc-external{background:#e9e0f5;color:#47287a} .dc-absent{background:#e4e4e4;color:#444}
+.dclegend{display:inline-flex;gap:4px;margin-left:8px} .dclegend span{display:inline-block;margin:0}
+.doccal-all{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px} .doccal-all table.dccal td{font-size:11px} .doccal-all .dc-r{height:15px} .doccal-all .dc-r2{height:32px} .doccal-all .dc-day,.doccal-all .dc-night,.doccal-all .dc-oc,.doccal-all .dc-duty{font-size:10.5px;padding:0 2px}
+/* 印刷: ブラウザは既定で背景色を省くので、当番カレンダーの色分けは印刷でも保つ（print-color-adjust）。色が出ない設定でも区別できるよう枠線も付ける */
+#docCal, #docCal *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.printonly{display:none}
+@media print{.docnav button,.docnav select,#docCal h3 small{display:none} .printonly{display:inline} .doccal{break-inside:avoid;page-break-inside:avoid}
+  .doccal-all{grid-template-columns:repeat(2,1fr);gap:6px 10px} .doccal-all table.dccal td,.doccal-all table.dccal th{font-size:9px;padding:0 2px} .doccal-all .dc-slots{gap:1px;margin-top:0} .doccal-all .dc-r{height:11px} .doccal-all .dc-r2{height:23px} .doccal-all .dc-r>div{font-size:8.5px;padding:0 1px} .doccal-all .dnum{font-size:10px;line-height:1.1} #docCal h4{margin:2px 0;font-size:12px} #docCal h3{margin:0 0 4px}
+  .dc-day{border:1px solid #c9302c} .dc-night{border:1px solid #7a1512} .dc-oc{border:1px solid #b8960a} .dc-duty{border:1px solid #bbb} table.dccal td.on{box-shadow:inset 0 0 0 1.5px #666}
+  @page{margin:10mm}}
+/* 設定タブ: 規則の表。規則ごとの設定（rparam）は、その規則を「なし」以外にしたときだけ行として現れる */
+#hardRules h4{margin:16px 0 6px;padding-bottom:2px;border-bottom:2px solid #ccc}
+table.rulestbl{margin-bottom:10px} table.rulestbl tr.rparam>td{background:#f7f7f7;padding:6px 8px}
+table.rulestbl tr.rparam table.grid{margin:2px 0} table.rulestbl tr.rparam p{margin:4px 0}
+/* 開始画面の言語の選択（右上） */
+#startBox{position:relative} #startBox .startLang{position:absolute;top:10px;right:12px}
+/* ヘルプに埋め込む規則文書 */
+pre.rulesmd{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6}
+/* 設定タブ: 規則の要約 */
+details.rulesum h4{margin:10px 0 2px} details.rulesum ul{margin:2px 0 6px 1.2em}
+/* 設定タブのモード切替（日々の設定 / 施設の構成を作る）と元に戻す */
+.setmodes{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.modesw{display:inline-flex;border:1px solid #1f3a5f;border-radius:6px;overflow:hidden}
+.modesw button{border:0;border-radius:0;background:#fff;color:#1f3a5f;padding:6px 12px;cursor:pointer}
+.modesw button[aria-pressed="true"]{background:#1f3a5f;color:#fff}
+.builder-step{border-top:1px solid #e3e3e3;padding-top:6px;margin-top:10px}
+.builder-step h4{margin:4px 0}
+
+.dc-ake{background:#e8e8e8;color:#555;font-weight:normal} .dc-paid{background:#d8f0e0;color:#1f5c33;font-weight:normal}
+
+.box.warn { border-color: #d9822b; background: #fff6ec; }
+
+/* 施設の部品の記号（職員別カレンダー）と日付の見出し（日ごとの区分・予定） */
+.calsym{font-size:15px;line-height:1.1;white-space:nowrap} .calsym sup,.calsym sub{font-size:9px} .calres{margin-left:4px;padding:0 3px;border-radius:3px;background:#eef3ff}
+.dc-sym{text-align:center;font-size:18px;padding-top:2px} .doccal-all .dc-sym{font-size:12px;padding-top:0}
+.calhead{display:flex;flex-wrap:wrap;gap:2px 4px;align-items:center;margin:1px 0 2px;font-size:10px;line-height:1.2} .calnote{color:#7a4a00;background:#fff5e0;border-radius:2px;padding:0 2px}
+.calflag{display:inline-flex;align-items:center;gap:1px;color:#1f4f9a;white-space:nowrap} .calflag.on{background:#e3ecff;border-radius:2px;padding:0 2px} .calflag input{margin:0 1px 0 0;transform:scale(.85)}
+.calleg{display:inline-block;margin-right:8px;font-size:12px}

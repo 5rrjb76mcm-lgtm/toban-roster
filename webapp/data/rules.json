@@ -1,0 +1,162 @@
+{
+ "rules_version": "1.11 (2026-09-15)",
+ "doctors": [
+  {
+   "name": "Dr B",
+   "team": "C",
+   "years": 29,
+   "quota": 0,
+   "duty": "no_unless_needed"
+  },
+  {
+   "name": "Dr D",
+   "team": "C",
+   "years": 27,
+   "quota": 0,
+   "duty": "never"
+  },
+  {
+   "name": "Dr E",
+   "team": "I",
+   "years": 17,
+   "quota": 2
+  },
+  {
+   "name": "Dr F",
+   "team": "I",
+   "years": 19,
+   "quota": 2
+  },
+  {
+   "name": "Dr G",
+   "team": "I",
+   "years": 15,
+   "quota": 2
+  },
+  {
+   "name": "Dr H",
+   "team": "I",
+   "years": 21,
+   "quota": 3
+  },
+  {
+   "name": "Dr J",
+   "team": "A",
+   "years": 15,
+   "quota": 2
+  },
+  {
+   "name": "Dr K",
+   "team": "A",
+   "years": 11,
+   "quota": 2
+  },
+  {
+   "name": "Dr L",
+   "team": "A",
+   "years": 8,
+   "quota": 3
+  },
+  {
+   "name": "Dr M",
+   "team": "A",
+   "years": 20,
+   "quota": 4
+  },
+  {
+   "name": "Dr N",
+   "team": "Y",
+   "years": 7,
+   "quota": 5
+  },
+  {
+   "name": "Dr P",
+   "team": "Y",
+   "years": 2,
+   "quota": 5
+  },
+  {
+   "name": "Dr Q",
+   "team": "Y",
+   "years": 6,
+   "quota": 5
+  },
+  {
+   "name": "Dr R",
+   "team": "Y",
+   "years": 8,
+   "quota": 5
+  },
+  {
+   "name": "Dr S",
+   "team": "Y",
+   "years": 8,
+   "quota": 5
+  }
+ ],
+ "name_order": [
+  "Dr E",
+  "Dr F",
+  "Dr J",
+  "Dr K",
+  "Dr G",
+  "Dr L",
+  "Dr H",
+  "Dr M",
+  "Dr N",
+  "Dr P",
+  "Dr Q",
+  "Dr R",
+  "Dr S"
+ ],
+ "oncall_requirement": {
+  "I": {
+   "I": 0,
+   "Y": 1
+  },
+  "A": {
+   "I": 1,
+   "Y": 1
+  },
+  "Y": {
+   "I": 1,
+   "Y": 0
+  },
+  "C": {
+   "I": 1,
+   "Y": 0
+  }
+ },
+ "friday_night_min": {},
+ "weekend_dayshift_wish": [],
+ "quota_tolerance": 1,
+ "max_same_weekday_shifts": 2,
+ "weekend_balance_max_diff": 1,
+ "rest_day_required": true,
+ "pm_external_night": "confirm",
+ "weights": {
+  "target_deviation": 15,
+  "wish_night": 30,
+  "missing_young_oc": 3,
+  "fixed_conflict": 50,
+  "avoid_no_reduction": 1000,
+  "chief_duty": 1000,
+  "wish_weekend_dayshift": 20,
+  "same_weekday_excess": 15,
+  "consecutive_weekend": 15,
+  "split_weekend": 60,
+  "weekend_history_spread": 10,
+  "charge_without_dayshift": 5,
+  "night_oc_then_duty": 3,
+  "night_then_am_duty": 4,
+  "oc_consecutive": 6,
+  "nonadjacent_consecutive": 2,
+  "work_gap_1": 20,
+  "work_gap_2": 6,
+  "spread_I_nightoc": 3,
+  "spread_Y_oc": 2,
+  "spread_Y_holiday_work": 3,
+  "base_change": 1,
+  "staff_per_day": 1
+ }
+}

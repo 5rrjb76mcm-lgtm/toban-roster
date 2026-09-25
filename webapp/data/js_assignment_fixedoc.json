@@ -1,0 +1,258 @@
+{
+ "1:day": {
+  "work": "Dr G",
+  "oc": [
+   "Dr N"
+  ]
+ },
+ "1:night": {
+  "work": "Dr K",
+  "oc": [
+   "Dr G",
+   "Dr N"
+  ]
+ },
+ "2:night": {
+  "work": "Dr H",
+  "oc": [
+   "Dr Q"
+  ]
+ },
+ "3:day": {
+  "work": "Dr E",
+  "oc": [
+   "Dr R"
+  ]
+ },
+ "3:night": {
+  "work": "Dr R",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "4:night": {
+  "work": "Dr P",
+  "oc": [
+   "Dr F"
+  ]
+ },
+ "5:night": {
+  "work": "Dr J",
+  "oc": [
+   "Dr G",
+   "Dr S"
+  ]
+ },
+ "6:night": {
+  "work": "Dr K",
+  "oc": [
+   "Dr F",
+   "Dr Q"
+  ]
+ },
+ "7:day": {
+  "work": "Dr G",
+  "oc": [
+   "Dr S"
+  ]
+ },
+ "7:night": {
+  "work": "Dr S",
+  "oc": [
+   "Dr G"
+  ]
+ },
+ "8:day": {
+  "work": "Dr L",
+  "oc": [
+   "Dr G",
+   "Dr N"
+  ]
+ },
+ "8:night": {
+  "work": "Dr N",
+  "oc": [
+   "Dr G"
+  ]
+ },
+ "9:night": {
+  "work": "Dr Q",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "10:night": {
+  "work": "Dr M",
+  "oc": [
+   "Dr H",
+   "Dr R"
+  ]
+ },
+ "11:night": {
+  "work": "Dr P",
+  "oc": [
+   "Dr F"
+  ]
+ },
+ "12:night": {
+  "work": "Dr L",
+  "oc": [
+   "Dr G",
+   "Dr S"
+  ]
+ },
+ "13:night": {
+  "work": "Dr R",
+  "oc": [
+   "Dr F"
+  ]
+ },
+ "14:day": {
+  "work": "Dr H",
+  "oc": [
+   "Dr S"
+  ]
+ },
+ "14:night": {
+  "work": "Dr S",
+  "oc": [
+   "Dr H"
+  ]
+ },
+ "15:day": {
+  "work": "Dr Q",
+  "oc": [
+   "Dr H"
+  ]
+ },
+ "15:night": {
+  "work": "Dr J",
+  "oc": [
+   "Dr H"
+  ]
+ },
+ "16:night": {
+  "work": "Dr N",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "17:night": {
+  "work": "Dr M",
+  "oc": [
+   "Dr H",
+   "Dr Q"
+  ]
+ },
+ "18:night": {
+  "work": "Dr R",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "19:night": {
+  "work": "Dr S",
+  "oc": [
+   "Dr G"
+  ]
+ },
+ "20:night": {
+  "work": "Dr N",
+  "oc": [
+   "Dr H"
+  ]
+ },
+ "21:day": {
+  "work": "Dr Q",
+  "oc": [
+   "Dr F"
+  ]
+ },
+ "21:night": {
+  "work": "Dr F",
+  "oc": [
+   "Dr Q"
+  ]
+ },
+ "22:day": {
+  "work": "Dr M",
+  "oc": [
+   "Dr F",
+   "Dr R"
+  ]
+ },
+ "22:night": {
+  "work": "Dr R",
+  "oc": [
+   "Dr F"
+  ]
+ },
+ "23:day": {
+  "work": "Dr E",
+  "oc": [
+   "Dr P"
+  ]
+ },
+ "23:night": {
+  "work": "Dr P",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "24:night": {
+  "work": "Dr H",
+  "oc": [
+   "Dr R"
+  ]
+ },
+ "25:night": {
+  "work": "Dr F",
+  "oc": [
+   "Dr P"
+  ]
+ },
+ "26:night": {
+  "work": "Dr S",
+  "oc": [
+   "Dr G"
+  ]
+ },
+ "27:night": {
+  "work": "Dr Q",
+  "oc": [
+   "Dr H"
+  ]
+ },
+ "28:day": {
+  "work": "Dr E",
+  "oc": [
+   "Dr P"
+  ]
+ },
+ "28:night": {
+  "work": "Dr P",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "29:day": {
+  "work": "Dr L",
+  "oc": [
+   "Dr E",
+   "Dr N"
+  ]
+ },
+ "29:night": {
+  "work": "Dr N",
+  "oc": [
+   "Dr E"
+  ]
+ },
+ "30:night": {
+  "work": "Dr M",
+  "oc": [
+   "Dr F",
+   "Dr P"
+  ]
+ }
+}

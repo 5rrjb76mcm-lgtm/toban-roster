@@ -1,0 +1,359 @@
+{
+ "Dr B": {
+  "quota": 0,
+  "target": 0,
+  "day": 0,
+  "night": 0,
+  "total": 0,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [],
+  "ndays": 0,
+  "hdays": 0,
+  "weekends": 0,
+  "weekendsCrossing": 0,
+  "dual": 0,
+  "rest": []
+ },
+ "Dr D": {
+  "quota": 0,
+  "target": 0,
+  "day": 0,
+  "night": 0,
+  "total": 0,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [],
+  "ndays": 0,
+  "hdays": 0,
+  "weekends": 0,
+  "weekendsCrossing": 0,
+  "dual": 0,
+  "rest": []
+ },
+ "Dr E": {
+  "quota": 2,
+  "target": 2,
+  "day": 3,
+  "night": 0,
+  "total": 3,
+  "dayoc": 1,
+  "nightoc": 7,
+  "days": [
+   3,
+   7,
+   8,
+   16,
+   18,
+   23,
+   30
+  ],
+  "ndays": 7,
+  "hdays": 4,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 3,
+  "rest": [
+   "11/3 日勤",
+   "11/8 日勤",
+   "11/23 日勤"
+  ]
+ },
+ "Dr F": {
+  "quota": 2,
+  "target": 2,
+  "day": 0,
+  "night": 2,
+  "total": 2,
+  "dayoc": 2,
+  "nightoc": 6,
+  "days": [
+   4,
+   9,
+   11,
+   13,
+   21,
+   22,
+   25,
+   27
+  ],
+  "ndays": 8,
+  "hdays": 2,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 1,
+  "rest": [
+   "11/21 夜勤(翌日休日)"
+  ]
+ },
+ "Dr G": {
+  "quota": 2,
+  "target": 2,
+  "day": 2,
+  "night": 0,
+  "total": 2,
+  "dayoc": 1,
+  "nightoc": 7,
+  "days": [
+   1,
+   5,
+   12,
+   19,
+   26,
+   28,
+   29
+  ],
+  "ndays": 7,
+  "hdays": 3,
+  "weekends": 2,
+  "weekendsCrossing": 1,
+  "dual": 2,
+  "rest": [
+   "11/1 日勤",
+   "11/28 日勤"
+  ]
+ },
+ "Dr H": {
+  "quota": 3,
+  "target": 3,
+  "day": 1,
+  "night": 2,
+  "total": 3,
+  "dayoc": 1,
+  "nightoc": 6,
+  "days": [
+   2,
+   6,
+   10,
+   14,
+   15,
+   17,
+   20,
+   24
+  ],
+  "ndays": 8,
+  "hdays": 2,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 1,
+  "rest": [
+   "11/2 夜勤(翌日休日)",
+   "11/14 日勤",
+   "11/20 夜勤(翌日休日)"
+  ]
+ },
+ "Dr J": {
+  "quota": 2,
+  "target": 2,
+  "day": 0,
+  "night": 2,
+  "total": 2,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [
+   5,
+   12
+  ],
+  "ndays": 2,
+  "hdays": 0,
+  "weekends": 0,
+  "weekendsCrossing": 0,
+  "dual": 0,
+  "rest": []
+ },
+ "Dr K": {
+  "quota": 2,
+  "target": 2,
+  "day": 0,
+  "night": 2,
+  "total": 2,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [
+   1,
+   6
+  ],
+  "ndays": 2,
+  "hdays": 1,
+  "weekends": 1,
+  "weekendsCrossing": 1,
+  "dual": 0,
+  "rest": [
+   "11/6 夜勤(翌日休日)"
+  ]
+ },
+ "Dr L": {
+  "quota": 3,
+  "target": 3,
+  "day": 1,
+  "night": 2,
+  "total": 3,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [
+   13,
+   17,
+   22
+  ],
+  "ndays": 3,
+  "hdays": 1,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 0,
+  "rest": [
+   "11/13 夜勤(翌日休日)",
+   "11/22 日勤"
+  ]
+ },
+ "Dr M": {
+  "quota": 4,
+  "target": 4,
+  "day": 1,
+  "night": 3,
+  "total": 4,
+  "dayoc": 0,
+  "nightoc": 0,
+  "days": [
+   7,
+   15,
+   24,
+   29
+  ],
+  "ndays": 4,
+  "hdays": 3,
+  "weekends": 3,
+  "weekendsCrossing": 0,
+  "dual": 0,
+  "rest": [
+   "11/7 日勤"
+  ]
+ },
+ "Dr N": {
+  "quota": 5,
+  "target": 4,
+  "day": 1,
+  "night": 3,
+  "total": 4,
+  "dayoc": 2,
+  "nightoc": 2,
+  "days": [
+   1,
+   4,
+   8,
+   16,
+   29
+  ],
+  "ndays": 5,
+  "hdays": 3,
+  "weekends": 3,
+  "weekendsCrossing": 1,
+  "dual": 2,
+  "rest": [
+   "11/29 日勤"
+  ]
+ },
+ "Dr P": {
+  "quota": 5,
+  "target": 4,
+  "day": 0,
+  "night": 4,
+  "total": 4,
+  "dayoc": 2,
+  "nightoc": 2,
+  "days": [
+   11,
+   13,
+   18,
+   23,
+   25,
+   28
+  ],
+  "ndays": 6,
+  "hdays": 2,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 2,
+  "rest": [
+   "11/28 夜勤(翌日休日)"
+  ]
+ },
+ "Dr Q": {
+  "quota": 5,
+  "target": 4,
+  "day": 1,
+  "night": 3,
+  "total": 4,
+  "dayoc": 1,
+  "nightoc": 3,
+  "days": [
+   2,
+   6,
+   9,
+   15,
+   20,
+   22,
+   30
+  ],
+  "ndays": 7,
+  "hdays": 2,
+  "weekends": 2,
+  "weekendsCrossing": 0,
+  "dual": 1,
+  "rest": [
+   "11/15 日勤",
+   "11/22 夜勤(翌日休日)"
+  ]
+ },
+ "Dr R": {
+  "quota": 5,
+  "target": 4,
+  "day": 1,
+  "night": 3,
+  "total": 4,
+  "dayoc": 1,
+  "nightoc": 3,
+  "days": [
+   3,
+   10,
+   17,
+   21,
+   24,
+   27
+  ],
+  "ndays": 6,
+  "hdays": 2,
+  "weekends": 1,
+  "weekendsCrossing": 0,
+  "dual": 2,
+  "rest": [
+   "11/21 日勤",
+   "11/27 夜勤(翌日休日)"
+  ]
+ },
+ "Dr S": {
+  "quota": 5,
+  "target": 4,
+  "day": 0,
+  "night": 4,
+  "total": 4,
+  "dayoc": 2,
+  "nightoc": 2,
+  "days": [
+   5,
+   7,
+   12,
+   14,
+   19,
+   26
+  ],
+  "ndays": 6,
+  "hdays": 2,
+  "weekends": 2,
+  "weekendsCrossing": 0,
+  "dual": 2,
+  "rest": [
+   "11/7 夜勤(翌日休日)",
+   "11/14 夜勤(翌日休日)"
+  ]
+ }
+}

@@ -1,0 +1,172 @@
+{
+ "profile": {
+  "id": "two-shift",
+  "label": {
+   "ja": "2交代（日勤・夜勤を毎日。各1名）",
+   "en": "Two shifts (day and night every day, one each)"
+  },
+  "calendar": {
+   "holidays": "jp",
+   "closure": [
+    {
+     "month": 12,
+     "days": [
+      29,
+      30,
+      31
+     ]
+    },
+    {
+     "month": 1,
+     "days": [
+      2,
+      3
+     ]
+    }
+   ]
+  },
+  "quota_mode": "share",
+  "shifts": [
+   {
+    "id": "day",
+    "label": {
+     "ja": "日勤",
+     "en": "Day"
+    },
+    "on": "all"
+   },
+   {
+    "id": "night",
+    "label": {
+     "ja": "夜勤",
+     "en": "Night"
+    },
+    "on": "all"
+   }
+  ],
+  "roles": [
+   {
+    "id": "S",
+    "label": {
+     "ja": "看護師",
+     "en": "Nurse"
+    }
+   }
+  ]
+ },
+ "rules_version": "サンプル 0.1",
+ "doctors": [
+  {
+   "name": "Dr B",
+   "team": "S",
+   "years": 20,
+   "quota": 8
+  },
+  {
+   "name": "Dr D",
+   "team": "S",
+   "years": 19,
+   "quota": 8
+  },
+  {
+   "name": "Dr E",
+   "team": "S",
+   "years": 18,
+   "quota": 8
+  },
+  {
+   "name": "Dr F",
+   "team": "S",
+   "years": 17,
+   "quota": 8
+  },
+  {
+   "name": "Dr G",
+   "team": "S",
+   "years": 16,
+   "quota": 8
+  },
+  {
+   "name": "Dr H",
+   "team": "S",
+   "years": 15,
+   "quota": 8
+  },
+  {
+   "name": "Dr J",
+   "team": "S",
+   "years": 14,
+   "quota": 8
+  },
+  {
+   "name": "Dr K",
+   "team": "S",
+   "years": 13,
+   "quota": 8
+  }
+ ],
+ "name_order": [
+  "Dr B",
+  "Dr D",
+  "Dr E",
+  "Dr F",
+  "Dr G",
+  "Dr H",
+  "Dr J",
+  "Dr K"
+ ],
+ "friday_night_min": {},
+ "weekend_dayshift_wish": [],
+ "quota_tolerance": 1,
+ "weekend_balance_max_diff": 1,
+ "max_same_weekday_shifts": null,
+ "rest_day_required": false,
+ "pm_external_night": "allow",
+ "rule_states": {
+  "period_charge": "off",
+  "rest_day": "off",
+  "same_day_IA": "off",
+  "weekend_balance": "off",
+  "same_weekday_cap": "soft",
+  "friday_night_min": "off",
+  "oncall": "off",
+  "same_day_double": "hard",
+  "consecutive_days": "off",
+  "run_length_max": "hard",
+  "shift_sequence": "hard",
+  "days_off_min": "hard",
+  "days_off_pair": "soft",
+  "wish_off_cap": "hard",
+  "quota_target": "soft",
+  "nonadjacent_consecutive": "off",
+  "work_gap": "off",
+  "staff_per_day": "off",
+  "oc_consecutive": "off",
+  "spread_standby": "off",
+  "duty_after_night": "off",
+  "duty_conflicts": "off"
+ },
+ "weights": {},
+ "notes": "日勤と夜勤が毎日ある 2 交代の最小形。各枠 1 名で、同じ日に 2 枠は禁止、連日の勤務は許す。1 枠に複数名を置く設定と、連勤の上限（5 連勤禁止など）・明け休みは今後の課題。",
+ "run_length": {
+  "max": 4
+ },
+ "forbid_sequence": [
+  {
+   "from": "night",
+   "to": "any"
+  }
+ ],
+ "days_off": {
+  "hours_per_week": 40,
+  "hours_per_day": 8,
+  "pair_min": 1
+ },
+ "wish_off": {
+  "max": 3,
+  "counts": "both"
+ },
+ "docx": {
+  "template": "month_table"
+ }
+}

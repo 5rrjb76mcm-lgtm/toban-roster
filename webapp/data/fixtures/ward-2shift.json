@@ -1,0 +1,239 @@
+{
+ "profile": {
+  "id": "ward-2shift",
+  "label": {
+   "ja": "病棟2交代（日勤3名・夜勤2名）",
+   "en": "Ward two shifts (3 day, 2 night)"
+  },
+  "calendar": {
+   "holidays": "jp",
+   "closure": []
+  },
+  "quota_mode": "share",
+  "shifts": [
+   {
+    "id": "day",
+    "label": {
+     "ja": "日勤",
+     "en": "Day"
+    },
+    "on": "all"
+   },
+   {
+    "id": "night",
+    "label": {
+     "ja": "夜勤",
+     "en": "Night"
+    },
+    "on": "all"
+   }
+  ],
+  "positions": {
+   "work": {
+    "count": {
+     "day": 3,
+     "night": 2
+    }
+   }
+  },
+  "roles": [
+   {
+    "id": "S",
+    "label": {
+     "ja": "看護師",
+     "en": "Nurse"
+    }
+   }
+  ]
+ },
+ "rules_version": "サンプル 0.1",
+ "doctors": [
+  {
+   "name": "Ns B",
+   "team": "S",
+   "years": 20,
+   "quota": 9
+  },
+  {
+   "name": "Ns C",
+   "team": "S",
+   "years": 19,
+   "quota": 9
+  },
+  {
+   "name": "Ns D",
+   "team": "S",
+   "years": 18,
+   "quota": 9
+  },
+  {
+   "name": "Ns E",
+   "team": "S",
+   "years": 17,
+   "quota": 9
+  },
+  {
+   "name": "Ns F",
+   "team": "S",
+   "years": 16,
+   "quota": 9
+  },
+  {
+   "name": "Ns G",
+   "team": "S",
+   "years": 15,
+   "quota": 9
+  },
+  {
+   "name": "Ns H",
+   "team": "S",
+   "years": 14,
+   "quota": 9
+  },
+  {
+   "name": "Ns I",
+   "team": "S",
+   "years": 13,
+   "quota": 9
+  },
+  {
+   "name": "Ns J",
+   "team": "S",
+   "years": 12,
+   "quota": 9
+  },
+  {
+   "name": "Ns K",
+   "team": "S",
+   "years": 11,
+   "quota": 9
+  },
+  {
+   "name": "Ns L",
+   "team": "S",
+   "years": 10,
+   "quota": 9
+  },
+  {
+   "name": "Ns M",
+   "team": "S",
+   "years": 9,
+   "quota": 9
+  },
+  {
+   "name": "Ns N",
+   "team": "S",
+   "years": 8,
+   "quota": 9
+  },
+  {
+   "name": "Ns O",
+   "team": "S",
+   "years": 7,
+   "quota": 9
+  },
+  {
+   "name": "Ns P",
+   "team": "S",
+   "years": 6,
+   "quota": 9
+  },
+  {
+   "name": "Ns Q",
+   "team": "S",
+   "years": 5,
+   "quota": 9
+  },
+  {
+   "name": "Ns R",
+   "team": "S",
+   "years": 4,
+   "quota": 9
+  },
+  {
+   "name": "Ns S",
+   "team": "S",
+   "years": 3,
+   "quota": 9
+  }
+ ],
+ "name_order": [
+  "Ns B",
+  "Ns C",
+  "Ns D",
+  "Ns E",
+  "Ns F",
+  "Ns G",
+  "Ns H",
+  "Ns I",
+  "Ns J",
+  "Ns K",
+  "Ns L",
+  "Ns M",
+  "Ns N",
+  "Ns O",
+  "Ns P",
+  "Ns Q",
+  "Ns R",
+  "Ns S"
+ ],
+ "friday_night_min": {},
+ "weekend_dayshift_wish": [],
+ "quota_tolerance": 1,
+ "weekend_balance_max_diff": 1,
+ "max_same_weekday_shifts": null,
+ "rest_day_required": false,
+ "pm_external_night": "allow",
+ "rule_states": {
+  "period_charge": "off",
+  "rest_day": "off",
+  "same_day_IA": "off",
+  "weekend_balance": "off",
+  "same_weekday_cap": "soft",
+  "friday_night_min": "off",
+  "oncall": "off",
+  "same_day_double": "hard",
+  "consecutive_days": "off",
+  "run_length_max": "hard",
+  "shift_sequence": "hard",
+  "run_length_min": "soft",
+  "days_off_min": "hard",
+  "days_off_pair": "soft",
+  "wish_off_cap": "hard",
+  "quota_target": "soft",
+  "nonadjacent_consecutive": "off",
+  "work_gap": "off",
+  "staff_per_day": "off",
+  "oc_consecutive": "off",
+  "spread_standby": "off",
+  "duty_after_night": "off",
+  "duty_conflicts": "off"
+ },
+ "weights": {},
+ "notes": "1 枠に複数名を置く例。日勤 3 名・夜勤 2 名を毎日、18 名で回す。オンコールと期間責任者は使えない（勤務者が 1 名である前提の規則のため）。同じ点数の解が多いので、計算の上限時間は長めにし、許容誤差 mip_rel_gap=0.05 を入れている。連勤の上限・明け休み・希望休の上限は今後の規則型。",
+ "solver": {
+  "mip_rel_gap": 0.05
+ },
+ "run_length": {
+  "max": 4,
+  "min": 2
+ },
+ "forbid_sequence": [
+  {
+   "from": "night",
+   "to": "any"
+  }
+ ],
+ "days_off": {
+  "hours_per_week": 40,
+  "hours_per_day": 8,
+  "pair_min": 2
+ },
+ "wish_off": {
+  "max": 3,
+  "counts": "both"
+ },
+ "docx": {
+  "template": "month_table"
+ }
+}

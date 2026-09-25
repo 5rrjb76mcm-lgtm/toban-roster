@@ -1,0 +1,1388 @@
+{
+ "rules": {
+  "rules_version": "1.11 (2026-09-15)",
+  "doctors": [
+   {
+    "name": "Dr B",
+    "team": "C",
+    "years": 29,
+    "quota": 0,
+    "duty": "no_unless_needed"
+   },
+   {
+    "name": "Dr D",
+    "team": "C",
+    "years": 27,
+    "quota": 0,
+    "duty": "never"
+   },
+   {
+    "name": "Dr E",
+    "team": "I",
+    "years": 17,
+    "quota": 2
+   },
+   {
+    "name": "Dr F",
+    "team": "I",
+    "years": 19,
+    "quota": 2
+   },
+   {
+    "name": "Dr G",
+    "team": "I",
+    "years": 15,
+    "quota": 2
+   },
+   {
+    "name": "Dr H",
+    "team": "I",
+    "years": 21,
+    "quota": 3
+   },
+   {
+    "name": "Dr J",
+    "team": "A",
+    "years": 15,
+    "quota": 2
+   },
+   {
+    "name": "Dr K",
+    "team": "A",
+    "years": 11,
+    "quota": 2
+   },
+   {
+    "name": "Dr L",
+    "team": "A",
+    "years": 8,
+    "quota": 3
+   },
+   {
+    "name": "Dr M",
+    "team": "A",
+    "years": 20,
+    "quota": 4
+   },
+   {
+    "name": "Dr N",
+    "team": "Y",
+    "years": 7,
+    "quota": 5
+   },
+   {
+    "name": "Dr P",
+    "team": "Y",
+    "years": 2,
+    "quota": 5
+   },
+   {
+    "name": "Dr Q",
+    "team": "Y",
+    "years": 6,
+    "quota": 5
+   },
+   {
+    "name": "Dr R",
+    "team": "Y",
+    "years": 8,
+    "quota": 5
+   },
+   {
+    "name": "Dr S",
+    "team": "Y",
+    "years": 8,
+    "quota": 5
+   }
+  ],
+  "name_order": [
+   "Dr E",
+   "Dr F",
+   "Dr G",
+   "Dr H",
+   "Dr J",
+   "Dr K",
+   "Dr L",
+   "Dr M",
+   "Dr N",
+   "Dr P",
+   "Dr Q",
+   "Dr R",
+   "Dr S"
+  ],
+  "oncall_requirement": {
+   "I": {
+    "I": 0,
+    "Y": 1
+   },
+   "A": {
+    "I": 1,
+    "Y": 1
+   },
+   "Y": {
+    "I": 1,
+    "Y": 0
+   },
+   "C": {
+    "I": 1,
+    "Y": 0
+   }
+  },
+  "weekend_dayshift_wish": [
+   "Dr H",
+   "Dr F"
+  ],
+  "quota_tolerance": 1,
+  "max_same_weekday_shifts": 2,
+  "weekend_balance_max_diff": 1,
+  "allow_split_weekend": true,
+  "weights": {
+   "target_deviation": 8,
+   "wish_night": 30,
+   "wish_weekend_dayshift": 20,
+   "same_weekday_excess": 15,
+   "consecutive_weekend": 15,
+   "split_weekend": 60,
+   "weekend_history_spread": 10,
+   "charge_without_dayshift": 5,
+   "night_oc_then_duty": 3,
+   "night_then_am_duty": 4,
+   "nonadjacent_consecutive": 2,
+   "spread_I_nightoc": 3,
+   "spread_Y_oc": 2,
+   "spread_Y_holiday_work": 3,
+   "base_change": 1,
+   "missing_young_oc": 3,
+   "avoid_day": 20,
+   "avoid_no_reduction": 1000,
+   "fixed_conflict": 50,
+   "chief_duty": 1000,
+   "work_gap_1": 20,
+   "work_gap_2": 6,
+   "staff_per_day": 1,
+   "oc_consecutive": 6
+  },
+  "friday_night_min": {
+   "Dr F": 1
+  },
+  "rest_day_required": true,
+  "pm_external_night": "confirm"
+ },
+ "month": {
+  "year": 2026,
+  "month": 11,
+  "holidays": [
+   3,
+   23
+  ],
+  "closure_days": [],
+  "duties_on_holidays": false,
+  "next_month_first_day_is_holiday": false,
+  "next_first_day_in_calendar": true,
+  "targets": {},
+  "regular_duties": {
+   "Dr B": [
+    {
+     "kind": "external",
+     "dow": "Fri",
+     "part": "pm",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Tue",
+     "part": "full",
+     "carry": true
+    },
+    {
+     "kind": "external",
+     "dow": "Wed",
+     "part": "am",
+     "carry": true
+    }
+   ],
+   "Dr D": [],
+   "Dr E": [
+    {
+     "kind": "outpatient",
+     "dow": "Tue",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Wed",
+     "part": "full",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Mon",
+     "part": "pm",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    }
+   ],
+   "Dr F": [
+    {
+     "kind": "external",
+     "dow": "Tue",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Thu",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Fri",
+     "part": "am",
+     "carry": true
+    }
+   ],
+   "Dr G": [
+    {
+     "kind": "outpatient",
+     "dow": "Thu",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "ward",
+     "dow": "Mon",
+     "part": "am",
+     "nth": [
+      2,
+      4
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Fri",
+     "part": "full",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    }
+   ],
+   "Dr H": [
+    {
+     "kind": "outpatient",
+     "dow": "Mon",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Tue",
+     "part": "full",
+     "carry": true
+    },
+    {
+     "kind": "external",
+     "dow": "Fri",
+     "part": "pm",
+     "carry": true
+    }
+   ],
+   "Dr J": [
+    {
+     "kind": "outpatient",
+     "dow": "Fri",
+     "part": "pm",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Wed",
+     "part": "am",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    }
+   ],
+   "Dr K": [
+    {
+     "kind": "outpatient",
+     "dow": "Mon",
+     "part": "pm",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Thu",
+     "part": "pm",
+     "carry": true
+    }
+   ],
+   "Dr L": [
+    {
+     "kind": "outpatient",
+     "dow": "Fri",
+     "part": "am",
+     "carry": true
+    }
+   ],
+   "Dr M": [
+    {
+     "kind": "outpatient",
+     "dow": "Wed",
+     "part": "full",
+     "nth": [
+      2,
+      4
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Mon",
+     "part": "am",
+     "carry": true
+    }
+   ],
+   "Dr N": [
+    {
+     "kind": "outpatient",
+     "dow": "Wed",
+     "part": "am",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Thu",
+     "part": "full",
+     "nth": [
+      2,
+      4
+     ],
+     "carry": true
+    }
+   ],
+   "Dr P": [
+    {
+     "kind": "ward",
+     "dow": "Thu",
+     "part": "full",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Tue",
+     "part": "full",
+     "nth": [
+      2,
+      4
+     ],
+     "carry": true
+    }
+   ],
+   "Dr Q": [
+    {
+     "kind": "ward",
+     "dow": "Tue",
+     "part": "am",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Mon",
+     "part": "am",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    }
+   ],
+   "Dr R": [
+    {
+     "kind": "outpatient",
+     "dow": "Tue",
+     "part": "pm",
+     "carry": true
+    },
+    {
+     "kind": "outpatient",
+     "dow": "Wed",
+     "part": "full",
+     "carry": true
+    }
+   ],
+   "Dr S": [
+    {
+     "kind": "outpatient",
+     "dow": "Thu",
+     "part": "full",
+     "carry": true
+    },
+    {
+     "kind": "external",
+     "dow": "Mon",
+     "part": "am",
+     "nth": [
+      1,
+      3,
+      5
+     ],
+     "carry": true
+    }
+   ]
+  },
+  "duty_days": {
+   "Dr B": {
+    "4": {
+     "am": "external"
+    },
+    "6": {
+     "pm": "external"
+    },
+    "10": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "11": {
+     "am": "external"
+    },
+    "13": {
+     "pm": "external"
+    },
+    "17": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "18": {
+     "am": "external"
+    },
+    "20": {
+     "pm": "external"
+    },
+    "24": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "25": {
+     "am": "external"
+    },
+    "27": {
+     "pm": "external"
+    },
+    "31": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    }
+   },
+   "Dr D": {},
+   "Dr E": {
+    "2": {
+     "pm": "outpatient"
+    },
+    "4": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "10": {
+     "am": "outpatient"
+    },
+    "16": {
+     "pm": "outpatient"
+    },
+    "17": {
+     "am": "outpatient"
+    },
+    "18": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "24": {
+     "am": "outpatient"
+    },
+    "30": {
+     "pm": "outpatient"
+    },
+    "31": {
+     "am": "outpatient"
+    }
+   },
+   "Dr F": {
+    "5": {
+     "am": "outpatient"
+    },
+    "6": {
+     "am": "outpatient"
+    },
+    "10": {
+     "am": "external"
+    },
+    "12": {
+     "am": "outpatient"
+    },
+    "13": {
+     "am": "outpatient"
+    },
+    "17": {
+     "am": "external"
+    },
+    "19": {
+     "am": "outpatient"
+    },
+    "20": {
+     "am": "outpatient"
+    },
+    "24": {
+     "am": "external"
+    },
+    "26": {
+     "am": "outpatient"
+    },
+    "27": {
+     "am": "outpatient"
+    },
+    "31": {
+     "am": "external"
+    }
+   },
+   "Dr G": {
+    "5": {
+     "am": "outpatient"
+    },
+    "6": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "9": {
+     "am": "ward"
+    },
+    "12": {
+     "am": "outpatient"
+    },
+    "19": {
+     "am": "outpatient"
+    },
+    "20": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "26": {
+     "am": "outpatient"
+    }
+   },
+   "Dr H": {
+    "2": {
+     "am": "outpatient"
+    },
+    "6": {
+     "pm": "external"
+    },
+    "9": {
+     "am": "outpatient"
+    },
+    "10": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "13": {
+     "pm": "external"
+    },
+    "16": {
+     "am": "outpatient"
+    },
+    "17": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "20": {
+     "pm": "external"
+    },
+    "24": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "27": {
+     "pm": "external"
+    },
+    "30": {
+     "am": "outpatient"
+    },
+    "31": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    }
+   },
+   "Dr J": {
+    "4": {
+     "am": "outpatient"
+    },
+    "6": {
+     "pm": "outpatient"
+    },
+    "18": {
+     "am": "outpatient"
+    },
+    "20": {
+     "pm": "outpatient"
+    }
+   },
+   "Dr K": {
+    "2": {
+     "pm": "outpatient"
+    },
+    "5": {
+     "pm": "outpatient"
+    },
+    "9": {
+     "pm": "outpatient"
+    },
+    "12": {
+     "pm": "outpatient"
+    },
+    "16": {
+     "pm": "outpatient"
+    },
+    "19": {
+     "pm": "outpatient"
+    },
+    "26": {
+     "pm": "outpatient"
+    },
+    "30": {
+     "pm": "outpatient"
+    }
+   },
+   "Dr L": {
+    "6": {
+     "am": "outpatient"
+    },
+    "13": {
+     "am": "outpatient"
+    },
+    "20": {
+     "am": "outpatient"
+    },
+    "27": {
+     "am": "outpatient"
+    }
+   },
+   "Dr M": {
+    "2": {
+     "am": "outpatient"
+    },
+    "9": {
+     "am": "outpatient"
+    },
+    "11": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "16": {
+     "am": "outpatient"
+    },
+    "25": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "30": {
+     "am": "outpatient"
+    }
+   },
+   "Dr N": {
+    "4": {
+     "am": "outpatient"
+    },
+    "12": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "18": {
+     "am": "outpatient"
+    },
+    "26": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    }
+   },
+   "Dr P": {
+    "5": {
+     "am": "ward",
+     "pm": "ward"
+    },
+    "10": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "19": {
+     "am": "ward",
+     "pm": "ward"
+    },
+    "24": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    }
+   },
+   "Dr Q": {
+    "2": {
+     "am": "outpatient"
+    },
+    "10": {
+     "am": "ward"
+    },
+    "16": {
+     "am": "outpatient"
+    },
+    "17": {
+     "am": "ward"
+    },
+    "24": {
+     "am": "ward"
+    },
+    "30": {
+     "am": "outpatient"
+    },
+    "31": {
+     "am": "ward"
+    }
+   },
+   "Dr R": {
+    "4": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "10": {
+     "pm": "outpatient"
+    },
+    "11": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "17": {
+     "pm": "outpatient"
+    },
+    "18": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "24": {
+     "pm": "outpatient"
+    },
+    "25": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "31": {
+     "pm": "outpatient"
+    }
+   },
+   "Dr S": {
+    "2": {
+     "am": "external"
+    },
+    "5": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "12": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "16": {
+     "am": "external"
+    },
+    "19": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "26": {
+     "am": "outpatient",
+     "pm": "outpatient"
+    },
+    "30": {
+     "am": "external"
+    }
+   }
+  },
+  "confirmed_pm_external_night": [],
+  "unavailable_night": {
+   "Dr E": [
+    17
+   ],
+   "Dr F": [
+    14,
+    15
+   ],
+   "Dr G": [
+    1,
+    2,
+    4
+   ],
+   "Dr H": [
+    3,
+    4,
+    11,
+    12,
+    16,
+    24
+   ],
+   "Dr J": [
+    6,
+    7
+   ],
+   "Dr K": [
+    7,
+    8
+   ],
+   "Dr L": [
+    2,
+    3,
+    24,
+    25
+   ],
+   "Dr M": [
+    9,
+    16
+   ],
+   "Dr N": [
+    25,
+    26,
+    30
+   ],
+   "Dr P": [
+    23
+   ],
+   "Dr Q": [
+    13,
+    24
+   ],
+   "Dr R": [
+    6,
+    7,
+    25
+   ],
+   "Dr S": []
+  },
+  "unavailable_other": [
+   {
+    "name": "Dr N",
+    "day": 18,
+    "part": "allday"
+   },
+   {
+    "name": "Dr F",
+    "day": 11,
+    "part": "pm"
+   },
+   {
+    "name": "Dr P",
+    "day": 18,
+    "part": "allday"
+   },
+   {
+    "name": "Dr M",
+    "day": 2,
+    "part": "allday"
+   },
+   {
+    "name": "Dr K",
+    "day": 30,
+    "part": "allday"
+   },
+   {
+    "name": "Dr K",
+    "day": 16,
+    "part": "allday"
+   },
+   {
+    "name": "Dr K",
+    "day": 19,
+    "part": "allday"
+   },
+   {
+    "name": "Dr B",
+    "day": 24,
+    "part": "pm"
+   },
+   {
+    "name": "Dr N",
+    "day": 12,
+    "part": "allday"
+   },
+   {
+    "name": "Dr B",
+    "day": 10,
+    "part": "allday"
+   },
+   {
+    "name": "Dr P",
+    "day": 3,
+    "part": "allday"
+   },
+   {
+    "name": "Dr G",
+    "day": 16,
+    "part": "allday"
+   },
+   {
+    "name": "Dr N",
+    "day": 13,
+    "part": "day"
+   },
+   {
+    "name": "Dr S",
+    "day": 15,
+    "part": "day"
+   },
+   {
+    "name": "Dr N",
+    "day": 23,
+    "part": "allday"
+   },
+   {
+    "name": "Dr R",
+    "day": 30,
+    "part": "pm"
+   },
+   {
+    "name": "Dr R",
+    "day": 17,
+    "part": "allday"
+   },
+   {
+    "name": "Dr H",
+    "day": 23,
+    "part": "allday"
+   },
+   {
+    "name": "Dr K",
+    "day": 26,
+    "part": "day"
+   },
+   {
+    "name": "Dr Q",
+    "day": 20,
+    "part": "day"
+   },
+   {
+    "name": "Dr R",
+    "day": 9,
+    "part": "pm"
+   }
+  ],
+  "wishes": {
+   "weekend_dayshift": [
+    "Dr K",
+    "Dr E",
+    "Dr M",
+    "Dr L"
+   ],
+   "night_on": {
+    "Dr N": [
+     5
+    ]
+   }
+  },
+  "fixed": {
+   "day": {},
+   "night": {},
+   "weekend_charge": {
+    "1": "Dr E"
+   },
+   "day_oc": {},
+   "night_oc": {},
+   "day_oc_none": {},
+   "night_oc_none": {}
+  },
+  "exceptions": {},
+  "prev_month": {
+   "last_days": [
+    {
+     "date": 30,
+     "night": "Dr L",
+     "night_oc": [
+      "Dr F"
+     ]
+    },
+    {
+     "date": 31,
+     "day": "Dr S",
+     "day_oc": [
+      "Dr E"
+     ],
+     "night": "Dr Q",
+     "night_oc": [
+      "Dr E"
+     ]
+    }
+   ],
+   "last_weekend_charge": "Dr E",
+   "prev_weekend_charge": "Dr H"
+  },
+  "history": {
+   "weekend_charge": {
+    "Dr E": 0,
+    "Dr F": 1,
+    "Dr G": 1,
+    "Dr H": 1
+   },
+   "holiday_charge": {
+    "Dr E": 1,
+    "Dr F": 0,
+    "Dr G": 1,
+    "Dr H": 0
+   },
+   "work_balance": {
+    "Dr N": -1,
+    "Dr F": -1,
+    "Dr G": -2,
+    "Dr H": -1
+   }
+  },
+  "notes": "合成データの見本（synth_sample.py）。月またぎの土日: 11/1 の担当を前月末から接続",
+  "avoid": [
+   {
+    "name": "Dr J",
+    "day": 5,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 8,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 9,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 11,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 12,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 16,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 22,
+    "part": "night"
+   },
+   {
+    "name": "Dr J",
+    "day": 29,
+    "part": "night"
+   }
+  ],
+  "allow_chief_duty": false,
+  "doc_versions": []
+ },
+ "result": {
+  "asg": {
+   "1:day": {
+    "work": "Dr E",
+    "oc": [
+     "Dr P"
+    ]
+   },
+   "1:night": {
+    "work": "Dr P",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "2:night": {
+    "work": "Dr H",
+    "oc": [
+     "Dr N"
+    ]
+   },
+   "3:day": {
+    "work": "Dr G",
+    "oc": [
+     "Dr S"
+    ]
+   },
+   "3:night": {
+    "work": "Dr M",
+    "oc": [
+     "Dr G",
+     "Dr S"
+    ]
+   },
+   "4:night": {
+    "work": "Dr R",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "5:night": {
+    "work": "Dr N",
+    "oc": [
+     "Dr H"
+    ]
+   },
+   "6:night": {
+    "work": "Dr P",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "7:day": {
+    "work": "Dr K",
+    "oc": [
+     "Dr F",
+     "Dr Q"
+    ]
+   },
+   "7:night": {
+    "work": "Dr Q",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "8:day": {
+    "work": "Dr F",
+    "oc": [
+     "Dr R"
+    ]
+   },
+   "8:night": {
+    "work": "Dr R",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "9:night": {
+    "work": "Dr N",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "10:night": {
+    "work": "Dr S",
+    "oc": [
+     "Dr H"
+    ]
+   },
+   "11:night": {
+    "work": "Dr Q",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "12:night": {
+    "work": "Dr P",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "13:night": {
+    "work": "Dr J",
+    "oc": [
+     "Dr F",
+     "Dr R"
+    ]
+   },
+   "14:day": {
+    "work": "Dr L",
+    "oc": [
+     "Dr G",
+     "Dr S"
+    ]
+   },
+   "14:night": {
+    "work": "Dr S",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "15:day": {
+    "work": "Dr M",
+    "oc": [
+     "Dr G",
+     "Dr N"
+    ]
+   },
+   "15:night": {
+    "work": "Dr N",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "16:night": {
+    "work": "Dr P",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "17:night": {
+    "work": "Dr Q",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "18:night": {
+    "work": "Dr R",
+    "oc": [
+     "Dr H"
+    ]
+   },
+   "19:night": {
+    "work": "Dr S",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "20:night": {
+    "work": "Dr F",
+    "oc": [
+     "Dr P"
+    ]
+   },
+   "21:day": {
+    "work": "Dr H",
+    "oc": [
+     "Dr Q"
+    ]
+   },
+   "21:night": {
+    "work": "Dr Q",
+    "oc": [
+     "Dr H"
+    ]
+   },
+   "22:day": {
+    "work": "Dr L",
+    "oc": [
+     "Dr H",
+     "Dr R"
+    ]
+   },
+   "22:night": {
+    "work": "Dr R",
+    "oc": [
+     "Dr H"
+    ]
+   },
+   "23:day": {
+    "work": "Dr G",
+    "oc": [
+     "Dr S"
+    ]
+   },
+   "23:night": {
+    "work": "Dr S",
+    "oc": [
+     "Dr G"
+    ]
+   },
+   "24:night": {
+    "work": "Dr N",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "25:night": {
+    "work": "Dr M",
+    "oc": [
+     "Dr H",
+     "Dr Q"
+    ]
+   },
+   "26:night": {
+    "work": "Dr R",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "27:night": {
+    "work": "Dr Q",
+    "oc": [
+     "Dr F"
+    ]
+   },
+   "28:day": {
+    "work": "Dr P",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "28:night": {
+    "work": "Dr J",
+    "oc": [
+     "Dr E",
+     "Dr P"
+    ]
+   },
+   "29:day": {
+    "work": "Dr E",
+    "oc": [
+     "Dr N"
+    ]
+   },
+   "29:night": {
+    "work": "Dr N",
+    "oc": [
+     "Dr E"
+    ]
+   },
+   "30:night": {
+    "work": "Dr S",
+    "oc": [
+     "Dr H"
+    ]
+   }
+  },
+  "status": "Optimal",
+  "seconds": 3.9,
+  "objective": 125.0000000000006,
+  "at": "2026-09-23T00:00:00.000Z",
+  "rules_version": "1.11 (2026-09-15)",
+  "avoid_ref": {
+   "Dr J": 1
+  },
+  "base_asg": null,
+  "mark_changes": false
+ },
+ "saved_at": "2026-09-23T00:00:00.000Z"
+}

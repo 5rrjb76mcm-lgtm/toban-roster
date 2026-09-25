@@ -1,0 +1,451 @@
+{
+ "profile": {
+  "id": "nurse-2shift",
+  "label": {
+   "ja": "病棟看護師 2交代（夜勤4名・日勤は管理者を含め12〜13名）",
+   "en": "Ward nurses, two shifts (4 at night, 12-13 by day including a manager)"
+  },
+  "calendar": {
+   "holidays": "jp",
+   "closure": []
+  },
+  "quota_mode": "share",
+  "shifts": [
+   {
+    "id": "day",
+    "label": {
+     "ja": "日勤",
+     "en": "Day"
+    },
+    "on": "all",
+    "oncall": false
+   },
+   {
+    "id": "night",
+    "label": {
+     "ja": "夜勤",
+     "en": "Night"
+    },
+    "on": "all",
+    "oncall": false
+   }
+  ],
+  "positions": {
+   "work": {
+    "count": {
+     "day": 14,
+     "night": 4
+    },
+    "min": {
+     "day": 12,
+     "night": 4
+    },
+    "ideal": {
+     "day": 13
+    }
+   }
+  },
+  "roles": [
+   {
+    "id": "N",
+    "label": {
+     "ja": "看護師",
+     "en": "Nurse"
+    }
+   }
+  ]
+ },
+ "doctors": [
+  {
+   "name": "Ns01",
+   "team": "N",
+   "years": 1,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns02",
+   "team": "N",
+   "years": 1,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns03",
+   "team": "N",
+   "years": 1,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns04",
+   "team": "N",
+   "years": 1,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns05",
+   "team": "N",
+   "years": 2,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns06",
+   "team": "N",
+   "years": 2,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns07",
+   "team": "N",
+   "years": 2,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns08",
+   "team": "N",
+   "years": 2,
+   "quota": 0,
+   "quals": [
+    "若手"
+   ]
+  },
+  {
+   "name": "Ns09",
+   "team": "N",
+   "years": 3,
+   "quota": 0
+  },
+  {
+   "name": "Ns10",
+   "team": "N",
+   "years": 3,
+   "quota": 0
+  },
+  {
+   "name": "Ns11",
+   "team": "N",
+   "years": 3,
+   "quota": 0
+  },
+  {
+   "name": "Ns12",
+   "team": "N",
+   "years": 3,
+   "quota": 0
+  },
+  {
+   "name": "Ns13",
+   "team": "N",
+   "years": 4,
+   "quota": 0
+  },
+  {
+   "name": "Ns14",
+   "team": "N",
+   "years": 4,
+   "quota": 0
+  },
+  {
+   "name": "Ns15",
+   "team": "N",
+   "years": 4,
+   "quota": 0
+  },
+  {
+   "name": "Ns17",
+   "team": "N",
+   "years": 5,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns18",
+   "team": "N",
+   "years": 6,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns19",
+   "team": "N",
+   "years": 7,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns20",
+   "team": "N",
+   "years": 8,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns21",
+   "team": "N",
+   "years": 9,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns22",
+   "team": "N",
+   "years": 10,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns23",
+   "team": "N",
+   "years": 11,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns24",
+   "team": "N",
+   "years": 12,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns25",
+   "team": "N",
+   "years": 13,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns26",
+   "team": "N",
+   "years": 14,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns27",
+   "team": "N",
+   "years": 15,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns28",
+   "team": "N",
+   "years": 16,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns29",
+   "team": "N",
+   "years": 18,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "Ns30",
+   "team": "N",
+   "years": 20,
+   "quota": 0,
+   "quals": [
+    "リーダー"
+   ]
+  },
+  {
+   "name": "師長A",
+   "team": "N",
+   "years": 25,
+   "quota": 0,
+   "quals": [
+    "管理者",
+    "師長"
+   ]
+  },
+  {
+   "name": "係長A",
+   "team": "N",
+   "years": 18,
+   "quota": 0,
+   "quals": [
+    "管理者",
+    "リーダー"
+   ]
+  },
+  {
+   "name": "係長B",
+   "team": "N",
+   "years": 15,
+   "quota": 0,
+   "quals": [
+    "管理者",
+    "リーダー"
+   ]
+  }
+ ],
+ "name_order": [
+  "Ns01",
+  "Ns02",
+  "Ns03",
+  "Ns04",
+  "Ns05",
+  "Ns06",
+  "Ns07",
+  "Ns08",
+  "Ns09",
+  "Ns10",
+  "Ns11",
+  "Ns12",
+  "Ns13",
+  "Ns14",
+  "Ns15",
+  "Ns17",
+  "Ns18",
+  "Ns19",
+  "Ns20",
+  "Ns21",
+  "Ns22",
+  "Ns23",
+  "Ns24",
+  "Ns25",
+  "Ns26",
+  "Ns27",
+  "Ns28",
+  "Ns29",
+  "Ns30",
+  "師長A",
+  "係長A",
+  "係長B"
+ ],
+ "composition": [
+  {
+   "shift": "night",
+   "qual": "若手",
+   "max": 1,
+   "label": "若手（1〜2年目）"
+  },
+  {
+   "shift": "night",
+   "qual": "師長",
+   "max": 0,
+   "label": "師長（夜勤には入らない）"
+  },
+  {
+   "shift": "day",
+   "days": "off_days",
+   "qual": "師長",
+   "max": 0,
+   "label": "師長（休日には入らない。固定した日は別）"
+  },
+  {
+   "shift": "day",
+   "qual": "管理者",
+   "min": 1,
+   "label": "管理者を 1 人（師長は常に管理者として入る。係長は管理者・リーダー・メンバーのどれでも）"
+  },
+  {
+   "shift": "day",
+   "qual": "管理者・リーダー",
+   "min": 2,
+   "label": "管理者とは別のリーダー"
+  }
+ ],
+ "days_off": {
+  "basis": "holidays",
+  "mode": "exact",
+  "ake_is_off": false,
+  "pair_min": 2,
+  "pair_count": "runs"
+ },
+ "run_length": {
+  "max": 3,
+  "exempt_qual": "師長"
+ },
+ "forbid_sequence": [
+  {
+   "from": "night",
+   "to": "any"
+  }
+ ],
+ "rule_states": {
+  "period_charge": "off",
+  "rest_day": "off",
+  "same_day_IA": "off",
+  "weekend_balance": "off",
+  "same_weekday_cap": "off",
+  "friday_night_min": "off",
+  "oncall": "off",
+  "same_day_double": "hard",
+  "consecutive_days": "off",
+  "run_length_max": "hard",
+  "shift_sequence": "hard",
+  "run_length_min": "off",
+  "days_off_min": "hard",
+  "days_off_pair": "hard",
+  "wish_off_cap": "off",
+  "composition": "hard",
+  "quota_range": "off",
+  "quota_target": "soft",
+  "staff_per_day": "off",
+  "work_gap": "off",
+  "nonadjacent_consecutive": "off",
+  "oc_consecutive": "off",
+  "spread_standby": "off",
+  "shift_balance": "soft",
+  "wish_weekend_dayshift": "off",
+  "duty_conflicts": "off",
+  "duty_after_night": "off",
+  "count_target": "soft"
+ },
+ "weights": {},
+ "rules_version": "サンプル 0.1",
+ "docx": {
+  "template": "month_table"
+ },
+ "friday_night_min": {},
+ "weekend_dayshift_wish": []
+}

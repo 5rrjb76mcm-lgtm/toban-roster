@@ -1,0 +1,117 @@
+{
+ "profile": {
+  "id": "oncall-min",
+  "label": {
+   "ja": "一般当直（最小構成）",
+   "en": "General on-call (minimal)"
+  },
+  "calendar": {
+   "holidays": "jp",
+   "closure": [
+    {
+     "month": 12,
+     "days": [
+      29,
+      30,
+      31
+     ]
+    },
+    {
+     "month": 1,
+     "days": [
+      2,
+      3
+     ]
+    }
+   ]
+  },
+  "roles": [
+   {
+    "id": "S",
+    "label": {
+     "ja": "当直担当",
+     "en": "On-duty staff"
+    }
+   }
+  ]
+ },
+ "rules_version": "サンプル 0.1",
+ "doctors": [
+  {
+   "name": "Dr B",
+   "team": "S",
+   "years": 20,
+   "quota": 5
+  },
+  {
+   "name": "Dr D",
+   "team": "S",
+   "years": 19,
+   "quota": 5
+  },
+  {
+   "name": "Dr E",
+   "team": "S",
+   "years": 18,
+   "quota": 5
+  },
+  {
+   "name": "Dr F",
+   "team": "S",
+   "years": 17,
+   "quota": 5
+  },
+  {
+   "name": "Dr G",
+   "team": "S",
+   "years": 16,
+   "quota": 5
+  },
+  {
+   "name": "Dr H",
+   "team": "S",
+   "years": 15,
+   "quota": 5
+  },
+  {
+   "name": "Dr J",
+   "team": "S",
+   "years": 14,
+   "quota": 5
+  },
+  {
+   "name": "Dr K",
+   "team": "S",
+   "years": 13,
+   "quota": 5
+  }
+ ],
+ "name_order": [
+  "Dr B",
+  "Dr D",
+  "Dr E",
+  "Dr F",
+  "Dr G",
+  "Dr H",
+  "Dr J",
+  "Dr K"
+ ],
+ "friday_night_min": {},
+ "weekend_dayshift_wish": [],
+ "quota_tolerance": 1,
+ "weekend_balance_max_diff": 1,
+ "max_same_weekday_shifts": null,
+ "rest_day_required": false,
+ "pm_external_night": "allow",
+ "rule_states": {
+  "period_charge": "off",
+  "rest_day": "off",
+  "same_day_IA": "off",
+  "weekend_balance": "off",
+  "same_weekday_cap": "soft",
+  "friday_night_min": "off",
+  "oncall": "off"
+ },
+ "weights": {},
+ "notes": "オンコール・カテ室・期間責任者を置かない最小の当直表。休日は日勤と夜勤、平日は夜勤の各1名。他施設はここから役割と人数を足していく。"
+}

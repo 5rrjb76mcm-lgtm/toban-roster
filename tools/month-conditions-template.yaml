@@ -1,0 +1,70 @@
+# YYYY年MM月 月別条件（記入用ひな形）。記入例は 202611/202611 月別条件.yaml、項目の意味は tools/README.md
+# 原資料（希望の申告・前月の引継ぎ）から転記する。推測で埋めない。不明は空のままにして確認事項に書く
+year: 2026
+month: 12
+holidays: []                 # 土日以外の祝日・振替休日（日付の数字）
+duties_on_holidays: false    # 土日祝の定期業務は休診の前提
+next_month_first_day_is_holiday: false
+# 翌月1日の定期業務（月末の夜勤・夜間OCの翌日制約に使う）。書かない医師・時間帯は当月の曜日パターンからの推定。"" は業務なし
+# next_month_first_day_duties:
+#   Dr M: {pm: external}
+#   Dr P: {am: "", pm: ""}
+
+targets: {}                  # 当月の勤務目標（省略時は共通ルールの目安）。例 {Dr N: 4}
+
+regular_duties:              # 全医師分。kind: outpatient=外来, ward=病棟番, external=外勤 / part: am|pm|full / nth: 第n曜日
+  Dr B: []
+  Dr E: []
+  Dr F: []
+  Dr G: []
+  Dr H: []
+  Dr J: []
+  Dr K: []
+  Dr L: []
+  Dr M: []
+  Dr N: []
+  Dr P: []
+  Dr Q: []
+  Dr R: []
+  Dr S: []
+
+confirmed_pm_external_night: []   # 午後外勤後の夜勤を「間に合う」と確認した {day, name}
+
+unavailable_night:           # 日付だけの不可（その日から始まる夜勤・夜間OCの不可）。記載のない医師は [] にして確認事項へ
+  Dr E: []
+  Dr F: []
+  Dr G: []
+  Dr H: []
+  Dr J: []
+  Dr K: []
+  Dr L: []
+  Dr M: []
+  Dr N: []
+  Dr P: []
+  Dr Q: []
+  Dr R: []
+  Dr S: []
+
+unavailable_other: []        # 時間帯付きの不可。例 - {name: Dr E, day: 10, part: allday}
+avoid: []                    # できれば避けたい日（調整目標。参照解の回数を下回る分は大きな減点）。曜日で決まるものは regular_duties に {kind: avoid_night|avoid_day|avoid_allday, dow: Tue} の行でも可。例 - {name: Dr L, day: 4, part: night}
+
+wishes:
+  weekend_dayshift: []       # 土日いずれかの日勤（できれば）の希望者
+  night_on: {}               # 特定日の当直希望。例 {Dr P: [12]}
+
+fixed:
+  night: {}                  # 例 {6: Dr X}
+  day: {}
+  weekend_charge: {}         # 月またぎの土日の主担当担当。例 {1: Dr G}
+
+exceptions: {}               # 承認済みの月別例外のみ。例 {weekend_balance_max_diff: 2}
+allow_split_weekend: true    # 均等配分のために土日1組を土曜・日曜の2名で分けてよい（共通ルール 第6節）
+
+prev_month:                  # 前月の引継ぎ「月末の接続」から
+  last_days: []              # 例 - {date: 31, day: Dr N, day_oc: [Dr G], night: Dr P, night_oc: [Dr G]}
+  last_weekend_charge: null  # 前月最後の土日の主担当担当
+  prev_weekend_charge: null  # その1つ前の土日の主担当担当
+
+history:                     # 前月の引継ぎ「主担当の週末担当履歴」から。月またぎの週末は当月側で数えるので含めない
+  weekend_charge: {}
+  holiday_charge: {}

@@ -1,0 +1,9 @@
+{
+ "code": "en",
+ "ui": {
+  "補助の役割の金曜夜勤（減点 local_example_junior_friday）: {items}": "{junior} staff on Friday nights (penalty local_example_junior_friday): {items}",
+  "補助の役割の人を金曜の夜勤に入れない（施設のプラグインの例）": "Keep {junior} staff off Friday nights (example facility plug-in)",
+  "日ごとの一覧（A4縦。施設のプラグインの例）": "Day list (A4 portrait; example facility plug-in)",
+  "施設のプラグインの例: 金曜夜勤を減点、重み 1": "Example plug-in: Friday nights penalised, weight 1"
+ }
+}

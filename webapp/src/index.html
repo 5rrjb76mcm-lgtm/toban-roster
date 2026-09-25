@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!-- toban.html — 勤務表の作成アプリ。MIT License, Copyright (c) 2026 5rrjb76mcm-lgtm。同梱: HiGHS (MIT), highs-js (MIT), JSZip 3.10.1 (MIT/GPLv3 のうち MIT), pako (MIT)。作成: Anthropic の Claude（Claude Fable 5.1）を用い、作成責任者（GitHub: 5rrjb76mcm-lgtm）が仕様の決定と動作の検証を実施。詳細は「ヘルプ」タブのライセンスの節 -->
+
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>勤務表の作成</title>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1>勤務表の作成 <small id="ver">/*__VERSION__*/</small></h1>
+    <div id="monthTitle"></div>
+    <div id="outputs"><label>言語 <select id="langSel"></select></label> <label>表題 <select id="docLabel"><option value="確認版">確認版</option><option value="確定版">確定版</option></select></label> <button id="btnDocx">勤務表 docx</button> <button id="btnReportHtml">説明資料 HTML</button></div>
+  </div>
+  <div class="hrow">
+    <div id="fileCluster"><span id="folderBar"></span><span id="saveState"></span></div>
+  </div>
+  <div class="hrow"><!-- タブは常に独立した行（保存状態の文言の長さで折り返しが変わり、見出しの高さが動くのを防ぐ） -->
+    <nav>
+      <button class="tab" data-tab="input">1 月別条件</button>
+      <button class="tab" data-tab="calc">2 計算</button>
+      <button class="tab" data-tab="result">3-1 結果</button>
+      <button class="tab" data-tab="resultCal">3-2 結果：{person}別カレンダー</button>
+      <button class="tab" data-tab="settings">設定（共通ルール）</button>
+      <button class="tab" data-tab="help">ヘルプ</button>
+    </nav>
+  </div>
+</header>
+<main>
+  <section class="pane" id="input">
+    <div class="subnav"><button class="sub active" data-sub="monthSettings">月の設定（暦・目標・固定・前月末・履歴）</button><button class="sub" data-sub="doctorPane">{person}別カレンダー（業務・不可・希望）</button><button class="sub" data-sub="fixedPane">固定配置（決定済みの入力）</button></div>
+    <div id="monthSettings"></div>
+    <div id="doctorPane" hidden></div>
+    <div id="fixedPane" hidden></div>
+  </section>
+  <section class="pane" id="calc" hidden>
+    <div class="box">
+      <h3>計算</h3>
+      <p><label>計算時間の上限 <input type="number" id="timeLimit" value="180" style="width:5em"> 秒</label>
+      　<label><input type="checkbox" id="useBase" checked> 現在の結果を基準に最小変更で直す（重み <input type="number" id="baseWeight" value="30" style="width:4em">）</label>
+      　<label><input type="checkbox" id="markChanges" checked> 変更点を赤字で示す（docx と説明資料。最小変更のときだけ）</label></p>
+      <p><button id="btnSolve" class="primary">計算する</button> <button id="btnCancel" hidden>中止</button> <span id="calcStatus" class="note"></span></p>
+      <p class="note">計算は別スレッドで行うので、計算中も画面は操作できます（保存や閲覧は可能。入力の変更は計算が終わってから）。上限時間まで待っても解が出ないときは、上限を延ばすか条件を見直してください。</p>
+      <pre id="calcLog"></pre>
+      <p class="note">必須条件を満たす配置の中から、調整目標（希望、均等配分、偏り、既存案からの変更量など）の減点合計が最小のものを選びます。「解なし」のときは衝突している条件を診断して表示します。どの条件を必須にするかは設定タブの規則の表で決めます。</p>
+    </div>
+  </section>
+  <section class="pane" id="result" hidden>
+  </section>
+  <section class="pane" id="settings" hidden>
+    <div class="box setmodes">
+      <span class="modesw"><button data-setmode="daily">日々の設定（名簿・規則・重み）</button><button data-setmode="build">施設の構成を作る</button></span>
+      <button id="btnUndo" disabled>元に戻す</button> <span id="undoNote" class="note"></span>
+    </div>
+    <div class="box" data-modepane="build">
+      <h3>施設の構成を作る</h3>
+      <p class="note">施設を使い始めるときに一度決めるものです。上から順に決めてください。ここを変えると名簿の欄・規則の一覧・勤務表の形が変わります。日々の運用では「日々の設定」を使います。</p>
+      <div id="profileBuilder"></div>
+    </div>
+    <div class="box" data-modepane="daily">
+      <h3>{person}一覧（名簿・目安・資格）</h3>
+      <div id="doctorTable"></div>
+    </div>
+    <div class="box" data-modepane="daily">
+      <h3>規則</h3>
+      <p class="note">ここで変えた値はその月の保存データに残り、計算・検算・入力チェックのすべてに使われます。規則を「なし」にすると、その規則の設定欄も重みも隠れるので、施設で使う規則だけが並びます。規則の文（説明資料の第 0 節）は設定から作られます。</p>
+      <div id="hardRules"></div>
+    </div>
+    <div class="box" data-modepane="daily">
+      <h3>その他の重みと運用の設定</h3>
+      <p class="note">数値が大きいほど優先して守ります。必須にした規則は重みに関係なく守ります。ただし固定指定した枠・{person}では不可・連続禁止・翌日の業務制約を後回しにします（fixed_conflict の減点）。</p>
+      <div id="weightsTable"></div>
+      <p><button id="btnResetRules">重みを既定（配布時の値）に戻す</button> <span class="note">{person}の表や他の設定は変わりません</span></p>
+    </div>
+    <details class="box"><summary>管理者向け（データの入出力・サンプル）</summary>
+      <p class="note">通常はヘッダーのフォルダ接続と自動保存で運用します。ここはフォルダ機能が使えない環境の代替と、初期設定・動作確認用です。</p>
+      <p id="pluginsInfo" class="note" hidden></p>
+      <p><button id="btnReloadPlugins">保存フォルダのプラグイン（plugins/）を読み直す</button> <span class="note">保存フォルダの plugins/ に置いた施設のプラグイン（規則・暦・様式・訳・プロファイル）は、フォルダに接続したときに自動で読み込まれます。ファイルを変えたらここで読み直します</span></p>
+      <p><button id="btnSaveJson">現在の月をJSONとしてダウンロード</button> <label class="filebtn">JSONを読込<input type="file" id="fileLoadJson" accept=".json"></label> <label class="filebtn">前月のJSONから翌月を作成<input type="file" id="fileFromPrev" accept=".json"></label> <button id="btnNewMonth">新しい月（空）を作る</button> <button id="btnSample">サンプル（2026年11月）を読み込む</button></p>
+    </details>
+    <details class="box"><summary>詳細（JSONで直接編集）</summary>
+      <p class="note">設定タブの表に出ていない項目は、ここで直接編集します。書き換えたら「JSONを反映」を押してください。</p>
+      <textarea id="rulesJson" rows="30" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+      <p><button id="btnApplyRules">JSONを反映</button></p>
+    </details>
+  </section>
+  <section class="pane" id="help" hidden>
+    <div id="helpBody" data-noi18n></div>
+      <div class="box" id="licenses" data-noi18n><h3><span data-lang="ja">ライセンス</span><span data-lang="en" hidden>Licence</span></h3>
+      <p data-lang="ja"><b>toban.html</b>（このアプリ本体: 画面・ソルバーの組み立て・検算・出力・組み込みの共通ルール）は MIT ライセンスで提供します。著作権者: 5rrjb76mcm-lgtm。</p>
+      <p data-lang="en" hidden><b>toban.html</b> (the app itself: the screens, the model built for the solver, the verification, the output and the bundled rules) is provided under the MIT License. Copyright holder: 5rrjb76mcm-lgtm.</p>
+      <details><summary>MIT License（toban.html）</summary><pre style="white-space:pre-wrap">MIT License
+
+Copyright (c) 2026 5rrjb76mcm-lgtm
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre></details>
+      <p data-lang="ja">このファイルには次のオープンソースソフトウェアを同梱しています。いずれも MIT ライセンスです（JSZip は MIT / GPLv3 のデュアルライセンスで、ここでは MIT を選択。pako の lib/zlib 部分は zlib ライセンス）。各ライセンス文は下に全文を掲げます。</p>
+      <p data-lang="en" hidden>This file bundles the following open-source software, under the MIT License unless noted (JSZip is dual-licensed MIT / GPLv3; MIT is chosen here). Each licence text is given in full below.</p>
+      <ul data-lang="ja">
+        <li><b>HiGHS</b> 1.15（整数計画ソルバー本体。WebAssembly 化したものを同梱） — MIT License, Copyright (c) 2026 HiGHS — <code>https://github.com/ERGO-Code/HiGHS</code></li>
+        <li><b>highs-js</b> 1.15.2（HiGHS の WebAssembly ビルドと JavaScript ラッパー） — MIT License, Copyright (c) 2023 highs-js — <code>https://github.com/lovasoa/highs-js</code></li>
+        <li><b>JSZip</b> 3.10.1（docx の zip 生成） — MIT License（GPLv3 とのデュアル）, Copyright (c) 2009-2016 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso — <code>https://github.com/Stuk/jszip</code></li>
+        <li><b>pako</b>（JSZip に同梱の deflate 実装） — MIT License, Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn。lib/zlib 部分は zlib License, Copyright (C) 1995-2013 Jean-loup Gailly and Mark Adler — <code>https://github.com/nodeca/pako</code></li>
+      </ul>
+      <ul data-lang="en" hidden>
+        <li><b>HiGHS</b> 1.15 (the integer-programming solver, bundled as WebAssembly) — MIT License, Copyright (c) 2026 HiGHS — <code>https://github.com/ERGO-Code/HiGHS</code></li>
+        <li><b>highs-js</b> 1.15.2 (the WebAssembly build of HiGHS and its JavaScript wrapper) — MIT License, Copyright (c) 2023 highs-js — <code>https://github.com/lovasoa/highs-js</code></li>
+        <li><b>JSZip</b> 3.10.1 (creates the docx zip) — MIT License (dual with GPLv3), Copyright (c) 2009-2016 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso — <code>https://github.com/Stuk/jszip</code></li>
+        <li><b>pako</b> (the deflate implementation bundled with JSZip) — MIT License, Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn; the lib/zlib part is under the zlib License, Copyright (C) 1995-2013 Jean-loup Gailly and Mark Adler — <code>https://github.com/nodeca/pako</code></li>
+      </ul>
+      <details><summary>HiGHS — MIT License</summary><pre style="white-space:pre-wrap">MIT License
+
+Copyright (c) 2026 HiGHS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre></details>
+      <details><summary>highs-js — MIT License</summary><pre style="white-space:pre-wrap">MIT License
+
+Copyright (c) 2023 highs-js
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre></details>
+      <details><summary>JSZip — MIT License</summary><pre style="white-space:pre-wrap">JSZip is dual licensed. At your choice you may use it under the MIT license *or* the GPLv3 license. （ここでは MIT ライセンスを選択）
+
+The MIT License
+
+Copyright (c) 2009-2016 Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre></details>
+      <details><summary>pako — MIT License</summary><pre style="white-space:pre-wrap">(The MIT License)
+
+Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre></details>
+      <details><summary>pako lib/zlib — zlib License</summary><pre style="white-space:pre-wrap">(C) 1995-2013 Jean-loup Gailly and Mark Adler
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+Jean-loup Gailly        Mark Adler
+jloup@gzip.org          madler@alumni.caltech.edu</pre></details>
+    </div>
+</section>
+</main>
+<div id="toast" hidden></div>
+<div id="startGate" hidden><div id="startBox"><div class="startLang"><select id="startLang" aria-label="Language / 言語"></select></div><h2>勤務表の作成</h2><p id="startMsg"></p><div id="startBtns"></div><p class="note">フォルダへの保存にはブラウザの許可が必要で、許可はページを開いた直後には求められません。開始ボタンを押した操作をきっかけに許可を求めます。</p></div></div>
+<div id="modal" hidden><div id="modalBox"><div id="modalMsg"></div><div id="modalBtns"></div></div></div>
+<script>/*__JSZIP__*/</script>
+<script id="highsSrc">/*__HIGHS__*/</script>
+<script>
+(function(T){ T.WASM_B64 = "/*__WASM_B64__*/"; T.b64ToBytes = b64 => { const bin = atob(b64); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }; })(globalThis.T = globalThis.T || {});
+</script>
+<script>
+(function(T){ T.DEFAULT_RULES = /*__RULES__*/; T.SAMPLE_MONTH = /*__SAMPLE__*/; T.PROFILES = /*__PROFILES__*/; T.CSS = /*__CSS_STR__*/; T.LANGS_DATA = /*__LANGS__*/; })(globalThis.T = globalThis.T || {});
+</script>
+<script>/*__SRC__*/</script>
+</body>
+</html>

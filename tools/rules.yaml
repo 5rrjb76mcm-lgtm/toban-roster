@@ -1,0 +1,72 @@
+# 既定の設定（勤務医の見本（架空の例）。名簿は架空名）: ソルバーが使う数値・名簿・重み（版は rules_version）
+# 文章のルールは webapp/src/solver.js（運用の正本）と tools/toban.py（相互検算用）に実装。このファイルは build.py が toban.html に既定設定として埋め込む
+rules_version: "1.11 (2026-09-15)"
+
+doctors:
+  # team: I=主担当, A=副担当, Y=若手, C=部長
+  - {name: Dr B, team: C, years: 29, quota: 0, duty: no_unless_needed}
+  - {name: Dr D, team: C, years: 27, quota: 0, duty: never}
+  - {name: Dr E, team: I, years: 17, quota: 2}
+  - {name: Dr F, team: I, years: 19, quota: 2}
+  - {name: Dr G, team: I, years: 15, quota: 2}
+  - {name: Dr H, team: I, years: 21,  quota: 3}
+  - {name: Dr J, team: A, years: 15, quota: 2}
+  - {name: Dr K, team: A, years: 11, quota: 2}
+  - {name: Dr L, team: A, years: 8, quota: 3}
+  - {name: Dr M, team: A, years: 20,  quota: 4}
+  - {name: Dr N, team: Y, years: 7,  quota: 5}
+  - {name: Dr P, team: Y, years: 2,  quota: 5}
+  - {name: Dr Q, team: Y, years: 6,  quota: 5}
+  - {name: Dr R, team: Y, years: 8,  quota: 5}
+  - {name: Dr S, team: Y, years: 8,  quota: 5}
+
+# 表の枠外「週休日数」の氏名順（前月表に合わせる）
+name_order: [Dr E, Dr F, Dr J, Dr K, Dr G, Dr L, Dr H, Dr M, Dr N, Dr P, Dr Q, Dr R, Dr S]
+
+# 勤務者のチーム別に必要なオンコール（第3節）
+oncall_requirement:
+  I: {I: 0, Y: 1}
+  A: {I: 1, Y: 1}
+  Y: {I: 1, Y: 0}
+  C: {I: 1, Y: 0}   # 部長を例外的に登用したとき（主担当OC1名が必須。若手OCは付けない。2026-09-17）
+
+# 第2節の個別条件
+friday_night_min: {}                     # 金曜夜勤の最低回数（人 → 回。例: {氏名: 1}。旧名 friday_night_exact は読込時に移行）
+weekend_dayshift_wish: []                 # 土日どちらかに日勤 1 回を希望する人（可能なら）
+# 翌日が休日でない平日の夜勤への、名指しした人の配置
+quota_tolerance: 1                        # 目安±1回
+max_same_weekday_shifts: 2                # 同じ曜日の勤務（日勤＋夜勤）は1人あたり月2回まで。超過は減点（weights.same_weekday_excess）
+
+# 第6節: 完全な土日の担当回数の最多と最少の差（組）
+weekend_balance_max_diff: 1
+# 土日1組の土曜・日曜への分割は常に候補（減点 weights.split_weekend 付きなので、均等配分に必要なときだけ使われる。2026-09-14 に切替を撤去）
+
+# 第7節: 日中の専門業務の必要人数（平日）。pm_clinic=午後の専門外来
+# 将来変わりうる必須条件（アプリの設定タブでも変更できる。2026-09-17）
+rest_day_required: true                   # 外勤のある医師に週休日を月1日以上（第8節）。false=課さない
+pm_external_night: confirm                # 午後外勤日の夜勤・夜間OC: confirm=「間に合う」確認の記録があるときだけ可 / forbid=常に不可 / allow=制限なし（日勤OCの禁止は変わらない）
+# 調整目標の重み（大きいほど優先）
+weights:
+  target_deviation: 15         # 勤務目安（当月の目標）からの乖離 1回あたり（回数の公平を希望より優先、2026-09-14）
+  wish_night: 30               # 特定日の当直希望が未反映
+  missing_young_oc: 3          # 副担当医師の勤務で若手OCを置けない 1枠あたり（軽い減点。2026-09-17 に 300 から緩和。若手OCは望ましいが必須ではない）
+  fixed_conflict: 50           # 固定指定が連続禁止などと競合したまま配置 1件あたり（固定指定は他の必須条件より優先。検算で「固定指定により許容」と表示）
+  avoid_no_reduction: 1000     # 避けたい日を申告した医師の勤務回数が参照解（避けたい日を無視した計算）の回数を下回る分 1回あたり（参照解が無ければ当月目標。実質禁止。±1の幅は参照解側に現れるので残る）
+  chief_duty: 1000             # 部長を勤務に登用する 1回あたり（月1回まで。例外的な登用のときだけ）
+  wish_weekend_dayshift: 20    # 土日日勤の希望が未反映
+  same_weekday_excess: 15             # 同じ曜日の勤務が月2回を超えた 1回あたり（中）
+  consecutive_weekend: 15      # 主担当の連続する週末担当
+  split_weekend: 60            # 土日1組を土曜・日曜の2人に分割（均等配分のための例外）
+  weekend_history_spread: 10   # 前月までの履歴を含む週末担当数の最多−最少
+  charge_without_dayshift: 5   # 週末担当の主担当医師にその週末の日勤がない
+  night_oc_then_duty: 3        # 夜間OC翌日の通常業務
+  night_then_am_duty: 4        # 夜勤翌日午前のみの外来・病棟
+  oc_consecutive: 6            # OC を含む隣接枠の連続（OC→OC、OC→勤務、勤務→OC）1組あたり。2026-09-17 に必須条件から減点に変更。同日の日勤帯→夜間（若手の同日兼務、休日の日勤OC→夜間OC）と主担当の同じ土日・祝日は減点なし
+  nonadjacent_consecutive: 2   # 日勤OC→翌日日勤OC など隣接しない連日の当番
+  work_gap_1: 20               # 同じ医師の実勤務の間が中1日（夜勤→休み→夜勤など）1組あたり。かなり大きな負担（2026-09-15）
+  work_gap_2: 6                # 同じ医師の実勤務の間が中2日 1組あたり。それなりの負担。中3日以上は減点なし
+  spread_I_nightoc: 3          # 主担当の夜間OC回数の最多−最少
+  spread_Y_oc: 2               # 若手のOC回数の最多−最少
+  spread_Y_holiday_work: 3     # 若手の休日勤務回数の最多−最少
+  base_change: 1               # 既存案からの変更 1箇所あたり
+  staff_per_day: 1             # 当番（勤務・OC）に入る人数 1人・1日あたり（同じ人が同日の複数役割を兼ねれば1人）。無駄な人員配置を避ける弱い減点（2026-09-17）
