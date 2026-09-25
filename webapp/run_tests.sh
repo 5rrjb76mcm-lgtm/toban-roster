@@ -27,6 +27,9 @@ else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i 
 run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_merge_node.js
+run test_profile_export_node.js
+run test_save_node.js
+run test_solve_guard_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
 run test_files_node.js

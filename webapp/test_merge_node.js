@@ -25,3 +25,16 @@ r=T.mergeMonth(base, mine2, theirs, 'mine'); console.log('prefer mine notes:', r
   console.log('mine deleted new items stay deleted:', gone, 'conflicts', r3.conflicts.length); if (!gone) process.exitCode=1;
   const r4=T.mergeMonth(b2, theirs3, mine3); const gone4 = !Object.keys(r4.merged.fixed_tags||{}).length && !(r4.merged.plugins_used||[]).length; console.log('theirs deleted new items stay deleted:', gone4); if (!gone4) process.exitCode=1;
   const theirs5=JSON.parse(JSON.stringify(b2)); theirs5.fixed_tags={"5:day|Dr E":"会議"}; const r5=T.mergeMonth(b2, mine3, theirs5, 'mine'); const c5=r5.conflicts.length>0 && !Object.keys(r5.merged.fixed_tags||{}).length; console.log('delete vs change conflict, mine(delete) chosen:', c5, r5.conflicts.map(c=>c.label)); if (!c5) process.exitCode=1; }
+
+// 本体が知らないトップレベルの項目（プラグインの規則の ui.month が書く m.local_<施設>）: 値全体を 1 項目として 3 者比較する
+{ const b=JSON.parse(JSON.stringify(base)); b.local_example={max:3, days:[1,2]};
+  const rt=T.unflattenMonth(T.flattenMonth(b), b); const ok0 = JSON.stringify(rt.local_example)===JSON.stringify(b.local_example); console.log('unknown item round trip:', ok0); if(!ok0) process.exitCode=1;
+  const mine=JSON.parse(JSON.stringify(b)); mine.local_example.max=7; const theirs=JSON.parse(JSON.stringify(b)); theirs.notes='相手のメモ';
+  let r=T.mergeMonth(b, mine, theirs); const ok1 = r.merged.local_example.max===7 && r.merged.notes==='相手のメモ' && r.mineChanges===1 && r.theirChanges===1 && r.conflicts.length===0; console.log('unknown item mine-only change kept:', ok1, {max:r.merged.local_example.max, mine:r.mineChanges, theirs:r.theirChanges}); if(!ok1) process.exitCode=1;
+  r=T.mergeMonth(b, theirs, mine); const ok2 = r.merged.local_example.max===7 && r.theirChanges===1; console.log('unknown item theirs-only change kept:', ok2); if(!ok2) process.exitCode=1;
+  const theirs2=JSON.parse(JSON.stringify(b)); theirs2.local_example.max=9;
+  r=T.mergeMonth(b, mine, theirs2, 'theirs'); const ok3 = r.conflicts.length===1 && /local_example/.test(r.conflicts[0].label) && r.merged.local_example.max===9; console.log('unknown item both changed -> conflict, theirs:', ok3, r.conflicts.map(c=>c.label)); if(!ok3) process.exitCode=1;
+  r=T.mergeMonth(b, mine, theirs2, 'mine'); const ok4 = r.merged.local_example.max===7; console.log('unknown item conflict, mine:', ok4); if(!ok4) process.exitCode=1;
+  const mine3=JSON.parse(JSON.stringify(b)); delete mine3.local_example; r=T.mergeMonth(b, mine3, theirs); const ok5 = !('local_example' in r.merged) && r.mineChanges===1 && r.conflicts.length===0; console.log('unknown item deleted by mine stays deleted:', ok5); if(!ok5) process.exitCode=1;
+  r=T.mergeMonth(b, theirs, mine3); const ok6 = !('local_example' in r.merged); console.log('unknown item deleted by theirs stays deleted:', ok6); if(!ok6) process.exitCode=1;
+  const mine4=JSON.parse(JSON.stringify(b)); mine4.local_example={}; r=T.mergeMonth(b, mine4, theirs); const ok7 = !('local_example' in r.merged) && r.mineChanges===1; console.log('unknown item emptied == deleted:', ok7); if(!ok7) process.exitCode=1; }

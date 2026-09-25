@@ -6,7 +6,7 @@ Duty roster builder for hospital departments. 日本の病院の当直表（当�
 1枚の HTML（`webapp/toban.html`）をファイルサーバーに置いて Edge / Chrome で開くだけで、月別条件の入力、配置の計算、検算・集計、当番表 docx と説明資料 HTML の出力ができます。外部通信なし、LLM は使いません。画面・説明資料・ヘルプは日本語と英語を切り替えられます。
 
 - 計算エンジン: [HiGHS](https://highs.dev)（WebAssembly、Web Worker で実行）
-- 検算用の別実装: `tools/toban.py`（OR-Tools CP-SAT）。同じ制約の二重実装で相互検算する
+- 検算用の別実装: `tools/toban.py`（OR-Tools CP-SAT）。既定の見本構成に対応する参照実装で、同じ制約の二重実装として相互検算する（施設のプラグインの規則は対象外）
 - ライセンス: MIT（同梱の HiGHS / highs-js / JSZip / pako も MIT）。どの施設も無償で利用・改変・複製・共有できます。貢献は DCO 署名付きで受け付けます（`CONTRIBUTING.md`）
 
 このリポジトリの名簿・規則・サンプル月はすべて架空のものです。実際の運用データは含みません。

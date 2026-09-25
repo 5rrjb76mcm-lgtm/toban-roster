@@ -33,7 +33,7 @@ def check_app_split():
     """app-*.js の相互参照の検査。決まり: 他のファイルの関数・共有変数は A. を付けて参照する／A.xxx はどこかのファイルが Object.assign(A, {...}) で公開している
     ／同じ名前を2つのファイルで宣言しない／$・esc・state は使うファイルごとに const で別名を宣言する。違反を文字列の一覧で返す。"""
     LOCAL = {"$": "const $ = ", "esc": "const esc = ", "state": "const state = A.state"}  # 各ファイルで宣言する別名
-    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer"}  # app-core.js が A に置く共有変数
+    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer", "solving"}  # app-core.js が A に置く共有変数
     texts = {f: (here / "src" / f).read_text(encoding="utf-8") for f in APP_FILES}
     decl, exports, owner, errors = {}, {}, {}, []
     for f, t in texts.items():

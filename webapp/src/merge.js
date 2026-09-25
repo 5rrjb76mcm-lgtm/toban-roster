@@ -1,10 +1,16 @@
 // 当直表アプリ: 月データの3者統合（base=最後に保存した版, mine=このブラウザ, theirs=相手が保存したファイル）
 (function (T) {
   const J = v => JSON.stringify(v);
+  // flatten が個別に扱う月データの項目（と、版の履歴・旧形式の項目）。ここに無いトップレベルの項目（プラグインの規則の ui.month が書く m.local_<施設> など）は、値全体を 1 項目（x:<名前>）として 3 者比較する
+  const KNOWN = new Set(["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id", "exceptions", "holidays", "plugins_used", "closure_days",
+    "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
+    "doc_versions", "next_month_first_day_duties", "allow_split_weekend"]);
+  const isEmpty = v => v === undefined || v === null || v === "" || v === false || (Array.isArray(v) && !v.length) || (v && typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);
   // 月データを「項目キー → 値」に展開する。集合は要素ごと、表は1マスごとに分ける
   function flatten(m) {
     const f = {};
     const put = (k, v) => { if (v !== undefined && v !== null && v !== "" && v !== false) f[k] = J(v); }; // 空・false は「無い」と同じ扱い（往復と統合で差にしない）
+    for (const k of Object.keys(m)) if (!KNOWN.has(k) && !isEmpty(m[k])) f[`x:${k}`] = J(m[k]); // 本体が知らない項目（プラグインの月の値）。空は「無い」と同じ
     for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) put("s:" + k, (k === "year" || k === "month") && m[k] != null ? +m[k] : m[k]);
     put("s:exceptions.weekend_balance_max_diff", (m.exceptions || {}).weekend_balance_max_diff);
     for (const d of m.holidays || []) f[`hol:${d}`] = "1";
@@ -48,6 +54,7 @@
   function unflatten(f, template) {
     const m = JSON.parse(J(template || {}));
     for (const k of ["cath_off_days", "next_month_first_day_duties", "allow_split_weekend"]) delete m[k]; // 旧形式の項目は持ち込まない（相手の版に残っていても復活させない）
+    for (const k of Object.keys(m)) if (!KNOWN.has(k)) delete m[k]; // 本体が知らない項目も展開した値から作り直す（片方が消した項目を template から復活させない）
     const P = k => (f[k] === undefined ? undefined : JSON.parse(f[k]));
     for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) { const v = P("s:" + k); if (v !== undefined) m[k] = v; else if (k === "notes") m[k] = ""; else if (["duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty"].includes(k)) m[k] = false; }
     m.exceptions = {}; { const v = P("s:exceptions.weekend_balance_max_diff"); if (v !== undefined) m.exceptions.weekend_balance_max_diff = v; }
@@ -82,6 +89,7 @@
       else if (k === "s:prev_month.last_weekend_charge") m.prev_month.last_weekend_charge = v;
       else if (k === "s:prev_month.prev_weekend_charge") m.prev_month.prev_weekend_charge = v;
       else if (p[0] === "pat") m.regular_duties[p[1]] = v;
+      else if (p[0] === "x") m[p.slice(1).join(":")] = v; // 本体が知らない項目は値全体
     }
     m.holidays.sort((a, b) => a - b); m.closure_days.sort((a, b) => a - b); m.cath_off_days_A.sort((a, b) => a - b); m.cath_off_days_I.sort((a, b) => a - b);
     for (const n of Object.keys(m.unavailable_night)) m.unavailable_night[n].sort((a, b) => a - b);
@@ -103,7 +111,7 @@
       case "fdo": return `${day(p[1])} 日勤OC固定 ${p[2]}`; case "fno": return `${day(p[1])} 夜間OC固定 ${p[2]}`;
       case "fdon": return `${day(p[1])} 日勤 ${p[2]} のOCなし（固定）`; case "fnon": return `${day(p[1])} 夜間 ${p[2]} のOCなし（固定）`;
       case "cpm": return `${p[1]} ${day(p[2])} 午後外勤後の夜勤の確認`; case "hist": return `履歴 ${p[1]} ${p[2]}`;
-      case "prev": return "前月末の接続"; case "pat": return `${p[1]} の曜日パターン`;
+      case "prev": return "前月末の接続"; case "pat": return `${p[1]} の曜日パターン`; case "x": return `プラグインの月の値 ${p.slice(1).join(":")}`;
       default: return k;
     }
   }

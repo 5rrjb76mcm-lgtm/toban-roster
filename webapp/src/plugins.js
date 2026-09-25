@@ -10,7 +10,9 @@
 // 読み込みの失敗は loaded に残し、入力チェック（LINT_PLUGIN_ERROR）で知らせる。同じファイルを読み直しても登録は上書きになる（register は同じ id を更新する）。
 (function (T) {
   const KINDS = ["rules", "calendars", "docx", "lang", "profiles"];
-  const loaded = []; // { source: "folder", kind, name, ok, error, ids, overrode, recd }
+  const loaded = []; // { source: "folder", kind, name, ok, error, ids, overrode, recd, hash }
+  let generation = 0; // 読み込みの世代（load / beginFolder のたびに進む）。計算の前後で比べ、計算中にプラグインが変わっていたら結果を採用しない（app-solve.js）
+  const hashOf = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16) + ":" + str.length; }; // 中身の印（app-core.js の sigOf と同じ式）
   const idsOf = () => ({ rules: T.rules.defs.map(d => d.id), calendars: T.calendars.defs.map(c => c.id), docx: T.docx ? T.docx.list().map(t => t.id) : [], lang: T.LANGS ? T.LANGS().map(x => x[0]) : [], profiles: (T.PROFILES || []).map(p => (p.profile || {}).id) });
   // 登録の写し。規則の登録は同じオブジェクトを書き換える（Object.assign）ので、浅い写しを取って戻す。ほかは定義オブジェクトそのものを覚えて登録し直す
   const snapRule = d => Object.assign({}, d);
@@ -36,7 +38,8 @@
   }
   // 1 ファイルを読み込む。text は JS（rules / calendars / docx）か JSON（lang / profiles）
   function load(kind, name, text, source = "folder") {
-    const rec = { source, kind, name, ok: false, error: null, ids: [], overrode: [], recd: [] }; // overrode: 先に別の出どころが定義していた規則を登録し直した分。recd: このファイルが触った登録
+    const rec = { source, kind, name, ok: false, error: null, ids: [], overrode: [], recd: [], hash: hashOf(String(text)) }; // overrode: 先に別の出どころが定義していた規則を登録し直した分。recd: このファイルが触った登録。hash: 中身の印
+    generation++;
     for (let i = loaded.length - 1; i >= 0; i--) if (loaded[i].kind === kind && loaded[i].name === name) loaded.splice(i, 1); // 同じ名前の古い記録は落とす（読み直し）
     loaded.push(rec);
     if (!KINDS.includes(kind)) { rec.error = `知らない種類: ${kind}`; return rec; }
@@ -79,8 +82,10 @@
     if (!baseline) baseline = snapshot();
     const recs = []; for (const [kind, ids] of Object.entries(session)) for (const id of ids) recs.push({ kind, id });
     revert(baseline, recs); restoreTables(baseline); // 実行時に読んだ文面・訳・プロファイルも最初の写しへ
-    session = {}; loaded.length = 0;
+    session = {}; loaded.length = 0; generation++;
   }
+  // 実行時に読んだプラグインの一覧（名前と中身の印。読めたものだけ、名前順）。版の署名と計算結果の記録に使う
+  const stamp = () => loaded.filter(x => x.ok).map(x => `${x.name}#${x.hash}`).sort();
   const stale = () => []; // 以前は「前のフォルダの規則が残っている」を知らせていた。いまは beginFolder が外すので残らない（入力チェックの LINT_PLUGIN_STALE は互換のため残す）
-  T.plugins = { KINDS, loaded, load, errors, overrides, inventory, ruleIds, beginFolder, stale, recording: null };
+  T.plugins = { KINDS, loaded, load, errors, overrides, inventory, ruleIds, beginFolder, stale, generation: () => generation, stamp, recording: null };
 })(globalThis.T = globalThis.T || {});

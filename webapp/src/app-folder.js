@@ -147,7 +147,8 @@
     if (!A.dirHandle) return renderFolderBar();
     for await (const [name, h] of A.dirHandle.entries()) if (h.kind === "directory" && /^\d{6}/.test(name)) A.monthDirs.push(name);
     A.monthDirs.sort(); renderFolderBar(); renderHeader();
-    if (pluginsFor !== A.dirHandle) { pluginsFor = A.dirHandle; await loadFolderPlugins(); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）
+    if (A.solving) A.toast(T.t("計算中のため、フォルダのプラグインは計算が終わってから読みます（設定タブの「プラグインを読み直す」）")); // 計算中は登録を変えない（計算した規則と検算する規則がずれる）
+    else if (pluginsFor !== A.dirHandle) { pluginsFor = A.dirHandle; await loadFolderPlugins(); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）
   }
   // 接続直後: フォルダのファイルとブラウザ内の状態を照合し、フォルダの方が新しければそちらを読む
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
@@ -176,6 +177,7 @@
   // 保存フォルダの plugins/（rules/ calendars/ docx/ lang/ profiles/）を読んで登録する。無ければ何もしない。docs/rule-modules.md §8
   async function loadFolderPlugins(root = A.dirHandle) {
     if (!root) return 0;
+    if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return 0; }
     T.plugins.beginFolder(); // 前のフォルダで読んだ分（規則・区分・拡張・暦・様式・文面・訳・プロファイル）を最初の写しへ戻す。保存データが参照する規則が無ければ入力チェック（LINT_PLUGIN_MISSING）が知らせる
     let pdir = null; try { pdir = await root.getDirectoryHandle("plugins"); } catch (e) { A.renderAll(); return 0; }
     let n = 0; const errs = [];
@@ -218,6 +220,7 @@
   function bindMonthSelect() {
     $("#monthSel").addEventListener("change", async ev => {
       let t = ev.target.value; if (t === A.tag()) return;
+      if (A.solving) { ev.target.value = A.tag(); return A.toast(T.t("計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください")); }
       if (t === "__other__") { ev.target.value = A.tag(); const y = +prompt(T.t("年"), state.month.year); if (!y) return; const mo = +prompt(T.t("月（1〜12）"), state.month.month); if (!mo || mo < 1 || mo > 12) return; t = `${y}${String(mo).padStart(2, "0")}`; if (t === A.tag()) return; }
       if (A.dirHandle) { const f = await findMonthData(t); if (f.data) { if (!(await saveBeforeSwitch())) { ev.target.value = A.tag(); return; } applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return; } }
       ev.target.value = A.tag(); A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); // 保存の確認は onMonthChange 側で1回だけ行う
@@ -278,7 +281,7 @@
       const viol = state.result && state.result.asg ? (() => { try { return T.check(new T.Problem(state.rules, state.month), state.result.asg).V.length; } catch (e) { return -1; } })() : 0;
       if (state.result && state.result.asg && viol !== 0) verNote = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) });
       else if (state.result && state.result.asg) {
-        // 配布物は上書きせず版を追加する。割当と表題が前回と同じなら新しい版は作らない
+        // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
         const P = new T.Problem(state.rules, state.month);
         const label = $("#docLabel").value || "確認版";
         const vsig = versionSig(label);
@@ -293,7 +296,7 @@
             vers.push({ ver, at, label, sig: vsig, docx: docxName, html: htmlName });
             verNote = T.t("（勤務表 v{v} を追加）", { v: ver });
           } catch (e) { verNote = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
-        } else verNote = T.t("（勤務表は v{v} のまま。割当と表題に変更なし）", { v: last.ver });
+        } else verNote = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
       }
       const snap = A.snapshot(at); // 版の追加まで済ませてから 1 回だけ書く。書いた中身だけを保存済みにする（書込み中の入力は未保存のまま）
       await writeFile(dir, A.dataFileName(), new Blob([snap.payload], { type: "application/json" }));
@@ -303,8 +306,11 @@
       return "saved";
     } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
   }
-  // 当直表の版の識別（割当＋表題）。保存時の版付与とダウンロード時の版表示で共通
-  const versionSig = label => A.sigOf(JSON.stringify(state.result.asg) + "|" + label);
+  // 当直表の版の識別。保存時の版付与とダウンロード時の版表示で共通。出力に使うものを全部含める:
+  // 設定（規則・重み・様式・名簿）、月の条件（メモ・日ごとの予定など。版の履歴は除く）、割当と変更表示の基準、表題、表示言語、実行時に読んだプラグインの中身。
+  // 保存時刻・計算時間・計算日時は含めない（保存のたびに版が増える循環を避ける）
+  const versionSig = label => { const m = Object.assign({}, state.month); delete m.doc_versions; const r = state.result || {};
+    return A.sigOf(JSON.stringify([A.canon(state.rules), A.canon(m), A.canon({ asg: r.asg, base_asg: r.mark_changes ? r.base_asg : null, avoid_ref: r.avoid_ref, status: r.status }), label, T.lang(), T.plugins && T.plugins.stamp ? T.plugins.stamp() : null])); };
   function applyLoaded(o, msg) {
     let month, rules = null, result = null;
     if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return alert(T.t("勤務表データではありません（year / month がありません）"));

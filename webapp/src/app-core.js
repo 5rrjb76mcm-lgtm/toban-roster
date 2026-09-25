@@ -10,6 +10,7 @@
   A.highs = null; // 計算エンジン（Worker または画面内の HiGHS）
   A.dirHandle = null; A.monthDirs = []; A.storedHandle = null; // 接続中のフォルダ・月フォルダの一覧・前回のフォルダ参照
   A.autosaveTimer = null;
+  A.solving = false; // 計算・診断中（app-solve.js が立てる。プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない）
   const state = A.state;
 
   // ブラウザ内の保存キー。file:// では同じPCの全ローカルHTMLが同じ領域を共有するので、HTML の場所と形式版で分ける
@@ -18,10 +19,12 @@
 
   // 保存状態: 保存した内容の署名（ハッシュ）を state.meta に持ち、現在の内容と比べて「未保存」を判定する（再読込後も正しく出る）
   function sigOf(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16) + ":" + str.length; }
-  // 保存状態の署名。正規形（キーを整列、配列は要素の JSON で整列、空の項目は無視）で比べるので、画面の読み直しによる並び替えや空欄の整形では「未保存」にならない
-  function canon(v) {
-    if (Array.isArray(v)) return v.map(canon).sort((a, b) => { const x = JSON.stringify(a), y = JSON.stringify(b); return x < y ? -1 : x > y ? 1 : 0; });
-    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined || x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length)) continue; o[k] = canon(x); } return o; }
+  // 保存状態の署名。正規形（キーを整列、集合の配列は要素の JSON で整列、空の項目は無視）で比べるので、画面の読み直しによる並び替えや空欄の整形では「未保存」にならない。
+  // 並びに意味がある配列（名簿・表示順・役割・勤務帯・固定の印と日ごとの区分の選択肢・前月末の日並び・版の履歴）はそのままの順で比べる（並べ替えも変更）
+  const ORDERED = new Set(["doctors", "name_order", "roles", "shifts", "fixed_tags", "day_flags", "last_days", "doc_versions"]);
+  function canon(v, key) {
+    if (Array.isArray(v)) { const a = v.map(x => canon(x)); return ORDERED.has(key) ? a : a.sort((x, y) => { const p = JSON.stringify(x), q = JSON.stringify(y); return p < q ? -1 : p > q ? 1 : 0; }); }
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined || x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length)) continue; o[k] = canon(x, k); } return o; }
     return v;
   }
   function sig() { return sigOf(JSON.stringify([canon(state.month), canon(state.rules), state.result ? canon(state.result) : null])); }

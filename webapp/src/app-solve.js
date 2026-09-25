@@ -32,7 +32,8 @@
     return A.highs;
   }
 
-  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); runSolve.busy = true; try { await runSolveCore(); } finally { runSolve.busy = false; $("#btnSolve").disabled = false; } }
+  // 計算・診断の間は A.solving を立てる（プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない。app-folder.js / app-settings.js）
+  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); runSolve.busy = true; A.solving = true; try { await runSolveCore(); } finally { runSolve.busy = false; A.solving = false; $("#btnSolve").disabled = false; } }
   async function runSolveCore() {
     A.readAll();
     const log = s => { $("#calcLog").textContent += s + "\n"; };
@@ -42,11 +43,14 @@
     const rulesForRun = useBase ? Object.assign({}, state.rules, { weights: Object.assign({}, state.rules.weights, { base_change: +$("#baseWeight").value || 30 }) }) : state.rules;
     let P;
     try { P = new T.Problem(rulesForRun, state.month); } catch (e) { log(T.t("入力の読み取りに失敗: {e}", { e })); return; }
-    let lint = []; try { lint = T.lint(P); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); }
-    const blocking = lint.filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"].includes(x.code)); // プラグインが欠けた・読めない状態では、規則が黙って落ちるので計算しない
+    // プラグインが欠けた・読めない状態では、規則が黙って落ちるので計算しない。この判定は規則ごとの入力チェックとは別口（プラグインの lint が例外を出しても判定できる）
+    const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"];
+    let blocking; try { blocking = T.lintPlugins(P); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }
     if (blocking.length) { log(T.t("施設のプラグインが足りない、または読めないため計算しません:")); blocking.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); return; }
+    // 入力チェックが途中で失敗したら計算しない（集めかけの指摘が消えたまま進めない）
+    let lint; try { lint = T.lint(P).filter(x => !BLOCKING.includes(x.code)); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }
     if (lint.length) { log(T.t("入力に矛盾の疑いが {n} 件あります（計算は続けます）:", { n: lint.length })); lint.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); log(""); }
-    const runSig = A.inputSig(); // 計算中に月や設定が変わったら、この結果は採用しない
+    const runSig = A.inputSig(), runGen = T.plugins.generation(); // 計算中に月や設定、読み込んでいるプラグインが変わったら、この結果は採用しない
     $("#btnSolve").disabled = true;
     await ensureHighs();
     const timeLimit = +$("#timeLimit").value || 180;
@@ -62,6 +66,7 @@
     catch (e) { done(); log(/中止/.test(String(e.message)) ? T.t("計算を中止しました。もう一度「計算する」を押すと最初からやり直します") : T.t("計算を続けられませんでした: {e}。もう一度「計算する」を押すと最初からやり直します", { e: e.message })); A.highs = null; return; }
     done();
     if (A.inputSig() !== runSig) { log(T.t("計算中に月または設定が変わったため、この結果は採用しません。もう一度「計算する」を押してください")); return; }
+    if (T.plugins.generation() !== runGen) { log(T.t("計算中にプラグインが読み直されたため、この結果は採用しません（計算した規則と検算する規則が別になります）。もう一度「計算する」を押してください")); return; }
     if (res.avoidRef) log(T.t("参照解（避けたい日を無視）: {list}（{s} 秒）。本計算ではこの回数を基準にします", { list: Object.entries(res.avoidRef).map(([n, c]) => T.t("{n} {c}回", { n, c })).join(T.listSep()), s: (res.refSeconds || 0).toFixed(1) }));
     log(T.t("状態 {st}、{s} 秒、変数 {v}、制約 {c}", { st: res.status, s: res.seconds.toFixed(1), v: res.vars, c: res.cons }));
     if (!res.asg && res.status !== "Infeasible") { // 時間切れなどで整数解が見つからなかった（解なしと証明されたわけではない）
@@ -87,7 +92,7 @@
       return;
     }
     state.month.plugins_used = T.plugins.ruleIds().filter(id => T.ruleState(state.rules, id) !== "off"); // プラグインの規則のうち使ったもの（無い環境で開いたときの入力チェック用）
-    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges };
+    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges, plugins: T.plugins.stamp() }; // plugins: 実行時に読んだプラグインの名前と中身の印（あとで同じ規則で計算したか確かめる用）
     A.save();
     let rep; try { rep = T.buildReport(P, res.asg, { status: res.status, seconds: res.seconds, avoidRef: res.avoidRef, baseAsg: markChanges ? baseAsg : null }); } catch (e) { log(T.t("結果の検算・表示でエラーが起きました: {e}。設定（名簿・専門業務の必要人数）を確認してください", { e: e && e.message || e })); return; }
     log(T.t("必須条件の違反 {n} 件", { n: rep.V.length }) + (rep.W && rep.W.length ? T.t("、固定指定により許容した条件 {n} 件（要確認）", { n: rep.W.length }) : "") + T.t("。「3-1 結果」タブを開いてください。"));

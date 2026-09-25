@@ -182,28 +182,34 @@
   }
 
   // 計算前の入力チェック: 明らかな矛盾を具体名で示す（解なしになる前に気づけるように）
+  // 入力チェックの項目を積む関数（種類＋差し込む値。文面と直し方（_HINT）は messages.js）
+  const pusher = (P, out) => (code, args = {}, hintArgs = null) => out.push({ code, args, msg: P.msg(code, args), hint: T.MSG[code + "_HINT"] ? P.msg(code + "_HINT", hintArgs || args) : "" });
+  // プラグインの有無の確認: 読めなかった・前のフォルダの残り・設定や月が参照する規則の登録が無い。lint の一部だが、規則ごとの lint（プラグインの関数）が例外を出しても
+  // 単独で判定できるよう別口（T.lintPlugins）にも出す。計算の入口はこの結果で止める（規則が黙って落ちたまま計算しない）
+  function pluginChecks(P, push) {
+    if (T.plugins) for (const x of T.plugins.errors()) push("LINT_PLUGIN_ERROR", { name: x.name, err: x.error }); // 保存フォルダのプラグインが読めなかった
+    if (T.plugins && T.plugins.stale) for (const id of T.plugins.stale()) push("LINT_PLUGIN_STALE", { who: id }); // 前のフォルダのプラグインが残っている
+    const used = ((P.m || {}).plugins_used || []).filter(id => !T.RULE_BY_ID[id]); // プラグインの規則で計算した月を、プラグインなしで開いている
+    const onButAbsent = Object.entries((P.rules || {}).rule_states || {}).filter(([id, st]) => st && st !== "off" && !T.RULE_BY_ID[id]).map(([id]) => id); // 設定で使うことになっているのに登録が無い
+    const missing = [...new Set(used.concat(onButAbsent))]; if (missing.length) push("LINT_PLUGIN_MISSING", { who: missing.join("・") });
+  }
+  const lintPlugins = P => { const out = []; pluginChecks(P, pusher(P, out)); return out; };
   function lint(P) {
     const out = [], Tm = P.team, lab = d => P.label(d);
     // 入力チェックも「種類（code）＋差し込む値」で積む。文面と直し方（_HINT）は messages.js
-    const push = (code, args = {}, hintArgs = null) => out.push({
-      code, args, msg: P.msg(code, args), hint: T.MSG[code + "_HINT"] ? P.msg(code + "_HINT", hintArgs || args) : "",
-    });
+    const push = pusher(P, out);
     // 本体が見るのは名簿・不可・固定指定の形（枠があるか、名簿の人か、不可と重なるか）と待機（オンコール）。
     // 規則ごとの入力チェック（固定指定と規則の矛盾、人数の見積もり、専門業務など）はプラグインの lint（docs/rule-modules.md §5.7）
     const cctx = T.rules.checkCtx(P, new Asg(P, {}), "lint", push), { unN, unO } = cctx;
     // 名簿・設定
     for (const n of (P.rules.name_order || [])) if (!P.doctors[n]) push("LINT_NAME_ORDER_UNKNOWN", { who: n });
-    if (T.plugins) for (const x of T.plugins.errors()) push("LINT_PLUGIN_ERROR", { name: x.name, err: x.error }); // 保存フォルダのプラグインが読めなかった
-    if (T.plugins && T.plugins.stale) for (const id of T.plugins.stale()) push("LINT_PLUGIN_STALE", { who: id }); // 前のフォルダのプラグインが残っている
+    pluginChecks(P, push); // プラグインが読めない・欠けている（計算を止める種類。T.lintPlugins でも単独で見られる）
     if (T.plugins && T.plugins.overrides) for (const o of T.plugins.overrides()) push("LINT_PLUGIN_OVERRIDE", { name: o.name, who: o.id, was: o.was || T.t("本体") }); // 別の出どころの規則と同じ id
     { const on = id => P.state(id) !== "off", seen = new Set(); // 「同じことを扱う」と宣言した規則（overlaps）が両方とも使われている
       for (const d of T.RULE_DEFS || []) if (on(d.id)) for (const o of d.overlaps || []) { const e = T.RULE_BY_ID[o]; if (!e || !on(o)) continue; const k = [d.id, o].sort().join("|"); if (seen.has(k)) continue; seen.add(k);
         push("LINT_RULE_OVERLAP", { who: T.ruleLabel(P.rules, d), other: T.ruleLabel(P.rules, e), a: d.id, b: o }); } }
     { const cal = (((P.rules || {}).profile || {}).calendar || {}).holidays; if (cal && T.calendars && (!T.calendars.byId[cal] || T.pluginOff(P.rules, T.calendars.byId[cal].source))) push("LINT_CALENDAR_MISSING", { id: cal }); } // 暦のプラグインが無い（自動入力は既定の暦に落ちる）
     { const tpl = ((P.rules || {}).docx || {}).template; if (tpl && T.docx && !T.docx.list(P.rules).some(t => t.id === tpl)) push("LINT_DOCX_TEMPLATE_MISSING", { id: tpl }); } // 無効にしたプラグインの様式も「無い」扱い
-    { const used = ((P.m || {}).plugins_used || []).filter(id => !T.RULE_BY_ID[id]); // プラグインの規則で計算した月を、プラグインなしで開いている
-      const onButAbsent = Object.entries((P.rules || {}).rule_states || {}).filter(([id, st]) => st && st !== "off" && !T.RULE_BY_ID[id]).map(([id]) => id); // 設定で使うことになっているのに登録が無い
-      const missing = [...new Set(used.concat(onButAbsent))]; if (missing.length) push("LINT_PLUGIN_MISSING", { who: missing.join("・") }); }
     { const refs = T.monthNameRefs(P.m || {}), unknown = Object.keys(refs).filter(n => !P.doctors[n]); // 名簿から外した・施設プロファイルを読み込んだ後に残った入力
       if (unknown.length) push("LINT_MONTH_UNKNOWN_NAMES", { who: unknown.join("・"), n: unknown.length }); }
     for (const n of P.names) if (/[\x00-\x1F\x7F:|]/.test(n)) push("LINT_NAME_BAD_CHARS", { who: n });
@@ -250,7 +256,7 @@
     return out;
   }
 
-  T.lint = lint;
+  T.lint = lint; T.lintPlugins = lintPlugins;
   T.Asg = Asg; T.check = check; T.penalty = penalty; T.cathTable = cathTable; T.restDays = restDays; T.metrics = metrics;
   T.fmt = fmt; T.fmtHalf = fmtHalf; T.fullWeekendUnits = fullWeekendUnits; T.chargeLabel = chargeLabel;
 })(globalThis.T = globalThis.T || {});

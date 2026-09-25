@@ -120,7 +120,7 @@
 　<label>${esc(tx("識別子"))}: <input id="setProfId" value="${esc(cur.id || "cardiology")}" style="width:9em"></label></p>
 <p><button id="btnExportProfile">${esc(tx("プロファイルを書き出す"))}</button>
  <label><input type="checkbox" id="setExportRoster"> ${esc(tx("名簿をそのまま含める（施設内の引き継ぎ用。公開しない）"))}</label></p>
-<p class="note">${esc(tx("書き出すのは施設の構成・使う規則・扱い・重み・規則ごとの値です。月データは含めません。名簿は、印を付けない限り役割と人数・目安だけを残し、氏名を「役割名＋番号」の仮の名前に置き換えます（公開・共有用）。"))}</p>
+<p class="note">${esc(tx("書き出すのは施設の構成・使う規則・扱い・重み・規則ごとの値です。月データは含めません。名簿は、印を付けない限り役割と目安（回数・比重）だけを残し、氏名を「役割名＋番号」の仮の名前に置き換えます。経験年数・資格・個人別の条件・プラグインが足した欄は含めません。それでも氏名が残るとき（プロファイルの名前や規則の文に入れた場合）は書き出す前に知らせます（公開・共有用）。"))}</p>
 <p class="note">${esc(tx("近い施設のプロファイルを読み込み、下の 2〜7 で手直しします。読み込むと名簿・規則・規則の状態が置き換わります（「元に戻す」で取り消せます）。月データは施設の記録（profile_id）と照合され、違う施設のものを開くと入力チェックで指摘されます。"))}</p>`); }
     { const cal = T.calendarOf(R), srcs = T.calendars.defs.filter(c => !(T.pluginOff && T.pluginOff(R, c.source))).map(c => [c.id, T.pickLabel(c.label, c.id)]);
       const hid = (((R.profile || {}).calendar || {}).holidays) || cal.holidays; if (!srcs.some(([id]) => id === hid)) srcs.push([hid, `${hid} ${tx("（無効なプラグインの暦・未読み込み）")}`]); cal.holidays = hid; // 設定の値（無効なプラグインの暦でも）を保つ。計算・自動入力の代替は calendarOf が別に決める
@@ -381,23 +381,31 @@
   }
   // ---------- 施設プロファイルの書き出し・読み込み ----------
   // 書き出し: 規則そのもの（施設の構成・規則の状態・重み・値）。月データは含めない。
-  // withRoster でなければ氏名を「役割名＋番号」に置き換える。規則のどこに氏名があっても（値でもキーでも）置き換わるよう全体をたどる
+  // withRoster でなければ共有用: 名簿は役割と目安（回数・比重）だけを残して氏名を「役割名＋番号」に置き換え、経験年数・資格・個人別の条件・プラグインが足した欄は落とす。
+  // 名簿の外にある氏名は、氏名をキーにした項目（個人別の条件）を落とし、氏名そのものの値（表示順など）は仮の名前に置き換える。
+  // それでも残る氏名（プロファイルの名前や規則の文に書いた氏名は文の一部なので置き換えない）は leftover で返し、呼ぶ側が書き出す前に知らせる
+  const EXPORT_DOCTOR_KEYS = ["team", "quota", "share"]; // 共有用の名簿に残す欄（役割と目安）
   function profileForExport(withRoster) {
-    const R = JSON.parse(JSON.stringify(state.rules));
+    let R = JSON.parse(JSON.stringify(state.rules));
     delete R.toban_profile;
+    const leftover = [];
     if (!withRoster) {
-      const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map();
-      for (const d of R.doctors) { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; map.set(d.name, `${base}${cnt[base]}`); }
-      const walk = v => Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [map.has(k) ? map.get(k) : k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
-      Object.assign(R, walk(R));
+      const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
+      const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; const nn = `${base}${cnt[base]}`; if (d.name) map.set(d.name, nn);
+        const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });
+      const walk = v => Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => !map.has(k)).map(([k, x]) => [k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
+      delete R.doctors; R = walk(R); R.doctors = doctors;
+      R.name_order = (R.name_order || []).filter(n => doctors.some(d => d.name === n));
+      const txt = JSON.stringify(R); for (const n of origNames) if (n.length >= 2 && txt.includes(n)) leftover.push(n); // 文の一部として残った氏名（部分一致で探す。置き換えはしない）
     }
     R.toban_profile = { version: 1, roster: withRoster ? "included" : "placeholder" };
-    return R;
+    return { rules: R, leftover };
   }
   async function exportProfile() {
     readSettings();
     const withRoster = !!($("#setExportRoster") || {}).checked;
-    const R = profileForExport(withRoster), id = ((R.profile || {}).id || "custom").replace(/[^\w.-]+/g, "-");
+    const ex = profileForExport(withRoster), R = ex.rules, id = ((R.profile || {}).id || "custom").replace(/[^\w.-]+/g, "-");
+    if (ex.leftover.length && !confirm(T.t("書き出す内容に名簿の氏名が残っています（{n} 名: {who}）。プロファイルの名前や規則の文に氏名を入れていないか確かめてください。このまま書き出しますか", { n: ex.leftover.length, who: ex.leftover.join(T.nameSep()) }))) return;
     const name = `profile_${id}${withRoster ? "_with_roster" : ""}.json`, blob = new Blob([JSON.stringify(R, null, 1)], { type: "application/json" });
     if (A.dirHandle) { await A.writeFile(A.dirHandle, name, blob); A.toast(T.t("フォルダに {name} を保存しました", { name })); } else A.download(name, blob);
   }
@@ -447,7 +455,7 @@
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
-    $("#btnReloadPlugins").addEventListener("click", async () => { if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); });
+    $("#btnReloadPlugins").addEventListener("click", async () => { if (A.solving) return A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); });
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）
@@ -496,5 +504,5 @@
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

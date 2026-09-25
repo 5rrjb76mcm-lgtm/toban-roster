@@ -278,7 +278,9 @@ webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limi
 - 取り込む道は 2 つで、フォルダの形（種類ごとのサブフォルダ `rules/ calendars/ docx/ lang/ profiles/`）は同じ:
   (a) 実行時: 保存フォルダ（`toban.html` と同じ層）の `plugins/` を、フォルダに接続したときに `app-folder.js` が読んで `T.plugins.load(kind, name, text)`（`src/plugins.js`）に渡す。組み立て不要。
   読めなかった部品は `LINT_PLUGIN_ERROR`、部品の規則で計算した月（`month.plugins_used`）を部品なしで開くか、設定（`rules.rule_states`）で「なし」以外なのに登録の無い規則があると `LINT_PLUGIN_MISSING`。
-  フォルダを替えると、前のフォルダの部品の暦・様式は登録から外れ、規則は残って `LINT_PLUGIN_STALE` になる（解のある月の再計算に要るため外さない）。
+  これらプラグインの有無の確認は `T.lintPlugins(P)` でも単独で得られる（`T.lint` の一部でもある）。計算の入口（app-solve.js）はまずこれで止め、次に `T.lint` を走らせる。`T.lint` が例外を出したら（プラグインの `lint` の不具合など）計算しない。
+  実行時に読んだプラグインは読み込みの世代（`T.plugins.generation()`）と中身の印（`T.plugins.stamp()`）を持ち、計算中に読み直されていたら結果を採用しない。結果（`result.plugins`）と配布物の版の署名にも印が入る。
+  フォルダを替えると（`T.plugins.beginFolder`）、前のフォルダで実行時に読んだ登録（規則・区分・拡張・暦・様式・文面・訳・プロファイル）はすべて最初の写しへ戻る。保存データが参照する規則が無ければ `LINT_PLUGIN_MISSING` が知らせる（`LINT_PLUGIN_STALE` は互換のため残してあるが、いまは出ない）。
   部品が同梱の id（`jp`・`week_block` など）を上書きしていた場合は、そのフォルダの間だけ上書きが効き、フォルダを替えると同梱の定義に戻る。
   読み込みの途中で失敗した部品が新しく登録した暦・様式はその場で外す（半分だけ読めた部品を黙って使わない）。
   (b) 組み立て時: `build.py --plugins <フォルダ>`（繰り返し可）。本体の同じ種類のあとに焼き込み、一覧は `T.PLUGINS`。1 ファイルで配りたいとき用。
