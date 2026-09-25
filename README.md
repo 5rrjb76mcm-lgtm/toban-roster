@@ -63,7 +63,7 @@ python3 i18n_new.py fr --check                   # 進み具合
 ## 汎用化と公開の方針
 
 - `docs/generalization-policy.md` — 役割・勤務帯・配置人数を設定化する方針、規則型のカタログ、ライセンスと公開の慣行、段階計画、未決事項
-- `docs/rule-modules.md` — 規則を 1 規則 1 部品にまとめる設計（登録の関数・解く側と検算の道具・試験との約束・移し方）。実装済み（32 部品）
+- `docs/rule-modules.md` — 規則を 1 規則 1 部品にまとめる設計（登録の関数・解く側と検算の道具・試験との約束・移し方）。実装済み（2026-09-25 時点で 35 部品）
 - `plugin-example/README.md` — 施設の部品（プラグイン）の作り方と見本。`build.py --plugins <フォルダ>` で規則・暦・docx の様式・訳・プロファイルを組み立て時に取り込む
 - `docs/publishing.md` — 公開手順（履歴の作り直し、事前点検 `tools/prepublish_check.sh`、GitHub への作成と Release）
 

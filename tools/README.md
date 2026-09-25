@@ -1,6 +1,6 @@
 # 当直表ソルバー（toban.py）
 
-共通ルール（docs/sample-rules-cardiology.md 版1.6）の必須条件を CP-SAT（Google OR-Tools）のハード制約、
+共通ルール（見本の規則。出発点の科の規則文書は非公開）の必須条件を CP-SAT（Google OR-Tools）のハード制約、
 調整目標を重み付き目的関数として解き、第9節の集計と第10節の検算をコードで出力する。
 LLM の仕事は「原資料 → 月別条件YAML の転記」と「結果 → 説明資料・引継ぎの文書化」だけ。
 
@@ -26,7 +26,7 @@ LLM の仕事は「原資料 → 月別条件YAML の転記」と「結果 → �
 ## ファイル
 
 - `rules.yaml` — 名簿・目安・専門業務の資格・必要人数（プラグインの規則。既定は「なし」）・重み。共通ルールの改版時はここと `toban.py` を直す
-- `YYYYMM/YYYYMM 月別条件.yaml` — 当月の入力。`202611/202611 月別条件.yaml` が記入例
+- `YYYYMM/YYYYMM 月別条件.yaml` — 当月の入力。記入用のひな形は `month-conditions-template.yaml`（記入例は同梱していない）
 - 出力の md は「ソルバー結果」「検算結果」など**濁点のない名前**にしてある（Docker 越しの NFC/NFD 不一致対策）
 
 ## 月別条件 YAML の項目
@@ -67,4 +67,4 @@ LLM の仕事は「原資料 → 月別条件YAML の転記」と「結果 → �
 
 ## Webアプリ版
 
-`../webapp/toban.html`は同じ制約を JavaScript に移植し、HiGHS（WASM）で解く単一HTML。LLM不要で、職場のファイルサーバーに置いて Edge で開く。組立は `webapp/build.py`、Python版との照合は `webapp/test_node.js`。共通ルールを改版したら両方を直す。
+`../webapp/toban.html`は同じ考え方の制約を JavaScript で実装し、HiGHS（WASM）で解く単一HTML（規則の範囲は Web 版の方が広い。Python 版は既定の構成の参照実装で、突き合わせは既定の構成だけ）。LLM不要で、職場のファイルサーバーに置いて Edge で開く。組立は `webapp/build.py`、Python版との照合は `webapp/test_node.js`。共通ルールを改版したら両方を直す。

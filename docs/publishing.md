@@ -135,6 +135,14 @@ gh release create v0.1.0 webapp/toban.html --verify-tag --title "v0.1.0" --notes
 
 `--verify-tag` は、タグが無いときに gh が勝手にタグを作るのを防ぐ。
 
+添付したあと、別の空フォルダへ取得し直して照合する（添付物の取り違えを防ぐ。組み立てたファイル・取得したファイル・Release 本文の 3 つの SHA-256 が一致すること）:
+
+```sh
+mkdir -p /tmp/toban-rel && cd /tmp/toban-rel && gh release download v0.1.0 -R 5rrjb76mcm-lgtm/toban-roster -p toban.html
+shasum -a 256 toban.html                  # 組み立てたファイルの値・Release 本文の値と同じか
+gh release view v0.1.0 -R 5rrjb76mcm-lgtm/toban-roster --json body --jq .body
+```
+
 ## 7. 以後の運用
 
 - 試用フォルダ（`toban-roster-試用/更新する.sh`）と運用フォルダの手順は変えなくてよい（フォルダの場所が同じ）。

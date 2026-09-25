@@ -1,5 +1,7 @@
 # 汎用化と公開の方針（草案）
 
+> この文書は 2026-09 の設計案と作業の記録です。現行の手順・構成は `README.md`・`docs/rule-modules.md`・`plugin-example/README.md`・`docs/publishing.md`・`CONTRIBUTING.md` が正で、食い違うところは「当時の案」と注記しています。
+
 - 版: 0.3 草案（2026-09-16。ライセンスは MIT のままとする決定と DCO の採用を反映）
 - 対象: Toban Roster（当直表作成アプリ。旧称 toban）本体 `webapp/`、相互検算 `tools/toban.py`、規則の正本 `docs/sample-rules-cardiology.md`（2026-09-25 に出発点の施設のフォルダへ移した。リポジトリには無い）、既定値 `tools/rules.yaml`
 - 読者: 作成責任者（依頼者本人）、将来の協力者、他施設の担当者
@@ -12,7 +14,7 @@
 **利用者から見て変わらないこと**
 
 - 1 枚の HTML を共有フォルダに置き、ブラウザで開いて使う運用。外部通信なし。
-- 循環器内科の保存データ（月ごとの JSON）はそのまま開け、同じ結果が出る。
+- 出発点の科の保存データ（月ごとの JSON）はそのまま開け、同じ結果が出る。（当時の目標。現在は、出発点の科だけが使う 4 規則を施設のプラグインとして読み込んだ状態で同じ結果になる。本体だけでは該当の規則が無いものとして扱う）
 - 医師別カレンダーと当直表 docx の見た目。
 
 **利用者から見て変わること**
@@ -61,7 +63,7 @@
 
 | 原則 | 具体的な担保 |
 | --- | --- |
-| 循環器内科の保存 JSON は無変更で開け、同じ最適値になる | 回帰フィクスチャ（`data/202611*.json` と `202611/`）で目的関数値・違反 0 件・W 件数・固定枠が一致することを各フェーズの完了条件にする |
+| 出発点の科の保存 JSON は無変更で開け、同じ最適値になる（当時の目標。現在は対応するプラグインを読み込んだ状態で） | 回帰フィクスチャ（`data/202611*.json` と `202611/`）で目的関数値・違反 0 件・W 件数・固定枠が一致することを各フェーズの完了条件にする |
 | 循環器プロファイルでは保存形（month のキー）を変えない | merge.js の `flattenMonth` はキー名で差分を取る。旧版と新版が同じフォルダを触っても偽の衝突を出さない |
 | 画面の使用感を変えない | 設定タブの医師表・医師別カレンダー・docx は、循環器プロファイルでは現行と同じ見た目になる（表示名を設定から引くだけ） |
 | 各フェーズは単独で出荷できる | 途中で止まっても運用が続く順に並べる（第 8 節） |
@@ -70,8 +72,8 @@
 ### 1.3 ブランチ運用の前提
 
 - 本体（core）は「設定で表せる範囲」と「モジュールを登録する口」を提供する。
-- 細かなカスタマイズは各施設がブランチ（または fork）で行う。本体のファイルには触らず、`tools/profiles/<施設 id>.yaml` と `src/mod-<施設 id>.js` を足す。
-- 出発点の科の現行規則も同じ仕組みで `tools/profiles/cardiology.yaml` と `src/mod-cardio.js` として同梱し、本体のテストの基準にする。
+- 細かなカスタマイズは各施設がブランチ（または fork）で行う。本体のファイルには触らず、`tools/profiles/<施設 id>.yaml` と `src/mod-<施設 id>.js` を足す。（当時の案。現行は保存フォルダの `plugins/` に置く施設のプラグイン方式。`plugin-example/README.md` を参照）
+- 出発点の科の現行規則も同じ仕組みで `tools/profiles/cardiology.yaml` と `src/mod-cardio.js` として同梱し、本体のテストの基準にする。（当時の案。現行は出発点の科の規則を非公開のプラグインとし、本体の試験は架空の見本データだけで行う）
 - Python 版（`tools/toban.py`）は本体の核と循環器モジュールだけ追随する。施設ブランチに Python 移植の義務は課さない。
 
 ### 1.4 採った設計案と理由
@@ -197,13 +199,13 @@ OSI の Open Source Definition 第 6 項は「事業分野による利用制限�
 | README.en.md | 要約。MIT License、想定用途（hospital duty rosters）、日本発のプロジェクトである旨を書く |
 | LICENSE | 現行の MIT 全文（著作権者は 5rrjb76mcm-lgtm）。GitHub が MIT と自動検出する |
 | THIRD-PARTY-NOTICES.md | 同梱 MIT 部品 4 件の表示 |
-| CONTRIBUTING.md | 貢献は本体と同じ MIT で提供する旨と DCO sign-off（決定済み。雛形は `CONTRIBUTING.md`）。`sh run_tests.sh` と `build.py --check` の通過。規則変更は規則文書（`docs/sample-rules-cardiology.md`。フェーズ 6 以降は `tools/profiles/cardiology/README.md`）、プロファイル（`tools/rules.yaml`。フェーズ 3 以降は `tools/profiles/cardiology.yaml`）、`tools/toban.py` の 3 点を同時に直す。実データは貼らず架空化する。本体に触らず `src/mod-*.js` と `tools/profiles/*.yaml` を足す方法 |
+| CONTRIBUTING.md | 貢献は本体と同じ MIT で提供する旨と DCO sign-off（決定済み。雛形は `CONTRIBUTING.md`）。`sh run_tests.sh` と `build.py --check` の通過。規則変更は規則文書（`docs/sample-rules-cardiology.md`。フェーズ 6 以降は `tools/profiles/cardiology/README.md`）、プロファイル（`tools/rules.yaml`。フェーズ 3 以降は `tools/profiles/cardiology.yaml`）、`tools/toban.py` の 3 点を同時に直す。実データは貼らず架空化する。本体に触らず `src/mod-*.js` と `tools/profiles/*.yaml` を足す方法（当時の案。現行の貢献手順は `CONTRIBUTING.md` が正） |
 | CONTRIBUTORS.md | 貢献者の氏名（または GitHub 名）と年を記録し、MIT の著作権表示要件を満たす |
 | CODE_OF_CONDUCT.md | Contributor Covenant 2.1（公式日本語訳あり）＋連絡先 1 行 |
 | SECURITY.md | 外部通信なしのローカル実行アプリである旨、脆弱性報告先、「Issue に実在の名簿・勤務データを貼らない」を最重要事項として記載 |
 | CHANGELOG.md | Keep a Changelog 1.1.0 形式。`rules_version` の変更も Changed に記録。施設モジュールに影響する変更に「施設モジュール影響」の印 |
 | バージョン | `v0.y.z`（枠構成が施設固有のうちは 0 系）。保存 JSON の非互換で MAJOR、機能追加で MINOR、修正で PATCH |
-| Releases | `toban.html` と `toban-probe.html` を添付し SHA-256 を併記。リポジトリへの toban.html のコミットはリリース時のみ |
+| Releases | `toban.html` と `toban-probe.html` を添付し SHA-256 を併記。リポジトリへの toban.html のコミットはリリース時のみ（当時の案。現行は toban.html をコミットせず Release に添付だけ。`docs/publishing.md` が正） |
 | Issue / PR テンプレート | Bug: 版・ブラウザ・再現手順・「実データ禁止、`webapp/data/202611.json` を改変して再現」。Feature: 規則の出典。PR: テスト通過・3 点同期・DCO のチェック欄 |
 | DCO / CLA | DCO（決定済み）。法人貢献者が出たら CLA に格上げを検討 |
 

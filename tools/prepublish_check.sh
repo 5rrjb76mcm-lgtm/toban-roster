@@ -42,7 +42,7 @@ fi
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
 names_status="skipped"
 if [ -n "${TOBAN_REAL_NAMES:-}" ]; then
-  if [ -r "$TOBAN_REAL_NAMES" ] && grep -v '^[[:space:]]*$' "$TOBAN_REAL_NAMES" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' > "$tmp"; then names_status="list"; else names_status="unreadable"; : > "$tmp"; fi
+  if [ -f "$TOBAN_REAL_NAMES" ] && [ -r "$TOBAN_REAL_NAMES" ] && grep -v '^[[:space:]]*$' "$TOBAN_REAL_NAMES" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' > "$tmp"; then names_status="list"; else names_status="unreadable"; : > "$tmp"; fi
 elif [ -n "${TOBAN_PROD_DIR:-}" ]; then
   names_status="$(TOBAN_PROD_DIR="$TOBAN_PROD_DIR" TOBAN_PROD_EXCLUDE="${TOBAN_PROD_EXCLUDE:-}" python3 - "$tmp" <<'PY'
 import json, os, sys
@@ -161,7 +161,7 @@ for line in git("for-each-ref", "--format=%(refname:short)%00%(*objectname)%(obj
     if len(parts) >= 3: tag_rows.append((parts[0], parts[1][:40], parts[2]))
 known = {t for t, _, _ in tag_rows}
 for i, t in enumerate(want):
-    if t not in known: hits["tagmsg"].append(f"(指定したタグ #{i + 1} が存在しない)" if name_in(t) else f"(指定したタグが無い) {t}")  # 名前入りの指定は番号だけ
+    if t not in known: hits["tagmsg"].append(f"(指定したタグ #{i + 1} が存在しない)")  # 指定した値は表示しない（名前や鍵の形が入りうる）
 n_tags = 0
 for i, (tag, target, body) in enumerate(tag_rows):
     if not (os.environ.get("PUSH") == "1" or tag in want): continue
