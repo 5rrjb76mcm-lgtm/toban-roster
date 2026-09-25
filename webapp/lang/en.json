@@ -1018,8 +1018,11 @@
     "計算中はプラグインを読み直せません。計算が終わってからもう一度押してください": "Plug-ins cannot be reloaded while solving. Press again after the solve finishes",
     "入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください": "The input check did not complete, so no solve is started. Check the plug-in status in the administrator section of the settings tab; if it persists, tell the author",
     "計算中にプラグインが読み直されたため、この結果は採用しません（計算した規則と検算する規則が別になります）。もう一度「計算する」を押してください": "Plug-ins were reloaded during the solve, so this result is discarded (the rules used to solve and to verify would differ). Press \"Solve\" again",
-    "計算中のため、フォルダのプラグインは計算が終わってから読みます（設定タブの「プラグインを読み直す」）": "Solving: the folder's plug-ins will be read after the solve finishes (\"Reload the plug-ins\" on the settings tab)",
-    "計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください": "The month cannot be switched while solving. Wait for the solve to finish or press \"Cancel\" first"
+    "計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください": "The month cannot be switched while solving. Wait for the solve to finish or press \"Cancel\" first",
+    "計算中のため、フォルダのプラグインは計算が終わってから読みます": "Solving: the folder's plug-ins will be read after the solve finishes",
+    "。いまの結果はこの規則を使っていないので、もう一度「計算する」を押してください": ". The current result does not use these rules; press \"Solve\" again",
+    "共有用は個人別の条件を除いた雛形です。共有先では名簿と個人別の条件（資格・回数など）を設定するまで解けないことがあります。プラグインが名簿の外に個人の記録を持つ場合、氏名をキーにした項目と name が氏名の要素は落としますが、ほかの形は残ります（プラグイン側の share で除けます）。": "The shared export is a template without per-person conditions. The receiving facility may not get a solution until it fills in the roster and per-person conditions (qualifications, counts). If a plug-in keeps per-person records outside the roster, entries keyed by a name and array items whose name is a roster name are dropped, but other shapes remain (a plug-in can remove them with share).",
+    "フォルダのプラグインを読めませんでした: {err}": "Could not read the folder's plug-ins: {err}"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

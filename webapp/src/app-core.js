@@ -11,6 +11,7 @@
   A.dirHandle = null; A.monthDirs = []; A.storedHandle = null; // 接続中のフォルダ・月フォルダの一覧・前回のフォルダ参照
   A.autosaveTimer = null;
   A.solving = false; // 計算・診断中（app-solve.js が立てる。プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない）
+  A.pluginsPending = false; // 計算中にフォルダへ接続した（プラグインの読み込みを計算後に回す。app-folder.js の loadPendingPlugins）
   const state = A.state;
 
   // ブラウザ内の保存キー。file:// では同じPCの全ローカルHTMLが同じ領域を共有するので、HTML の場所と形式版で分ける
@@ -20,14 +21,19 @@
   // 保存状態: 保存した内容の署名（ハッシュ）を state.meta に持ち、現在の内容と比べて「未保存」を判定する（再読込後も正しく出る）
   function sigOf(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16) + ":" + str.length; }
   // 保存状態の署名。正規形（キーを整列、集合の配列は要素の JSON で整列、空の項目は無視）で比べるので、画面の読み直しによる並び替えや空欄の整形では「未保存」にならない。
-  // 並びに意味がある配列（名簿・表示順・役割・勤務帯・固定の印と日ごとの区分の選択肢・前月末の日並び・版の履歴）はそのままの順で比べる（並べ替えも変更）
-  const ORDERED = new Set(["doctors", "name_order", "roles", "shifts", "fixed_tags", "day_flags", "last_days", "doc_versions"]);
-  function canon(v, key) {
-    if (Array.isArray(v)) { const a = v.map(x => canon(x)); return ORDERED.has(key) ? a : a.sort((x, y) => { const p = JSON.stringify(x), q = JSON.stringify(y); return p < q ? -1 : p > q ? 1 : 0; }); }
-    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined || x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length)) continue; o[k] = canon(x, k); } return o; }
+  // 配列は原則そのままの順で比べる（名簿・表示順・曜日パターン（先頭が優先）・プラグインの優先順位など、並びに意味があるものを取りこぼさない）。
+  // 集合と分かっているパスだけ整列する。パスは根（月データ／設定／結果）からのキーの並びで、* は任意の 1 段
+  const SET_PATHS = ["holidays", "closure_days", "cath_off_days_A", "cath_off_days_I", "plugins_used", "unavailable_other", "avoid", "confirmed_pm_external_night", "unavailable_night.*", "wishes.night_on.*", "wishes.day_on.*", "wishes.weekend_dayshift",
+    "fixed.*.*", "day_flags.*", "doctors.*.quals", "weekend_dayshift_wish", "plugins_off", "asg.*.oc", "base_asg.*.oc"].map(x => x.split("."));
+  const isSetPath = path => SET_PATHS.some(q => q.length === path.length && q.every((k, i) => k === "*" || k === path[i]));
+  const cmpJson = (x, y) => { const p = JSON.stringify(x), q = JSON.stringify(y); return p < q ? -1 : p > q ? 1 : 0; };
+  function canon(v, path = []) {
+    if (Array.isArray(v)) { const a = v.map((x, i) => canon(x, path.concat(String(i)))); return isSetPath(path) ? a.sort(cmpJson) : a; }
+    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined || x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length)) continue; o[k] = canon(x, path.concat(k)); } return o; }
     return v;
   }
-  function sig() { return sigOf(JSON.stringify([canon(state.month), canon(state.rules), state.result ? canon(state.result) : null])); }
+  const sigOfState = S => sigOf(JSON.stringify([canon(S.month), canon(S.rules), S.result ? canon(S.result) : null])); // 月・設定・結果の組の署名（写しにも使う）
+  function sig() { return sigOfState(state); }
   const isDirty = () => !state.meta || state.meta.savedSig !== sig() || state.meta.savedTag !== tag();
   function persist() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { } }
   // ブラウザ内の保存を消す（開始画面の「最初から始める」。フォルダの接続先は残す）。呼んだ側が読み直す
@@ -39,8 +45,11 @@
     persist(); A.renderHeader();
     if (A.dirHandle && isDirty()) { clearTimeout(A.autosaveTimer); A.autosaveTimer = setTimeout(() => A.autosaveJson(), 3000); }
   }
-  // 保存の写し: 書き込む中身（payload）と、そのときの署名・月・設定の複製。書き込みは非同期なので、書いた中身だけを「保存済み」にする（書込み中の入力は未保存のまま残る）
-  function snapshot(at) { return { sig: sig(), at, payload: payloadJson(at), base: JSON.parse(JSON.stringify(state.month)), rules: JSON.parse(JSON.stringify(state.rules)) }; }
+  // 保存の写し: この時点の月・設定・結果の複製（month＝base・rules・result。以後の編集の影響を受けない）と、その署名・書き込む中身（payload）。
+  // 保存はこの写し 1 つから検算・版の署名・勤務表・説明資料・月データを作り、写しの署名だけを「保存済み」にする（生成・書込み中の入力は未保存のまま残る）。
+  // refresh() は写しの中身（版の履歴の追加）を反映して署名と payload を作り直す
+  function snapshot(at) { const S = { month: JSON.parse(JSON.stringify(state.month)), rules: JSON.parse(JSON.stringify(state.rules)), result: state.result ? JSON.parse(JSON.stringify(state.result)) : null };
+    return { at, month: S.month, base: S.month, rules: S.rules, result: S.result, sig: sigOfState(S), payload: payloadOf(S, at), refresh() { this.sig = sigOfState(this); this.payload = payloadOf(this, this.at); return this; } }; }
   function markSaved(where, at, snap) {
     const s = snap || snapshot(at || new Date().toISOString());
     state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
@@ -48,7 +57,8 @@
   }
   const inputSig = () => sigOf(JSON.stringify([canon(state.month), canon(state.rules)])); // 計算の入力（月＋設定）の署名。計算中に変わったら結果を採用しない
   const rulesSig = r => sigOf(JSON.stringify(canon(r)));
-  function payloadJson(at) { return JSON.stringify({ rules: state.rules, month: state.month, result: state.result, saved_at: at }, null, 1); }
+  const payloadOf = (S, at) => JSON.stringify({ rules: S.rules, month: S.month, result: S.result, saved_at: at }, null, 1);
+  function payloadJson(at) { return payloadOf(state, at); }
 
   const isMonthObj = x => x && typeof x === "object" && +x.year > 0 && +x.month >= 1 && +x.month <= 12;
   function load() {
@@ -102,5 +112,5 @@
   }
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
 
-  Object.assign(A, { DIR_KEY, sigOf, sig, isDirty, persist, resetBrowserState, serialized, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

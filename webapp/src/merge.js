@@ -5,12 +5,11 @@
   const KNOWN = new Set(["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id", "exceptions", "holidays", "plugins_used", "closure_days",
     "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
     "doc_versions", "next_month_first_day_duties", "allow_split_weekend"]);
-  const isEmpty = v => v === undefined || v === null || v === "" || v === false || (Array.isArray(v) && !v.length) || (v && typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);
   // 月データを「項目キー → 値」に展開する。集合は要素ごと、表は1マスごとに分ける
   function flatten(m) {
     const f = {};
     const put = (k, v) => { if (v !== undefined && v !== null && v !== "" && v !== false) f[k] = J(v); }; // 空・false は「無い」と同じ扱い（往復と統合で差にしない）
-    for (const k of Object.keys(m)) if (!KNOWN.has(k) && !isEmpty(m[k])) f[`x:${k}`] = J(m[k]); // 本体が知らない項目（プラグインの月の値）。空は「無い」と同じ
+    for (const k of Object.keys(m)) if (!KNOWN.has(k) && m[k] !== undefined) f[`x:${k}`] = J(m[k]); // 本体が知らない項目（プラグインの月の値）。false・null・空も値として持つ（プラグインの既定と区別する）。削除はキーの不存在
     for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) put("s:" + k, (k === "year" || k === "month") && m[k] != null ? +m[k] : m[k]);
     put("s:exceptions.weekend_balance_max_diff", (m.exceptions || {}).weekend_balance_max_diff);
     for (const d of m.holidays || []) f[`hol:${d}`] = "1";

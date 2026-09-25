@@ -121,6 +121,7 @@
 <p><button id="btnExportProfile">${esc(tx("プロファイルを書き出す"))}</button>
  <label><input type="checkbox" id="setExportRoster"> ${esc(tx("名簿をそのまま含める（施設内の引き継ぎ用。公開しない）"))}</label></p>
 <p class="note">${esc(tx("書き出すのは施設の構成・使う規則・扱い・重み・規則ごとの値です。月データは含めません。名簿は、印を付けない限り役割と目安（回数・比重）だけを残し、氏名を「役割名＋番号」の仮の名前に置き換えます。経験年数・資格・個人別の条件・プラグインが足した欄は含めません。それでも氏名が残るとき（プロファイルの名前や規則の文に入れた場合）は書き出す前に知らせます（公開・共有用）。"))}</p>
+<p class="note">${esc(tx("共有用は個人別の条件を除いた雛形です。共有先では名簿と個人別の条件（資格・回数など）を設定するまで解けないことがあります。プラグインが名簿の外に個人の記録を持つ場合、氏名をキーにした項目と name が氏名の要素は落としますが、ほかの形は残ります（プラグイン側の share で除けます）。"))}</p>
 <p class="note">${esc(tx("近い施設のプロファイルを読み込み、下の 2〜7 で手直しします。読み込むと名簿・規則・規則の状態が置き換わります（「元に戻す」で取り消せます）。月データは施設の記録（profile_id）と照合され、違う施設のものを開くと入力チェックで指摘されます。"))}</p>`); }
     { const cal = T.calendarOf(R), srcs = T.calendars.defs.filter(c => !(T.pluginOff && T.pluginOff(R, c.source))).map(c => [c.id, T.pickLabel(c.label, c.id)]);
       const hid = (((R.profile || {}).calendar || {}).holidays) || cal.holidays; if (!srcs.some(([id]) => id === hid)) srcs.push([hid, `${hid} ${tx("（無効なプラグインの暦・未読み込み）")}`]); cal.holidays = hid; // 設定の値（無効なプラグインの暦でも）を保つ。計算・自動入力の代替は calendarOf が別に決める
@@ -393,10 +394,16 @@
       const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
       const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; const nn = `${base}${cnt[base]}`; if (d.name) map.set(d.name, nn);
         const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });
-      const walk = v => Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => !map.has(k)).map(([k, x]) => [k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
+      // 氏名をキーにした項目と、name が氏名の要素（配列の中の個人の記録）は落とす。氏名そのものの値は仮の名前へ
+      const isRecord = x => x && typeof x === "object" && !Array.isArray(x) && map.has(x.name);
+      const walk = v => Array.isArray(v) ? v.filter(x => !isRecord(x)).map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => !map.has(k)).map(([k, x]) => [k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
       delete R.doctors; R = walk(R); R.doctors = doctors;
       R.name_order = (R.name_order || []).filter(n => doctors.some(d => d.name === n));
-      const txt = JSON.stringify(R); for (const n of origNames) if (n.length >= 2 && txt.includes(n)) leftover.push(n); // 文の一部として残った氏名（部分一致で探す。置き換えはしない）
+      for (const d of T.RULE_DEFS || []) if (typeof d.share === "function") { try { d.share(R); } catch (e) { } } // プラグインが名簿の外に持つ個人の記録を、プラグイン自身が除く（docs/rule-modules.md §4）
+      // 文の一部として残った氏名（キーと文字列の値を部分一致で探す。1 文字の氏名も、引用符を含む氏名も見る。置き換えはしない）
+      const seen = new Set(), hit = str => { for (const n of origNames) if (!seen.has(n) && str.includes(n)) { seen.add(n); leftover.push(n); } };
+      const scan = v => { if (Array.isArray(v)) v.forEach(scan); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { hit(k); scan(x); } else if (typeof v === "string") hit(v); };
+      scan(R);
     }
     R.toban_profile = { version: 1, roster: withRoster ? "included" : "placeholder" };
     return { rules: R, leftover };

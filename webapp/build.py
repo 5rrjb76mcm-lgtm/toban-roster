@@ -33,7 +33,7 @@ def check_app_split():
     """app-*.js の相互参照の検査。決まり: 他のファイルの関数・共有変数は A. を付けて参照する／A.xxx はどこかのファイルが Object.assign(A, {...}) で公開している
     ／同じ名前を2つのファイルで宣言しない／$・esc・state は使うファイルごとに const で別名を宣言する。違反を文字列の一覧で返す。"""
     LOCAL = {"$": "const $ = ", "esc": "const esc = ", "state": "const state = A.state"}  # 各ファイルで宣言する別名
-    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer", "solving"}  # app-core.js が A に置く共有変数
+    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer", "solving", "pluginsPending"}  # app-core.js が A に置く共有変数
     texts = {f: (here / "src" / f).read_text(encoding="utf-8") for f in APP_FILES}
     decl, exports, owner, errors = {}, {}, {}, []
     for f, t in texts.items():
@@ -201,6 +201,8 @@ assert "/*__PLUGINS__*/[]" in src, "model.js の T.PLUGINS の目印がありま
 src = src.replace("/*__PLUGINS__*/[]", js_safe(json.dumps(plugin_info, ensure_ascii=False)), 1)  # T.PLUGINS（model.js）。src は後で埋め込む
 import hashlib
 src_stamp = hashlib.sha256((src + css + (here / "src/index.html").read_text(encoding="utf-8")).encode("utf-8")).hexdigest()[:12] + " " + datetime.date.today().isoformat()
+assert '"/*__BUILD_ID__*/dev"' in src, "model.js の T.BUILD_ID の目印がありません"
+src = src.replace('"/*__BUILD_ID__*/dev"', json.dumps(src_stamp.split()[0]), 1)  # T.BUILD_ID（model.js）: 本体（src・css・index）の内容の印。配布物の版の署名に入る（本体の帳票実装だけが変わった保存でも版が進む）
 while "/*__SRC_STAMP__*/" in html: put("/*__SRC_STAMP__*/", html_mod.escape(src_stamp))  # 無ければ何もしない（ヘルプは lang/*.json 側）
 put("/*__JSZIP__*/", js_safe(jszip))
 put("/*__HIGHS__*/", js_safe(highs_js))

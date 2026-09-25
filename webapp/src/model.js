@@ -676,6 +676,7 @@
     const st = [sym.u === "double" ? "text-decoration:underline double" : sym.u ? "text-decoration:underline" : "", sym.box ? "border:1px solid currentColor;padding:0 1px" : "", sym.bold ? "font-weight:bold" : "", sym.small ? "font-size:85%" : ""].filter(Boolean).join(";");
     return `<span class="calsym"${sym.title ? ` title="${escH(sym.title)}"` : ""}>${sym.pre ? `<sup>${escH(sym.pre)}</sup>` : ""}<span style="${st}">${escH(sym.t || "")}</span>${sym.sup ? `<sup>${escH(sym.sup)}</sup>` : ""}${sym.sub ? `<sub>${escH(sym.sub)}</sub>` : ""}</span>`; }
   T.calendarExt = { defs: CALEXT, register: registerCalExt, unregister: unregisterCalExt, merged: mergedCalExt, symbolHtml };
+  T.BUILD_ID = "/*__BUILD_ID__*/dev"; // 本体の内容の印（build.py が埋める。src のままなら dev）。配布物の版の署名に入る
   T.PLUGINS = /*__PLUGINS__*/[]; // 組み立て時に取り込んだ施設のプラグインの一覧（build.py --plugins が埋める） T.DEFAULT_CALENDAR = DEFAULT_CALENDAR;
   T.calendarOf = calendarOf; T.holidaysOf = holidaysOf; T.isOffDay = isOffDay; T.shareQuotas = shareQuotas;
 

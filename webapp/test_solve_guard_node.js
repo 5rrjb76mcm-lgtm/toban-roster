@@ -7,7 +7,7 @@ const fs = require("fs"), vm = require("vm"), path = require("path"), assert = r
 const rulesJson = fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8"), monthJson = fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8");
 const langs = fs.readdirSync(path.join(__dirname, "lang")).map(q => JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 function context() {
-  const elems = new Map(); const el = s => { if (!elems.has(s)) elems.set(s, { checked: false, value: "1", textContent: "", innerHTML: "", disabled: false, hidden: false }); return elems.get(s); };
+  const elems = new Map(); const el = s => { if (!elems.has(s)) elems.set(s, { checked: false, value: "1", textContent: "", innerHTML: "", disabled: false, hidden: false, className: "", addEventListener() { } }); return elems.get(s); };
   const c = { console, setTimeout, clearTimeout, setInterval, clearInterval, document: { querySelector: el, querySelectorAll: () => [], getElementById: () => null, addEventListener: () => { } }, localStorage: { getItem: () => null, setItem: () => { }, removeItem: () => { } }, location: { pathname: "/x/toban.html", protocol: "file:", href: "file:///x/toban.html" }, T: {} };
   c.window = c; vm.createContext(c);
   const run = f => vm.runInContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), c, { filename: f });
@@ -16,8 +16,9 @@ function context() {
   for (const f of fs.readdirSync(path.join(__dirname, "src/calendars")).filter(x => x.endsWith(".js")).sort()) run("calendars/" + f);
   const T = c.T; for (const L of langs) T.registerLang(L); T.setLang("ja");
   T.DEFAULT_RULES = JSON.parse(rulesJson); const rules = JSON.parse(rulesJson); T.fillDefaultRules(rules); const month = T.normalizeMonth(JSON.parse(monthJson), rules);
-  const A = T.app; Object.assign(A.state, { rules, month, result: null }); A.readAll = () => { }; A.toast = () => { }; A.showTab = () => { }; A.saveToFolder = async () => { }; A.renderResult = () => { }; A.highs = {};
-  let saves = 0; A.save = () => { saves++; }; const stat = { solverCalls: 0, saves: () => saves };
+  run("app-folder.js"); // フォルダの接続・プラグインの読み込み（実物。保存と描画は下で代替）
+  const A = T.app; Object.assign(A.state, { rules, month, result: null }); A.readAll = () => { }; const toasts = []; A.toast = m => toasts.push(String(m)); A.showTab = () => { }; A.saveToFolder = async () => { }; A.renderResult = () => { }; A.renderAll = () => { }; A.highs = {};
+  let saves = 0; A.save = () => { saves++; }; const stat = { solverCalls: 0, saves: () => saves, toasts };
   run("app-solve.js");
   T.buildReport = () => ({ V: [], W: [], sections: [] });
   T.solveWithAvoidRef = async () => { stat.solverCalls++; return { asg: { "1:night": { work: rules.name_order[0], oc: [] } }, status: "Optimal", seconds: 0.1, objective: 0, vars: 1, cons: 1 }; };
@@ -58,5 +59,31 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     const x = context(); let during = null; x.T.solveWithAvoidRef = async () => { during = x.A.solving; return { asg: {}, status: "Optimal", seconds: 0, objective: 0, vars: 0, cons: 0 }; };
     await x.A.runSolve(); assert.strictEqual(during, true, "計算中は A.solving"); assert.strictEqual(x.A.solving, false);
   }
-  console.log("計算の入口の守り（規則欠落＋lint 例外・lint 例外・計算中のプラグイン読み直し・通常の採用）OK");
+  // 疑似のフォルダ（plugins/rules/new.js に既定 hard の規則）
+  const folderWith = (text, reads) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => text }) }]; } };
+    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw new Error("nf"); } };
+    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async k => { if (k === "plugins") { reads.n++; return plugDir; } throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; };
+  { // 6) 計算中にフォルダへ接続: 読み込みは計算後に回り、次の計算はその規則で行う
+    const x = context(), reads = { n: 0 }, dir = folderWith(PLUG("local.new.rule"), reads);
+    const solve0 = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...a) => { x.A.dirHandle = dir; await x.A.refreshMonths(); return solve0(...a); };
+    await x.A.runSolve();
+    assert.strictEqual(reads.n, 1, "計算が終わってから plugins/ を読む"); assert.ok(x.T.RULE_BY_ID["local.new.rule"], "規則が登録される"); assert.strictEqual(x.A.pluginsPending, false);
+    assert.strictEqual(JSON.stringify(x.A.state.result.plugins), "[]", "計算中の結果にはその規則は入っていない"); assert.ok(x.stat.toasts.some(t => /もう一度「計算する」/.test(t)), "再計算が必要と知らせる");
+    x.T.solveWithAvoidRef = solve0; await x.A.runSolve();
+    assert.strictEqual(x.stat.solverCalls, 2); assert.ok(x.A.state.month.plugins_used.includes("local.new.rule"), "次の計算はその規則で"); assert.strictEqual(x.A.state.result.plugins.length, 1); assert.strictEqual(reads.n, 1);
+  }
+  { // 7) 計算成功後の保存で初めてフォルダへ接続: その場で読み込み、既存の結果には再計算が必要と知らせる
+    const x = context(), reads = { n: 0 }, dir = folderWith(PLUG("local.new.rule"), reads);
+    x.A.saveToFolder = async () => { x.A.dirHandle = dir; await x.A.refreshMonths(); };
+    await x.A.runSolve();
+    assert.strictEqual(reads.n, 1, "保護区間の後の接続は直ちに読む"); assert.ok(x.T.RULE_BY_ID["local.new.rule"]); assert.ok(x.stat.toasts.some(t => /もう一度「計算する」/.test(t)));
+    x.A.saveToFolder = async () => { }; await x.A.runSolve(); assert.ok(x.A.state.month.plugins_used.includes("local.new.rule"));
+  }
+  { // 8) 計算中に接続したフォルダのプラグインが読めない: 次の計算は LINT_PLUGIN_ERROR で止まる
+    const x = context(), reads = { n: 0 }, dir = folderWith("this is not js {", reads);
+    const solve0 = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...a) => { x.A.dirHandle = dir; await x.A.refreshMonths(); return solve0(...a); };
+    await x.A.runSolve(); x.T.solveWithAvoidRef = solve0; await x.A.runSolve();
+    assert.strictEqual(x.stat.solverCalls, 1, "読めないプラグインがある間は計算しない"); assert.ok(/読めません/.test(x.log()));
+  }
+  console.log("計算の入口の守り（規則欠落＋lint 例外・lint 例外・計算中のプラグイン読み直し・通常の採用・計算中／計算後の接続で読むプラグイン）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

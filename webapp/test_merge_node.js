@@ -37,4 +37,11 @@ r=T.mergeMonth(base, mine2, theirs, 'mine'); console.log('prefer mine notes:', r
   r=T.mergeMonth(b, mine, theirs2, 'mine'); const ok4 = r.merged.local_example.max===7; console.log('unknown item conflict, mine:', ok4); if(!ok4) process.exitCode=1;
   const mine3=JSON.parse(JSON.stringify(b)); delete mine3.local_example; r=T.mergeMonth(b, mine3, theirs); const ok5 = !('local_example' in r.merged) && r.mineChanges===1 && r.conflicts.length===0; console.log('unknown item deleted by mine stays deleted:', ok5); if(!ok5) process.exitCode=1;
   r=T.mergeMonth(b, theirs, mine3); const ok6 = !('local_example' in r.merged); console.log('unknown item deleted by theirs stays deleted:', ok6); if(!ok6) process.exitCode=1;
-  const mine4=JSON.parse(JSON.stringify(b)); mine4.local_example={}; r=T.mergeMonth(b, mine4, theirs); const ok7 = !('local_example' in r.merged) && r.mineChanges===1; console.log('unknown item emptied == deleted:', ok7); if(!ok7) process.exitCode=1; }
+  const mine4=JSON.parse(JSON.stringify(b)); mine4.local_example={}; r=T.mergeMonth(b, mine4, theirs); const ok7 = JSON.stringify(r.merged.local_example)==='{}' && r.mineChanges===1; console.log('unknown item emptied stays {} (value kept, deletion = key absent):', ok7); if(!ok7) process.exitCode=1; }
+// 未知の項目の false・null は値として残る（プラグインの「未指定なら true」と区別する）
+{ const b=JSON.parse(JSON.stringify(base)); b.local_enabled=true; b.local_null=null;
+  const rt=T.unflattenMonth(T.flattenMonth(b), b); const ok0 = rt.local_enabled===true && ('local_null' in rt) && rt.local_null===null; console.log('unknown false/null round trip:', ok0); if(!ok0) process.exitCode=1;
+  const mine=JSON.parse(JSON.stringify(b)); mine.local_enabled=false; const theirs=JSON.parse(JSON.stringify(b)); theirs.notes='相手';
+  let r=T.mergeMonth(b, mine, theirs); const ok1 = Object.hasOwn(r.merged,'local_enabled') && r.merged.local_enabled===false && r.mineChanges===1 && r.conflicts.length===0; console.log('unknown true->false by mine kept as false:', ok1); if(!ok1) process.exitCode=1;
+  const theirs2=JSON.parse(JSON.stringify(b)); delete theirs2.local_enabled; r=T.mergeMonth(b, mine, theirs2, 'theirs'); const ok2 = r.conflicts.length===1 && !('local_enabled' in r.merged); console.log('mine false vs theirs delete -> conflict, theirs(delete):', ok2); if(!ok2) process.exitCode=1;
+  r=T.mergeMonth(b, mine, theirs2, 'mine'); const ok3 = r.merged.local_enabled===false; console.log('mine false vs theirs delete -> conflict, mine(false):', ok3); if(!ok3) process.exitCode=1; }

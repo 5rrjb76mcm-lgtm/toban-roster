@@ -33,7 +33,10 @@
   }
 
   // 計算・診断の間は A.solving を立てる（プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない。app-folder.js / app-settings.js）
-  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); runSolve.busy = true; A.solving = true; try { await runSolveCore(); } finally { runSolve.busy = false; A.solving = false; $("#btnSolve").disabled = false; } }
+  // 計算中に接続したフォルダのプラグインは後始末で読む（読み終わるまで busy のままなので次の計算は始まらない）
+  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); runSolve.busy = true; A.solving = true;
+    try { await runSolveCore(); }
+    finally { A.solving = false; try { await A.loadPendingPlugins(); } catch (e) { A.toast(T.t("フォルダのプラグインを読めませんでした: {err}", { err: e && e.message || e })); } runSolve.busy = false; $("#btnSolve").disabled = false; } }
   async function runSolveCore() {
     A.readAll();
     const log = s => { $("#calcLog").textContent += s + "\n"; };
@@ -98,7 +101,8 @@
     log(T.t("必須条件の違反 {n} 件", { n: rep.V.length }) + (rep.W && rep.W.length ? T.t("、固定指定により許容した条件 {n} 件（要確認）", { n: rep.W.length }) : "") + T.t("。「3-1 結果」タブを開いてください。"));
     renderResult();
     A.showTab("result");
-    // 計算が成功したら自動保存（未接続ならフォルダの接続を求めてから保存）
+    // 計算が成功したら自動保存（未接続ならフォルダの接続を求めてから保存）。保護区間（計算・採用・ブラウザ内保存）はここまで: 接続で読むプラグインは以後の計算に使う
+    A.solving = false;
     if (!A.dirHandle) A.toast(T.t("計算結果を保存します。フォルダを接続してください"));
     await A.saveToFolder();
     if (!A.dirHandle) A.toast(T.t("計算結果はまだブラウザ内にしかありません。ヘッダーの「接続して保存」で保存してください"));
@@ -168,8 +172,8 @@
     const step = k => { const i = docs.indexOf(calDoc); go(i < 0 ? docs[k > 0 ? 0 : docs.length - 1] : docs[(i + k + docs.length) % docs.length]); }; // 一覧からは「次」で先頭、「前」で末尾の医師へ
     $("#dcPrev").onclick = () => step(-1); $("#dcNext").onclick = () => step(1);
   }
-  function reportHtml(P, label) { // 完成した HTML の組み立ては report.js（試験が完成形を見られるように）
-    return T.reportHtml(P, state.result.asg, { status: state.result.status, seconds: state.result.seconds, avoidRef: state.result.avoid_ref, baseAsg: state.result.mark_changes ? state.result.base_asg : null }, { label: label || state.month.doc_label, notes: state.month.notes });
+  function reportHtml(P, label, S = state) { // 完成した HTML の組み立ては report.js（試験が完成形を見られるように）。S は月・設定・結果の組（保存では写しを渡す）
+    const r = S.result; return T.reportHtml(P, r.asg, { status: r.status, seconds: r.seconds, avoidRef: r.avoid_ref, baseAsg: r.mark_changes ? r.base_asg : null }, { label: label || S.month.doc_label, notes: S.month.notes });
   }
   async function downloadDocx() {
     if (!state.result || !state.result.asg) return alert("先に計算してください");
