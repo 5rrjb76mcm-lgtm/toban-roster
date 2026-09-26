@@ -200,7 +200,8 @@ put("/*__VERSION__*/", f"v{datetime.date.today():%Y.%m.%d}" + (" +" + "・".join
 assert "/*__PLUGINS__*/[]" in src, "model.js の T.PLUGINS の目印がありません"
 src = src.replace("/*__PLUGINS__*/[]", js_safe(json.dumps(plugin_info, ensure_ascii=False)), 1)  # T.PLUGINS（model.js）。src は後で埋め込む
 import hashlib
-src_stamp = hashlib.sha256((src + css + (here / "src/index.html").read_text(encoding="utf-8")).encode("utf-8")).hexdigest()[:12] + " " + datetime.date.today().isoformat()
+lang_text = "".join(q.read_text(encoding="utf-8") for q in sorted((here / "lang").glob("*.json"))) + "".join(q.read_text(encoding="utf-8") for _, q in plugin_files["lang"])  # 帳票の文面（訳）も本体の印に入れる（訳だけ直した本体でも版が進む）
+src_stamp = hashlib.sha256((src + css + (here / "src/index.html").read_text(encoding="utf-8") + lang_text).encode("utf-8")).hexdigest()[:12] + " " + datetime.date.today().isoformat()
 assert '"/*__BUILD_ID__*/dev"' in src, "model.js の T.BUILD_ID の目印がありません"
 src = src.replace('"/*__BUILD_ID__*/dev"', json.dumps(src_stamp.split()[0]), 1)  # T.BUILD_ID（model.js）: 本体（src・css・index）の内容の印。配布物の版の署名に入る（本体の帳票実装だけが変わった保存でも版が進む）
 while "/*__SRC_STAMP__*/" in html: put("/*__SRC_STAMP__*/", html_mod.escape(src_stamp))  # 無ければ何もしない（ヘルプは lang/*.json 側）

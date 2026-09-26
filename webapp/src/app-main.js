@@ -23,7 +23,8 @@
     T.setLang(l || (state.rules || {}).lang || nav);
     const opts = () => T.LANGS().map(([k, label]) => `<option value="${k}"${k === T.lang() ? " selected" : ""}>${label}</option>`).join("");
     // ヘッダーと開始画面の両方に言語の選択を置く（開始画面はヘッダーより前に出るので、そこで選べないと最初の画面が読めない）
-    const change = v => {
+    const change = async v => {
+      await A.awaitSaves(); // 保存中（帳票の生成・書込み）は終わってから切り替える（同じ版の勤務表と説明資料が別の言語にならない）
       T.setLang(v); try { localStorage.setItem(LANG_KEY, v); } catch (e) { }
       for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (x) x.value = v; }
       A.readAll(); renderAll(); // 役割・勤務帯の表示名もその言語で読み直す

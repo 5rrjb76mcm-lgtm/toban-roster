@@ -8,7 +8,7 @@ const rulesJson = fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8
 const langs = fs.readdirSync(path.join(__dirname, "lang")).map(q => JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 function context() {
   const elems = new Map(); const el = s => { if (!elems.has(s)) elems.set(s, { checked: false, value: "1", textContent: "", innerHTML: "", disabled: false, hidden: false, className: "", addEventListener() { } }); return elems.get(s); };
-  const c = { console, setTimeout, clearTimeout, setInterval, clearInterval, document: { querySelector: el, querySelectorAll: () => [], getElementById: () => null, addEventListener: () => { } }, localStorage: { getItem: () => null, setItem: () => { }, removeItem: () => { } }, location: { pathname: "/x/toban.html", protocol: "file:", href: "file:///x/toban.html" }, T: {} };
+  const c = { console, setTimeout, clearTimeout, setInterval, clearInterval, Blob: class { constructor(parts) { this.parts = parts; } async text() { return this.parts.join(""); } }, document: { querySelector: el, querySelectorAll: () => [], getElementById: () => null, addEventListener: () => { } }, localStorage: { getItem: () => null, setItem: () => { }, removeItem: () => { } }, location: { pathname: "/x/toban.html", protocol: "file:", href: "file:///x/toban.html" }, T: {} };
   c.window = c; vm.createContext(c);
   const run = f => vm.runInContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), c, { filename: f });
   for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "plugins.js", "app-core.js"]) run(f);
@@ -16,13 +16,14 @@ function context() {
   for (const f of fs.readdirSync(path.join(__dirname, "src/calendars")).filter(x => x.endsWith(".js")).sort()) run("calendars/" + f);
   const T = c.T; for (const L of langs) T.registerLang(L); T.setLang("ja");
   T.DEFAULT_RULES = JSON.parse(rulesJson); const rules = JSON.parse(rulesJson); T.fillDefaultRules(rules); const month = T.normalizeMonth(JSON.parse(monthJson), rules);
-  run("app-folder.js"); // フォルダの接続・プラグインの読み込み（実物。保存と描画は下で代替）
-  const A = T.app; Object.assign(A.state, { rules, month, result: null }); A.readAll = () => { }; const toasts = []; A.toast = m => toasts.push(String(m)); A.showTab = () => { }; A.saveToFolder = async () => { }; A.renderResult = () => { }; A.renderAll = () => { }; A.highs = {};
+  run("app-folder.js"); // フォルダの接続・プラグインの読み込み・保存（実物。描画と帳票は代替）
+  const A = T.app, realSave = A.saveToFolder; Object.assign(A.state, { rules, month, result: null }); A.readAll = () => { }; const toasts = []; A.toast = m => toasts.push(String(m)); A.showTab = () => { }; A.saveToFolder = async () => { }; A.renderResult = () => { }; A.renderAll = () => { }; A.highs = {};
+  T.makeDocx = async () => new c.Blob(["roster"]); T.reportHtml = () => "report";
   let saves = 0; A.save = () => { saves++; }; const stat = { solverCalls: 0, saves: () => saves, toasts };
   run("app-solve.js");
   T.buildReport = () => ({ V: [], W: [], sections: [] });
   T.solveWithAvoidRef = async () => { stat.solverCalls++; return { asg: { "1:night": { work: rules.name_order[0], oc: [] } }, status: "Optimal", seconds: 0.1, objective: 0, vars: 1, cons: 1 }; };
-  return { T, A, el, rules, month, stat, log: () => el("#calcLog").textContent };
+  return { T, A, el, rules, month, stat, realSave, log: () => el("#calcLog").textContent };
 }
 const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states: ["hard", "off"], def: "hard", label: "試験", messages: { X: { en: "x" } }, solve() {}, check() {}, penalty() {}, ${extra} })`;
 (async () => {
@@ -60,17 +61,20 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     await x.A.runSolve(); assert.strictEqual(during, true, "計算中は A.solving"); assert.strictEqual(x.A.solving, false);
   }
   // 疑似のフォルダ（plugins/rules/new.js に既定 hard の規則）
-  const folderWith = (text, reads) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => text }) }]; } };
+  const folderWith = (text, reads, files = {}) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => text }) }]; } };
     const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw new Error("nf"); } };
-    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async k => { if (k === "plugins") { reads.n++; return plugDir; } throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; };
-  { // 6) 計算中にフォルダへ接続: 読み込みは計算後に回り、次の計算はその規則で行う
-    const x = context(), reads = { n: 0 }, dir = folderWith(PLUG("local.new.rule"), reads);
+    const monthDir = { getFileHandle: async (n, o) => { if (!(o && o.create) && !(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async b => { files[n] = typeof b === "string" ? b : await b.text(); }, close: async () => { } }) }; } };
+    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") { reads.n++; return plugDir; } if (o && o.create) return monthDir; throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; };
+  { // 6) 計算中にフォルダへ接続: 読み込みは成功後の保存より前に済ませ（1 回だけ）、その結果の勤務表は出さず、次の計算はその規則で行う（保存は実物）
+    const x = context(), reads = { n: 0 }, files = {}, dir = folderWith(PLUG("local.new.rule"), reads, files); x.A.saveToFolder = x.realSave; x.T.check = () => ({ V: [] }); // 検算は代替（solver も代替で割当が 1 枠だけのため）
     const solve0 = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...a) => { x.A.dirHandle = dir; await x.A.refreshMonths(); return solve0(...a); };
     await x.A.runSolve();
-    assert.strictEqual(reads.n, 1, "計算が終わってから plugins/ を読む"); assert.ok(x.T.RULE_BY_ID["local.new.rule"], "規則が登録される"); assert.strictEqual(x.A.pluginsPending, false);
+    assert.strictEqual(reads.n, 1, "plugins/ は計算後・保存前に 1 回だけ読む"); assert.ok(x.T.RULE_BY_ID["local.new.rule"], "規則が登録される"); assert.strictEqual(x.A.pluginsPending, false);
     assert.strictEqual(JSON.stringify(x.A.state.result.plugins), "[]", "計算中の結果にはその規則は入っていない"); assert.ok(x.stat.toasts.some(t => /もう一度「計算する」/.test(t)), "再計算が必要と知らせる");
+    assert.ok(files["202611_data.json"], "月データは保存する"); assert.ok(!Object.keys(files).some(n => /_roster_|_report_/.test(n)), "旧規則の結果の勤務表・説明資料は出さない"); assert.ok(x.stat.toasts.some(t => /プラグインが変わったため/.test(t)));
     x.T.solveWithAvoidRef = solve0; await x.A.runSolve();
     assert.strictEqual(x.stat.solverCalls, 2); assert.ok(x.A.state.month.plugins_used.includes("local.new.rule"), "次の計算はその規則で"); assert.strictEqual(x.A.state.result.plugins.length, 1); assert.strictEqual(reads.n, 1);
+    assert.ok(files["202611_roster_v1_draft.docx"] && files["202611_report_v1_draft.html"], "その規則で計算した結果は勤務表を出す");
   }
   { // 7) 計算成功後の保存で初めてフォルダへ接続: その場で読み込み、既存の結果には再計算が必要と知らせる
     const x = context(), reads = { n: 0 }, dir = folderWith(PLUG("local.new.rule"), reads);

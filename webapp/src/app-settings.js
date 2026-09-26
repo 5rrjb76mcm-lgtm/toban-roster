@@ -399,7 +399,8 @@
       const walk = v => Array.isArray(v) ? v.filter(x => !isRecord(x)).map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => !map.has(k)).map(([k, x]) => [k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
       delete R.doctors; R = walk(R); R.doctors = doctors;
       R.name_order = (R.name_order || []).filter(n => doctors.some(d => d.name === n));
-      for (const d of T.RULE_DEFS || []) if (typeof d.share === "function") { try { d.share(R); } catch (e) { } } // プラグインが名簿の外に持つ個人の記録を、プラグイン自身が除く（docs/rule-modules.md §4）
+      const failed = []; for (const d of T.RULE_DEFS || []) if (typeof d.share === "function") { try { d.share(R); } catch (e) { failed.push(d.id); } } // プラグインが名簿の外に持つ個人の記録を、プラグイン自身が除く（docs/rule-modules.md §4）
+      if (failed.length) throw new Error(T.t("プラグインの規則 {ids} の共有用の変換に失敗したため、書き出しを中止しました（除けなかった個人の記録を含めないため）", { ids: failed.join(T.listSep()) })); // 失敗の詳細は個人の記録を含みうるので出さない
       // 文の一部として残った氏名（キーと文字列の値を部分一致で探す。1 文字の氏名も、引用符を含む氏名も見る。置き換えはしない）
       const seen = new Set(), hit = str => { for (const n of origNames) if (!seen.has(n) && str.includes(n)) { seen.add(n); leftover.push(n); } };
       const scan = v => { if (Array.isArray(v)) v.forEach(scan); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { hit(k); scan(x); } else if (typeof v === "string") hit(v); };
@@ -411,7 +412,8 @@
   async function exportProfile() {
     readSettings();
     const withRoster = !!($("#setExportRoster") || {}).checked;
-    const ex = profileForExport(withRoster), R = ex.rules, id = ((R.profile || {}).id || "custom").replace(/[^\w.-]+/g, "-");
+    let ex; try { ex = profileForExport(withRoster); } catch (e) { return alert(e && e.message || e); } // share の失敗など: 書き出さない
+    const R = ex.rules, id = ((R.profile || {}).id || "custom").replace(/[^\w.-]+/g, "-");
     if (ex.leftover.length && !confirm(T.t("書き出す内容に名簿の氏名が残っています（{n} 名: {who}）。プロファイルの名前や規則の文に氏名を入れていないか確かめてください。このまま書き出しますか", { n: ex.leftover.length, who: ex.leftover.join(T.nameSep()) }))) return;
     const name = `profile_${id}${withRoster ? "_with_roster" : ""}.json`, blob = new Blob([JSON.stringify(R, null, 1)], { type: "application/json" });
     if (A.dirHandle) { await A.writeFile(A.dirHandle, name, blob); A.toast(T.t("フォルダに {name} を保存しました", { name })); } else A.download(name, blob);
@@ -462,7 +464,7 @@
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
-    $("#btnReloadPlugins").addEventListener("click", async () => { if (A.solving) return A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); });
+    $("#btnReloadPlugins").addEventListener("click", async () => { if (A.solving) return A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); await A.awaitSaves(); /* 保存中の帳票の生成が終わってから */ const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); });
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）

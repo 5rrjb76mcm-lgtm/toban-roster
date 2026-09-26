@@ -64,5 +64,37 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     T.makeDocx = async () => new Blob(["roster"]); }
   // 本体の印（T.BUILD_ID）が変わると版の署名も変わる（帳票の実装だけが更新された保存でも版が進む）
   { const s1 = A.versionSig("確認版"); const keep = T.BUILD_ID; T.BUILD_ID = "other"; assert.notStrictEqual(A.versionSig("確認版"), s1); T.BUILD_ID = keep; }
-  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存 OK");
+  // 未知の項目（プラグインの local_…）は空値も値: 未指定 ↔ null / [] / {} は未保存・入力署名・設定署名の変更になる。既知の欄の空欄整形（notes "" など）は変更にならない
+  { Object.assign(A.state, { rules: { profile: { id: "t" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11 }, result: null, meta: null }); A.markSaved(); const isig = A.inputSig(), rsig = A.rulesSig(A.state.rules);
+    for (const v of [null, [], {}]) { A.state.month.local_extension = v; assert.strictEqual(A.isDirty(), true, `独自項目を ${JSON.stringify(v)} にすると未保存`); assert.notStrictEqual(A.inputSig(), isig); delete A.state.month.local_extension; assert.strictEqual(A.isDirty(), false); }
+    A.state.rules.local_x = []; assert.notStrictEqual(A.rulesSig(A.state.rules), rsig, "設定の独自項目でも同じ"); delete A.state.rules.local_x;
+    A.state.month.notes = ""; A.state.month.holidays = []; A.state.month.exceptions = {}; assert.strictEqual(A.isDirty(), false, "既知の欄の空欄整形は未保存にならない"); }
+  // 保存中に月を切り替えない: 進行中の保存は awaitSaves / saveBeforeSwitch で待つ。写しの年月でフォルダ・ファイルを決め、写しと現在の月が違えば保存基準に触れない
+  { for (const k of Object.keys(files)) delete files[k];
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "before" }, result: null, meta: null }); A.markSaved();
+    A.state.month.notes = "changed"; const gate = () => { let release; const g = new Promise(r => { release = r; }); return { g, release }; };
+    let g1 = gate(); const w0 = dir.getFileHandle; dir.getFileHandle = async (n, o) => { if (n === "202611_data.json" && o && o.create) await g1.g; return w0(n, o); }; // 月データの書込み前で止める
+    const saving = A.saveToFolder(); await new Promise(r => setTimeout(r, 20)); A.state.month.notes = "before"; // 編集を元へ戻す（isDirty は false）
+    let switched = false; const sw = A.saveBeforeSwitch().then(v => { switched = true; return v; }); await new Promise(r => setTimeout(r, 20)); assert.strictEqual(switched, false, "切替は進行中の保存を待つ");
+    g1.release(); const ok = await sw; assert.strictEqual(ok, true); await saving;
+    assert.ok(files["202611_data.json"] && !files["202612_data.json"]); assert.strictEqual(A.state.meta.savedTag, "202611");
+    // 待たずに月が替わってしまった場合でも、写しの月のファイルにだけ書き、現在の月の保存基準は更新しない
+    g1 = gate(); A.state.month.notes = "changed2"; const saving2 = A.saveToFolder(); await new Promise(r => setTimeout(r, 20));
+    A.state.month = { year: 2026, month: 12, notes: "dec" }; A.state.meta = null; A.state.base = "SENTINEL";
+    g1.release(); await saving2;
+    assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "changed2", "写しの月（11 月）のファイルに書く"); assert.ok(!files["202612_data.json"], "新しい月の名前では書かない");
+    assert.strictEqual(A.state.meta, null, "現在の月（12 月）の保存基準には触れない"); assert.strictEqual(A.state.base, "SENTINEL");
+    dir.getFileHandle = w0; }
+  // 保存中の言語切替: 切替側は awaitSaves で待つので、同じ版の勤務表・説明資料・署名は写しの言語（切替前）で作られる
+  { for (const k of Object.keys(files)) delete files[k]; T.setLang("ja");
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "n", doc_label: "確認版" }, result: { asg: { "1:night": { work: "Dr A", oc: [] } }, status: "Optimal" }, meta: null });
+    let entered, release; const started = new Promise(r => { entered = r; }), gate2 = new Promise(r => { release = r; });
+    const langs = {}; T.makeDocx = async () => { langs.docx = T.lang(); entered(); await gate2; return new Blob(["r"]); }; A.reportHtml = () => { langs.report = T.lang(); return "h"; };
+    const saving = A.saveToFolder(); await started;
+    const change = async v => { await A.awaitSaves(); T.setLang(v); }; // app-main.js の言語切替と同じ順序
+    let changed = false; const ch = change("en").then(() => { changed = true; }); await new Promise(r => setTimeout(r, 20)); assert.strictEqual(changed, false, "言語の切替は保存を待つ"); assert.strictEqual(T.lang(), "ja");
+    release(); await saving; await ch; assert.strictEqual(T.lang(), "en");
+    assert.deepStrictEqual(langs, { docx: "ja", report: "ja" }, "同じ版の両方が切替前の言語"); assert.strictEqual(A.state.month.doc_versions[0].sig, A.versionSig("確認版", Object.assign({}, A.state, { lang: "ja" })), "版の署名も写しの言語");
+    T.setLang("ja"); T.makeDocx = async () => new Blob(["roster"]); }
+  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

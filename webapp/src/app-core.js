@@ -29,9 +29,11 @@
   const cmpJson = (x, y) => { const p = JSON.stringify(x), q = JSON.stringify(y); return p < q ? -1 : p > q ? 1 : 0; };
   function canon(v, path = []) {
     if (Array.isArray(v)) { const a = v.map((x, i) => canon(x, path.concat(String(i)))); return isSetPath(path) ? a.sort(cmpJson) : a; }
-    if (v && typeof v === "object") { const o = {}; for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined || x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length)) continue; o[k] = canon(x, path.concat(k)); } return o; }
+    if (v && typeof v === "object") { const keepOf = k => LOCAL_KEY.test(path.length ? path[0] : k); const o = {}; // プラグインの項目（根の直下の local_… / local.…）では空値も JSON のまま区別する（統合と同じ。未指定と null・[]・{} は別）
+      for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; o[k] = canon(x, path.concat(k)); } return o; }
     return v;
   }
+  const LOCAL_KEY = /^local[_.]/; // 施設のプラグインが月データ・設定の根の直下に置く項目の名前（plugin-example/README.md）
   const sigOfState = S => sigOf(JSON.stringify([canon(S.month), canon(S.rules), S.result ? canon(S.result) : null])); // 月・設定・結果の組の署名（写しにも使う）
   function sig() { return sigOfState(state); }
   const isDirty = () => !state.meta || state.meta.savedSig !== sig() || state.meta.savedTag !== tag();
@@ -41,6 +43,7 @@
   // 保存系の処理は一度に1つだけ動かす（自動保存・今すぐ保存・月切替・計算後の保存が重なっても確認画面が取り違えられない）
   let saveChain = Promise.resolve();
   const serialized = fn => { const p = saveChain.then(fn, fn); saveChain = p.catch(() => { }); return p; };
+  const awaitSaves = () => serialized(async () => { }); // 進行中の保存が終わるのを待つ（月の切替・JSON の読込・言語の切替・プラグインの読み直しの前に。保存の待ち行列の中からは呼ばない）
   function save() {
     persist(); A.renderHeader();
     if (A.dirHandle && isDirty()) { clearTimeout(A.autosaveTimer); A.autosaveTimer = setTimeout(() => A.autosaveJson(), 3000); }
@@ -48,10 +51,12 @@
   // 保存の写し: この時点の月・設定・結果の複製（month＝base・rules・result。以後の編集の影響を受けない）と、その署名・書き込む中身（payload）。
   // 保存はこの写し 1 つから検算・版の署名・勤務表・説明資料・月データを作り、写しの署名だけを「保存済み」にする（生成・書込み中の入力は未保存のまま残る）。
   // refresh() は写しの中身（版の履歴の追加）を反映して署名と payload を作り直す
+  // tag（年月）と lang（表示言語）も写しに入れる: 保存先のファイル名と帳票の言語は写しのもので決め、保存中に月や言語が切り替わっても混ざらない
   function snapshot(at) { const S = { month: JSON.parse(JSON.stringify(state.month)), rules: JSON.parse(JSON.stringify(state.rules)), result: state.result ? JSON.parse(JSON.stringify(state.result)) : null };
-    return { at, month: S.month, base: S.month, rules: S.rules, result: S.result, sig: sigOfState(S), payload: payloadOf(S, at), refresh() { this.sig = sigOfState(this); this.payload = payloadOf(this, this.at); return this; } }; }
+    return { at, month: S.month, base: S.month, rules: S.rules, result: S.result, tag: tag(S.month), lang: T.lang(), sig: sigOfState(S), payload: payloadOf(S, at), refresh() { this.sig = sigOfState(this); this.payload = payloadOf(this, this.at); return this; } }; }
   function markSaved(where, at, snap) {
     const s = snap || snapshot(at || new Date().toISOString());
+    if (s.tag && s.tag !== tag()) { persist(); return; } // 保存した写しと現在の月が違う（保存中に月が切り替わった）: 現在の月の保存基準には触れない
     state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
     state.base = s.base; state.baseRules = s.rules; persist(); A.renderHeader();
   }
@@ -112,5 +117,5 @@
   }
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
 
-  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

@@ -148,7 +148,7 @@
     for await (const [name, h] of A.dirHandle.entries()) if (h.kind === "directory" && /^\d{6}/.test(name)) A.monthDirs.push(name);
     A.monthDirs.sort(); renderFolderBar(); renderHeader();
     if (A.solving) { if (pluginsFor !== A.dirHandle) { A.pluginsPending = true; A.toast(T.t("計算中のため、フォルダのプラグインは計算が終わってから読みます")); } } // 計算中は登録を変えない（計算した規則と検算する規則がずれる）。計算後に loadPendingPlugins が読む
-    else if (pluginsFor !== A.dirHandle) { pluginsFor = A.dirHandle; await loadFolderPlugins(); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）
+    else if (pluginsFor !== A.dirHandle) { pluginsFor = A.dirHandle; A.pluginsPending = false; await loadFolderPlugins(); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）。保留分もここで済む
   }
   // 接続直後: フォルダのファイルとブラウザ内の状態を照合し、フォルダの方が新しければそちらを読む
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
@@ -254,6 +254,7 @@
   }
   // 月を切り替える前に現在の月を保存する。未接続なら接続を求め、断られたら「保存せずに切替」を確認
   async function saveBeforeSwitch() {
+    await A.awaitSaves(); // 進行中の保存（帳票の生成・書込み）が終わってから判定する。未保存でなくても、書込み中に月を替えると保存の基準が混ざる
     A.readAll();
     if (!A.isDirty()) return true;
     if (!A.dirHandle) {
@@ -281,39 +282,43 @@
     if (!(await checkConflict())) { A.toast(T.t("保存を見送りました")); return "skipped"; } // ここで自動統合が入ることがある（統合後の内容を書く）
     try {
       const at = new Date().toISOString();
-      const dir = await A.dirHandle.getDirectoryHandle(A.tag(), { create: true });
-      // この時点の写し（月・設定・結果）を 1 つ取り、検算・版の署名・勤務表・説明資料・月データをすべてその写しから作る。生成・書込みの間に入った編集は未保存として残る
-      const S = A.snapshot(at);
+      // この時点の写し（月・設定・結果・年月・言語）を 1 つ取り、保存先のフォルダ名・ファイル名・検算・版の署名・勤務表・説明資料・月データをすべてその写しから作る。
+      // 生成・書込みの間に入った編集は未保存として残り、月が切り替わっても写しの月のファイルにしか書かない（markSaved も写しの月が現在の月のときだけ基準を更新する）
+      const S = A.snapshot(at), root = A.dirHandle;
+      const dir = await root.getDirectoryHandle(S.tag, { create: true });
       // 上書き前に直前の保存データを1世代退避する（誤操作や統合の取り違えからの復元用）
-      try { const prev = await readJson(dir, A.dataFileName()); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(A.tag()), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { }
+      try { const prev = await readJson(dir, A.FILES.data(S.tag)); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { }
       let verNote = "";
       const hasAsg = !!(S.result && S.result.asg);
-      const viol = hasAsg ? (() => { try { return T.check(new T.Problem(S.rules, S.month), S.result.asg).V.length; } catch (e) { return -1; } })() : 0;
-      if (hasAsg && viol !== 0) verNote = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) });
+      // 計算した後にプラグインの登録が変わっていたら（result.plugins と今の印が違う）、その結果の勤務表は出さない（接続先の規則を満たすとは限らない。再計算を促す）
+      const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = hasAsg && Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
+      const viol = hasAsg && stampRes === stampNow ? (() => { try { return T.check(new T.Problem(S.rules, S.month), S.result.asg).V.length; } catch (e) { return -1; } })() : 0;
+      if (hasAsg && stampRes !== null && stampRes !== stampNow) verNote = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）");
+      else if (hasAsg && viol !== 0) verNote = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) });
       else if (hasAsg) {
         // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
         const P = new T.Problem(S.rules, S.month);
         const label = S.month.doc_label || "確認版";
         const vsig = versionSig(label, S);
-        const vers = (state.month.doc_versions ||= []), versS = (S.month.doc_versions ||= []); const last = versS[versS.length - 1];
+        const versS = (S.month.doc_versions ||= []); const last = versS[versS.length - 1];
         if (!last || last.sig !== vsig) {
           const ver = (last ? last.ver : 0) + 1;
-          const docxName = A.FILES.roster(A.tag(), ver, label), htmlName = A.FILES.report(A.tag(), ver, label);
+          const docxName = A.FILES.roster(S.tag, ver, label), htmlName = A.FILES.report(S.tag, ver, label);
           try { // 様式のプラグインが無いなどで書き出せなくても、月データの保存は続ける
             const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
             await writeFile(dir, docxName, docx);
             await writeFile(dir, htmlName, new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" }));
             const entry = { ver, at, label, sig: vsig, docx: docxName, html: htmlName };
-            versS.push(entry); vers.push(JSON.parse(JSON.stringify(entry))); // 写し（保存する中身）と現在の状態の両方に足す（ほかに編集が無ければ署名が一致して「保存済み」になる）
+            versS.push(entry); if (A.tag() === S.tag) (state.month.doc_versions ||= []).push(JSON.parse(JSON.stringify(entry))); // 写し（保存する中身）と、同じ月のままなら現在の状態にも足す（ほかに編集が無ければ署名が一致して「保存済み」になる）
             verNote = T.t("（勤務表 v{v} を追加）", { v: ver });
           } catch (e) { verNote = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
         } else verNote = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
       }
       S.refresh(); // 版の追加を反映した署名と中身。書いた中身だけを保存済みにする（生成・書込み中の入力は未保存のまま）
-      await writeFile(dir, A.dataFileName(), new Blob([S.payload], { type: "application/json" }));
+      await writeFile(dir, A.FILES.data(S.tag), new Blob([S.payload], { type: "application/json" }));
       A.markSaved(undefined, at, S);
       await refreshMonths();
-      A.toast(T.t("{tag} フォルダに保存しました", { tag: A.tag() }) + (state.result && state.result.asg ? verNote : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
+      A.toast(T.t("{tag} フォルダに保存しました", { tag: S.tag }) + (hasAsg ? verNote : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
       return "saved";
     } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
   }
@@ -321,7 +326,7 @@
   // 設定（規則・重み・様式・名簿）、月の条件（メモ・日ごとの予定など。版の履歴は除く）、割当と変更表示の基準、表題、表示言語、本体の印（T.BUILD_ID）、実行時に読んだプラグインの中身。
   // 保存時刻・計算時間・計算日時は含めない（保存のたびに版が増える循環を避ける）。S は月・設定・結果の組（省略時は現在の状態。保存では写しを渡す）
   const versionSig = (label, S = state) => { const m = Object.assign({}, S.month); delete m.doc_versions; const r = S.result || {};
-    return A.sigOf(JSON.stringify([A.canon(S.rules), A.canon(m), A.canon({ asg: r.asg, base_asg: r.mark_changes ? r.base_asg : null, avoid_ref: r.avoid_ref, status: r.status }), label, T.lang(), T.BUILD_ID || null, T.plugins && T.plugins.stamp ? T.plugins.stamp() : null])); };
+    return A.sigOf(JSON.stringify([A.canon(S.rules), A.canon(m), A.canon({ asg: r.asg, base_asg: r.mark_changes ? r.base_asg : null, avoid_ref: r.avoid_ref, status: r.status }), label, S.lang || T.lang(), T.BUILD_ID || null, T.plugins && T.plugins.stamp ? T.plugins.stamp() : null])); };
   function applyLoaded(o, msg) {
     let month, rules = null, result = null;
     if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return alert(T.t("勤務表データではありません（year / month がありません）"));
