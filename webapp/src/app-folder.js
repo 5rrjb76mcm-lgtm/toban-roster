@@ -165,7 +165,7 @@
     if (!f.data) {
       if (!A.monthDirs.length && state.meta && state.meta.savedAt && confirm(T.t("このフォルダには月データがありません。ブラウザ内に残っている {tag} の状態（保存 {at}）を捨てて、同梱のサンプルから始めますか？\n「キャンセル」＝ブラウザ内の状態をこのフォルダに保存して続けます", { tag: A.tag(), at: new Date(state.meta.savedAt).toLocaleString(T.dateLocale()) })))
         { A.resetBrowserState(); location.reload(); await new Promise(() => { }); } // 読み直すまで止める
-      if (state.meta && state.meta.savedWhere !== "フォルダ " + A.dirHandle.name) state.meta = null; // この月はこのフォルダにまだ無い: 未保存として扱い、自動保存で書く（別のフォルダに保存済みでも、接続先に無ければ保存済みとは言わない）
+      if (state.meta) state.meta = null; // この月のファイルが接続先に無い: フォルダ名に関係なく未保存として扱い、自動保存で書く（別のフォルダや同じ名前の別のフォルダに保存済みでも、接続先に無ければ保存済みとは言わない）
       return; }
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedAt) || "";
     const sameSaved = state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
