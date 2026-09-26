@@ -25,6 +25,7 @@ pre#calcLog{background:#f4f4f4;padding:8px;min-height:3em;white-space:pre-wrap}
 table.rep{border-collapse:collapse;margin:6px 0;font-size:13px} table.rep th,table.rep td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top} table.rep th{background:#f0f3f7} table.rep.num td:not(:first-child){text-align:right}
 table.roster td:first-child .sun{color:#b3261e} table.roster td:first-child .sat{color:#1a56db}
 .ok{color:#137333} .ng{color:#b3261e} .chg{color:#b3261e;font-weight:bold}
+.status-strip{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px} .status-strip span{font-size:12px;padding:2px 8px;border-radius:10px;background:#eee;color:#333} .status-strip span.ok{background:#e6f4ea;color:#137333} .status-strip span.warn{background:#fef7e0;color:#7a5a00} .status-strip span.ng{background:#fce8e6;color:#b3261e}
 section h3{font-size:15px;margin:14px 0 6px;border-left:4px solid #1f3a5f;padding-left:8px} section h4{font-size:13px;margin:8px 0 4px}
 body.standalone{padding:16px 24px;background:#fff} body.standalone h1{font-size:18px}
 @media print{header,#toolbar,nav,#calc,#settings{display:none!important} main{padding:0} body{background:#fff} .pane[hidden]{display:none} }

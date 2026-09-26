@@ -1029,7 +1029,17 @@
     "（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）": "(facility plug-ins are missing or could not be loaded, so the roster and report are not written; check the administrator section of the settings tab)",
     "計算中はデータを読み込めません。計算が終わってからもう一度選んでください": "Data cannot be loaded while solving. Choose it again after the solve finishes",
     "計算中は保存フォルダを変更できません。計算が終わってからもう一度押してください": "The save folder cannot be changed while solving. Press again after the solve finishes",
-    "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください": "The language cannot be switched while solving. Choose it again after the solve finishes"
+    "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください": "The language cannot be switched while solving. Choose it again after the solve finishes",
+    "保存済み": "Saved",
+    "計算時の入力: 記録なし（旧形式の結果）": "Input at solve time: not recorded (older result)",
+    "いまの入力で計算した結果": "Solved from the current input",
+    "計算後に入力が変わっています（再計算が必要）": "The input changed after the solve (re-solve needed)",
+    "計算後にプラグインが変わっています（再計算が必要）": "Plug-ins changed after the solve (re-solve needed)",
+    "いまの設定での検算: 違反 {n} 件": "Verified with the current settings: {n} violation(s)",
+    "いまの設定での検算: 違反なし": "Verified with the current settings: no violations",
+    "固定指定により許容 {n} 件（要確認）": "{n} allowed because of fixed assignments (please check)",
+    "最適性: 証明済み": "Optimality: proven",
+    "最適性: 未確認（{st}。時間内に見つかった最良の解）": "Optimality: not proven ({st}; best solution found within the time limit)"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",
@@ -1267,7 +1277,7 @@
     "monthly": {
       "kind": "box",
       "title": "Each month",
-      "html": "<ol>\n        <li>In the month list in the header, choose <b>+ Create next month</b>. The carry-over from the end of last month (the last few days where run-length rules are used), running totals and weekday patterns marked to carry forward are brought across.</li>\n        <li><b>1 Month → Month</b>: holidays (can be filled in from the facility's calendar), this month's target counts, and anything already fixed.</li>\n        <li><b>1 Month → Per-person calendar</b>: for each person, unavailable days, paid leave, days to avoid if possible, wishes, fixed assignments and, where used, daytime duties. <b>Fixed assignments</b> lets you enter everything already decided, slot by slot.</li>\n        <li><b>2 Solve</b>. The input is checked first and any contradiction is reported by name with a suggested fix — including how many days are off when the head count does not match the slots. If there is no solution, the conflicting rules are diagnosed.</li>\n        <li><b>3-1 Result</b> shows the verification and totals; <b>3-2</b> shows each person's calendar, with post-night days and days off. Set the label to Final when the roster is agreed.</li>\n        <li>To adjust after publishing, solve again with <b>Keep the current result and change as little as possible</b> (on by default). Changed slots are shown in red in the docx and the report.</li>\n      </ol>\n      <p class=\"note\">\"Days to avoid if possible\" are avoided by penalty. A penalty also applies when the person's shift count falls below what it would be without the request, so requests are unlikely to reduce anyone's load (this is a penalty, not a guarantee).</p>"
+      "html": "<ol>\n        <li>In the month list in the header, choose <b>+ Create next month</b>. The carry-over from the end of last month (the last few days where run-length rules are used), running totals and weekday patterns marked to carry forward are brought across.</li>\n        <li><b>1 Month → Month</b>: holidays (can be filled in from the facility's calendar), this month's target counts, and anything already fixed.</li>\n        <li><b>1 Month → Per-person calendar</b>: for each person, unavailable days, paid leave, days to avoid if possible, wishes, fixed assignments and, where used, daytime duties. <b>Fixed assignments</b> lets you enter everything already decided, slot by slot.</li>\n        <li><b>2 Solve</b>. The input is checked first and any contradiction is reported by name with a suggested fix — including how many days are off when the head count does not match the slots. If there is no solution, the conflicting rules are diagnosed.</li>\n        <li><b>3-1 Result</b> shows the verification and totals; <b>3-2</b> shows each person's calendar, with post-night days and days off. The status line at the top of the result gathers the four things you need to decide whether to adopt it: saved or not, solved from the current input or not, verification with the current settings (violations and allowances due to fixed assignments), and whether optimality is proven or the time ran out. Set the label to Final when the roster is agreed.</li>\n        <li>To adjust after publishing, solve again with <b>Keep the current result and change as little as possible</b> (on by default). Changed slots are shown in red in the docx and the report.</li>\n      </ol>\n      <p class=\"note\">\"Days to avoid if possible\" are avoided by penalty. A penalty also applies when the person's shift count falls below what it would be without the request, so requests are unlikely to reduce anyone's load (this is a penalty, not a guarantee).</p>"
     },
     "trouble": {
       "kind": "box",

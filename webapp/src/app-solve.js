@@ -95,7 +95,7 @@
       return;
     }
     state.month.plugins_used = T.plugins.ruleIds().filter(id => T.ruleState(state.rules, id) !== "off"); // プラグインの規則のうち使ったもの（無い環境で開いたときの入力チェック用）
-    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges, plugins: T.plugins.stamp(), build: T.BUILD_ID }; // plugins: 実行時に読んだプラグインの名前と中身の印（あとで同じ規則で計算したか確かめる用）
+    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges, plugins: T.plugins.stamp(), build: T.BUILD_ID, input_sig: A.inputSig() }; // input_sig: 計算時の入力（月＋設定）の署名。結果画面で「いまの入力で計算した結果か」を示す（plugins_used を書いた後の値。runSig との一致は上で確認済み） // plugins: 実行時に読んだプラグインの名前と中身の印（あとで同じ規則で計算したか確かめる用）
     A.save();
     let rep; try { rep = T.buildReport(P, res.asg, { status: res.status, seconds: res.seconds, avoidRef: res.avoidRef, baseAsg: markChanges ? baseAsg : null }); } catch (e) { log(T.t("結果の検算・表示でエラーが起きました: {e}。設定（名簿・専門業務の必要人数）を確認してください", { e: e && e.message || e })); return; }
     log(T.t("必須条件の違反 {n} 件", { n: rep.V.length }) + (rep.W && rep.W.length ? T.t("、固定指定により許容した条件 {n} 件（要確認）", { n: rep.W.length }) : "") + T.t("。「3-1 結果」タブを開いてください。"));
@@ -119,10 +119,22 @@
     let P; try { P = new T.Problem(state.rules, state.month); } catch (e) { $("#result").innerHTML = `<p>${esc(T.t("入力に問題があります: {e}", { e }))}</p>`; return; }
     let rep; try { rep = T.buildReport(P, r.asg, { status: r.status, seconds: r.seconds, avoidRef: r.avoid_ref, baseAsg: r.mark_changes ? r.base_asg : null }); } catch (e) { $("#result").innerHTML = `<p class="ng">${esc(T.t("結果の検算・表示でエラーが起きました: {e}。設定（名簿・専門業務の必要人数）を確認するか、再計算してください", { e: e && e.message || e }))}</p>`; return; }
     const vers = state.month.doc_versions || [];
-        const mainHtml = `<p class="note">${esc(T.t("計算日時 {at}　この結果は入力を変えても保持されます。入力を変えた場合は再計算してください。", { at: r.at ? new Date(r.at).toLocaleString(T.dateLocale()) : "" }))}</p>` + (vers.length ? `<p class="note">${esc(T.t("書き出した版: {list}", { list: vers.map(v => T.t("v{ver}（{label}、{at}）", { ver: v.ver, label: T.t(v.label || ""), at: new Date(v.at).toLocaleString(T.dateLocale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) })).join(T.listSep()) }))}</p>` : "") + rep.sections.map(s => `<section id="${s.id}"><h3>${esc(s.title)}</h3>${s.html}</section>`).join("");
+    const mainHtml = statusStrip(r, rep) + `<p class="note">${esc(T.t("計算日時 {at}　この結果は入力を変えても保持されます。入力を変えた場合は再計算してください。", { at: r.at ? new Date(r.at).toLocaleString(T.dateLocale()) : "" }))}</p>` + (vers.length ? `<p class="note">${esc(T.t("書き出した版: {list}", { list: vers.map(v => T.t("v{ver}（{label}、{at}）", { ver: v.ver, label: T.t(v.label || ""), at: new Date(v.at).toLocaleString(T.dateLocale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) })).join(T.listSep()) }))}</p>` : "") + rep.sections.map(s => `<section id="${s.id}"><h3>${esc(s.title)}</h3>${s.html}</section>`).join("");
     // 結果は2画面（ヘッダーのタブ 3-1 結果／3-2 医師別カレンダー で切り替える。どちらも #result の中）
     $("#result").innerHTML = `<div id="resMain"${resSub === "resMain" ? "" : " hidden"}>${mainHtml}</div><div id="resCal"${resSub === "resCal" ? "" : " hidden"}><section id="docCal"></section></div>`;
     try { renderDocCal(P, r.asg); } catch (e) { const b = $("#docCal"); if (b) b.innerHTML = ""; }
+  }
+  // 結果の状態の 1 行（採用の判断に要る別々の情報をまとめて出す）: 保存の状態／計算時の入力と同じか／計算後にプラグインが変わっていないか／いまの設定での検算（違反・固定指定による許容）／最適性（証明済みか時間切れか）
+  function statusStrip(r, rep) {
+    const items = [];
+    items.push(A.isDirty() ? ["warn", T.t("未保存の変更あり")] : ["ok", T.t("保存済み")]);
+    if (!r.input_sig) items.push(["", T.t("計算時の入力: 記録なし（旧形式の結果）")]);
+    else items.push(r.input_sig === A.inputSig() ? ["ok", T.t("いまの入力で計算した結果")] : ["warn", T.t("計算後に入力が変わっています（再計算が必要）")]);
+    { const now = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), res = Array.isArray(r.plugins) ? JSON.stringify(r.plugins) : null; if (res !== null && res !== now) items.push(["warn", T.t("計算後にプラグインが変わっています（再計算が必要）")]); }
+    items.push(rep.V.length ? ["ng", T.t("いまの設定での検算: 違反 {n} 件", { n: rep.V.length })] : ["ok", T.t("いまの設定での検算: 違反なし")]);
+    if (rep.W && rep.W.length) items.push(["warn", T.t("固定指定により許容 {n} 件（要確認）", { n: rep.W.length })]);
+    items.push(r.status === "Optimal" ? ["ok", T.t("最適性: 証明済み")] : ["warn", T.t("最適性: 未確認（{st}。時間内に見つかった最良の解）", { st: r.status || "" })]);
+    return `<p class="status-strip">${items.map(([c, t]) => `<span class="${c}">${esc(t)}</span>`).join("")}</p>`;
   }
   // 医師別の当番カレンダー（結果タブの先頭。日勤・夜勤=赤系、OC=黄。外来・病棟番・外勤・不在は午前／午後を添えて淡色で表示）
 

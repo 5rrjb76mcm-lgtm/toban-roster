@@ -55,6 +55,10 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     assert.strictEqual(JSON.stringify(x.A.state.result.plugins.map(s => s.split("#")[0])), JSON.stringify(["rules/ver.js"]), "読んだプラグインの印を結果に残す"); // vm の配列は別の realm なので JSON で比べる
     assert.ok(x.A.state.month.plugins_used.includes("local.versioned.rule"));
     assert.strictEqual(x.A.solving, false); assert.strictEqual(x.A.state.result.build, x.T.BUILD_ID, "本体の印も結果に残す");
+    // 結果画面の状態の行: 保存／いまの入力で計算したか／検算／最適性
+    x.A.renderResult(); let html = x.el("#result").innerHTML; assert.ok(/status-strip/.test(html) && /いまの入力で計算した結果/.test(html) && /検算: 違反なし/.test(html) && /最適性: 証明済み/.test(html), "状態の行: " + html.slice(0, 300));
+    x.A.state.month.notes = "変更"; x.A.renderResult(); html = x.el("#result").innerHTML; assert.ok(/計算後に入力が変わっています/.test(html), "入力が変わると知らせる");
+    x.A.state.month.notes = ""; x.A.state.result.status = "TimeLimit"; x.A.renderResult(); assert.ok(/最適性: 未確認/.test(x.el("#result").innerHTML), "時間切れは未確認");
     x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:site#h1"), "組み立て時のプラグインの印も結果に残す"); x.T.PLUGINS = [];
   }
   { // 計算中の月の切替・プラグインの読み直しの受付（A.solving）
