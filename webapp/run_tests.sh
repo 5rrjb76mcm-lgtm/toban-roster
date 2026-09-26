@@ -39,6 +39,7 @@ run test_prevconn_node.js "$HP"
 run test_lint_node.js "$HP"
 run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
+run test_spec_examples_node.js
 run test_plugins_node.js "$HP"
 run ../plugin-example/test_local_data_node.js
 # 実ブラウザの通し試験（Playwright + インストール済みの Chrome）。組み立てた HTML を一時ファイルに作って使う。Playwright か Chrome が無ければ試験の側が省略と表示する

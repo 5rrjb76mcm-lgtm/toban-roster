@@ -115,6 +115,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `test_browser_e2e.js` — 実ブラウザの通し試験（Playwright ＋ インストール済みの Google Chrome、ヘッドレス）。編集→保存→閉じる→再読込、同名の別フォルダへ切替、プラグイン欠落時の計算・出力停止、共有用書き出しの 4 本を、画面の操作から保存されたファイルまで確かめる（約 30 秒）。フォルダは Node 側に置いた偽の FileSystemDirectoryHandle。`cd ~/.toban-test && npm i playwright` で入れると `run_tests.sh` が走らせる（無ければ省略）
 - `lint_same_node.js` — 入力チェックを部品に移すときの確認。git の版と いまの src で、見本の施設とわざと矛盾を入れた月の指摘の集合が同じかを比べる（`node lint_same_node.js HEAD`）
 - `lp_same_node.js` — 規則を部品に移すときの確認。git の版と いまの src で、解く側に渡す LP の文字列が同じかを 8 設定で比べる（`node lp_same_node.js HEAD`）
+- `test_spec_examples_node.js` — 仕様の正解例。人が規則の文から決めた期待値（枠の人数・違反か許容か・減点の額・按分の目安）を、検算（`T.check`）と減点（`T.penalty`）の結果と直接突き合わせる 10 例（枠の充足、不可と固定の許容、複数名の枠、月またぎの明け休み、勤務帯ごとの連続、連勤、同日 2 枠、当月目標、0.5 人換算の按分、夜勤の希望）。3 実装の一致試験が同じ解釈違いを見逃す穴を補う
 - `test_brute_node.js` — 総当たりとの突き合わせ。一度解いた割当のうち数枠（窓）だけを空け、窓に入りうる割当をすべて並べて、検算で規則を満たすものを `penalty` で採点した最小値と、同じ窓を HiGHS で解いた最適値が一致することを確かめる（見本 4 施設、15 窓、約 23 万通り）。あわせて、規則を満たす割当（50 通り以下なら全部、多ければ 30 通り）を全枠固定で解き、解く側が最適でない割当まで禁止していないかを見る。`solve` の `pin` は一部の枠だけでもよい（無い枠は固定しない）
 - 画面の側の約束（新しい操作を足す人へ）: 状態を切り替える操作（月・データの読込・フォルダ・言語・プラグイン）は `A.transition(kind, fn)` に処理を渡す（計算中は断り、進行中の保存を待つ）。フォルダへの保存は `A.prepareSave` → `A.writeSave` → `A.commitSave` の 3 段階（`docs/rule-modules.md` §8）
 - `build.py --check` — 画面（`app-*.js`）の相互参照の検査（`run_tests.sh` の先頭で実行。組み立て時にも同じ検査が走る）
