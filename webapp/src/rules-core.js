@@ -17,7 +17,6 @@
   // 登録。同じ id が既にあればその場所に上書き（model.js の一覧にプラグインの実装を重ねる）、無ければ order の位置に挿す
   function register(def) {
     if (!def || !def.id) throw new Error("規則のプラグインに id がありません");
-    if (T.hookErrors) for (const k of [...T.hookErrors.keys()]) if (k.startsWith(def.id + ":")) T.hookErrors.delete(k); // 登録し直したら独自データの変換の失敗の記録は消す（次の整形で再評価）
     const impl = HOOKS.some(k => typeof def[k] === "function");
     if (impl) { // 実装を持つプラグインは、揃っているかを確かめる（登録の検査）
       if (def.api !== API) throw new Error(`規則のプラグイン ${def.id}: api が ${def.api}（本体は ${API}）`);
@@ -30,7 +29,9 @@
       { const seen = new Set([def.id]); const walk = id => { for (const n of (byId[id] || {}).needs || []) { if (n === def.id) throw new Error(`規則のプラグイン ${def.id}: needs が循環しています（${[...seen, n].join(" → ")}）`); if (!seen.has(n)) { seen.add(n); walk(n); } } }; for (const n of def.needs || []) walk(n); }
     }
     const cur = byId[def.id];
-    if (cur) Object.assign(cur, def);
+    if (cur) { // 同じ id の登録し直し。控え（model.js の一覧 {id, group}）の上に実装を重ねるときは足す。実装の上に実装を重ねるとき（プラグインの読み直し）は入れ替える（無くなった関数やフックを残さない。参照は保つ）
+      if (impl && HOOKS.some(k => typeof cur[k] === "function")) for (const k of Object.keys(cur)) if (!(k in def)) delete cur[k];
+      Object.assign(cur, def); }
     else { const i = defs.findIndex(d => (d.order ?? 0) > (def.order ?? 0)); if (def.order == null || i < 0) defs.push(def); else defs.splice(i, 0, def); byId[def.id] = def; }
     const d = byId[def.id];
     if (T.pluginSource) d.source = T.pluginSource; // プラグインの出どころ（読み込み中のファイル名）。同じ id を別のファイルが登録し直したら後の方

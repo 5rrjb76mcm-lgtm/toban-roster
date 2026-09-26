@@ -192,8 +192,7 @@
     const used = ((P.m || {}).plugins_used || []).filter(id => !T.RULE_BY_ID[id]); // プラグインの規則で計算した月を、プラグインなしで開いている
     const onButAbsent = Object.entries((P.rules || {}).rule_states || {}).filter(([id, st]) => st && st !== "off" && !T.RULE_BY_ID[id]).map(([id]) => id); // 設定で使うことになっているのに登録が無い
     const missing = [...new Set(used.concat(onButAbsent))]; if (missing.length) push("LINT_PLUGIN_MISSING", { who: missing.join("・") });
-    { const tag = P.m && P.m.year ? `${P.m.year}${String(P.m.month).padStart(2, "0")}` : `${P.year}${String(P.month).padStart(2, "0")}`; // 独自データの変換（normalize / normalizeMonth）が、この設定・この月について失敗している（フックが今の実装に無ければ出さない）
-      for (const e of (T.hookErrors || new Map()).values()) { const def = T.RULE_BY_ID[e.id]; if (!def || typeof def[e.hook] !== "function") continue; if (e.tag !== "rules" && e.tag !== tag) continue; push("LINT_PLUGIN_HOOK", { who: e.id, hook: e.hook, err: e.err }); } }
+    if (T.hookCheck) for (const e of T.hookCheck(P.rules, P.m)) push("LINT_PLUGIN_HOOK", { who: e.id, hook: e.hook, err: e.err }); // 独自データの変換（normalize / normalizeMonth）が、この設定・この月そのものに対して失敗する（複製で試す。記録ではなく毎回確かめる）
   }
   const lintPlugins = P => { const out = []; pluginChecks(P, pusher(P, out)); return out; };
   function lint(P) {

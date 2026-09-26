@@ -73,24 +73,22 @@ assert.ok(!("toban_profile" in A.state.rules));
     const m = T.normalizeMonth({ year: 2026, month: 11 }, r); assert.deepStrictEqual(m.local_hooks, { days: [] }, "normalizeMonth が月の値を補う");
     Object.assign(A.state, { rules: r, month: m, result: null, base: null }); A.renameDoctor("Fictional Staff A", "Fictional Staff Z"); assert.deepStrictEqual(r.local_hooks.by_name, { "Fictional Staff Z": 1 }, "rename が名簿の欄以外のデータを追随させる");
     assert.ok(calls.includes("normalize") && calls.includes("normalizeMonth") && calls.includes("rename")); } finally { T.RULE_DEFS.pop(); Object.assign(A.state, { rules }); } }
-// フックが途中で失敗しても元のデータは壊れない（複製で試して成功時だけ採用）。失敗は入力チェック（LINT_PLUGIN_HOOK）が知らせ、改名は取り消される
-{ const bad = { id: "local.test.badhook", states: ["hard", "off"], def: "off", normalize(R) { delete R.local_bad.old_max; throw new Error("boom"); }, normalizeMonth(m) { delete m.local_bad.old; throw new Error("boom"); }, rename(R, m, o, n) { delete R.local_bad.by_name[o]; throw new Error("boom"); } };
+// フックが途中で失敗しても元のデータは壊れない（複製で試して成功時だけ採用）。失敗は入力チェック（LINT_PLUGIN_HOOK）が「その設定・その月そのもの」で毎回確かめて知らせ、改名は取り消される
+{ const bad = { id: "local.test.badhook", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, normalize(R) { delete R.local_bad.old_max; throw new Error("boom"); }, normalizeMonth(m) { if (m.local_bad && m.local_bad.old !== undefined) { delete m.local_bad.old; throw new Error("boom"); } }, rename(R, m, o, n) { delete R.local_bad.by_name[o]; throw new Error("boom"); } };
   T.RULE_DEFS.push(bad); T.RULE_BY_ID[bad.id] = bad;
   try { const r = JSON.parse(before); r.local_bad = { old_max: 1, by_name: { "Fictional Staff A": 1 } }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_bad, { old_max: 1, by_name: { "Fictional Staff A": 1 } }, "normalize が途中で失敗しても元のまま");
     const m = T.normalizeMonth({ year: 2026, month: 11, local_bad: { old: 2 } }, r); assert.deepStrictEqual(m.local_bad, { old: 2 }, "normalizeMonth も元のまま");
-    const has = pre => [...T.hookErrors.keys()].some(k => k.startsWith(pre)); assert.ok(has("local.test.badhook:normalize:rules") && has("local.test.badhook:normalizeMonth:202611"), "失敗を対象（設定／月）ごとに記録: " + [...T.hookErrors.keys()].join(","));
-    const pl = T.lintPlugins(new T.Problem(r, m)); assert.ok(pl.filter(x => x.code === "LINT_PLUGIN_HOOK").length === 2, "入力チェックが知らせる: " + pl.map(x => x.code).join(","));
+    const hooks = (R, mm) => T.lintPlugins(new T.Problem(R, mm)).filter(x => x.code === "LINT_PLUGIN_HOOK").map(x => x.args.hook).sort();
+    assert.deepStrictEqual(hooks(r, m), ["normalize", "normalizeMonth"], "入力チェックが両方知らせる");
+    // 同じ年月の別のデータ（統合で読んだ相手の月）の整形が成功しても、手元の月の判定は変わらない（対象そのもので毎回確かめる）
+    const theirs = T.normalizeMonth({ year: 2026, month: 11, local_bad: {} }, r); assert.deepStrictEqual(theirs.local_bad, {}); assert.deepStrictEqual(hooks(r, m), ["normalize", "normalizeMonth"], "相手の月が通っても手元の失敗は残る");
     Object.assign(A.state, { rules: r, month: m, result: null, base: null }); const j = JSON.stringify(r) + JSON.stringify(m); const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x));
     assert.strictEqual(A.renameDoctor("Fictional Staff A", "Fictional Staff Z"), false, "追随に失敗したら改名しない"); assert.strictEqual(JSON.stringify(r) + JSON.stringify(m), j, "何も変えない"); assert.ok(/改名を取り消しました/.test(toasts.pop())); A.toast = t0;
-    bad.normalize = R => { R.local_bad.max = R.local_bad.old_max; delete R.local_bad.old_max; }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_bad, { max: 1, by_name: { "Fictional Staff A": 1 } }, "直れば採用"); assert.ok(!has("local.test.badhook:normalize:"), "成功で消える");
-    // 月 A で失敗 → 月 B で成功しても、月 A の記録は残る（月 B の入力チェックには出ない）
-    bad.normalizeMonth = mm => { (mm.local_bad ||= {}).n ??= 1; }; // 直した版（月 A はまだ整形し直していないので、A の記録は残っているべき）
-    const mB = T.normalizeMonth({ year: 2026, month: 12, local_bad: {} }, r); assert.ok(has("local.test.badhook:normalizeMonth:202611") && !has("local.test.badhook:normalizeMonth:202612"), "対象ごとの記録: " + [...T.hookErrors.keys()].join(","));
-    assert.ok(T.lintPlugins(new T.Problem(r, m)).some(x => x.code === "LINT_PLUGIN_HOOK"), "月 A では出る"); assert.ok(!T.lintPlugins(new T.Problem(r, mB)).some(x => x.code === "LINT_PLUGIN_HOOK"), "月 B では出ない");
-    // フックを取り除いた版を同じ id で登録し直すと、古い記録は消えて停止が解ける
+    bad.normalize = R => { R.local_bad.max = R.local_bad.old_max; delete R.local_bad.old_max; }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_bad, { max: 1, by_name: { "Fictional Staff A": 1 } }, "直れば採用"); assert.deepStrictEqual(hooks(r, m), ["normalizeMonth"], "直った方は出ない");
+    // フックを取り除いた版を同じ id で登録し直すと止まらない
     T.rules.register({ id: "local.test.badhook", api: 1, order: 998, group: "basic", label: "x", states: ["hard", "off"], def: "off", messages: { X: { en: "x" } }, solve() { }, check() { }, penalty() { } });
-    assert.ok(!has("local.test.badhook:"), "登録し直しで記録が消える"); T.normalizeMonth(m, r); assert.ok(!T.lintPlugins(new T.Problem(r, m)).some(x => x.code === "LINT_PLUGIN_HOOK"), "フックの無い版では止まらない"); }
-  finally { T.rules.unregister("local.test.badhook"); const i = T.RULE_DEFS.indexOf(bad); if (i >= 0) T.RULE_DEFS.splice(i, 1); delete T.RULE_BY_ID[bad.id]; T.hookErrors.clear(); Object.assign(A.state, { rules }); } }
+    assert.deepStrictEqual(hooks(r, m), [], "フックの無い版では止まらない"); }
+  finally { T.rules.unregister("local.test.badhook"); const i = T.RULE_DEFS.indexOf(bad); if (i >= 0) T.RULE_DEFS.splice(i, 1); delete T.RULE_BY_ID[bad.id]; Object.assign(A.state, { rules }); } }
 // 改名の取り消しは、名簿の読み戻し全体（欄の集計 friday_night_min・weekend_dayshift_wish も）に効く: 画面相当の行から readSettings を通す
 { const r = JSON.parse(before); r.rule_states.friday_night_min = "hard"; r.friday_night_min = { "Fictional Staff A": 1 }; r.weekend_dayshift_wish = ["Fictional Staff A"]; T.fillDefaultRules(r);
   const m = T.normalizeMonth({ year: 2026, month: 11 }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
