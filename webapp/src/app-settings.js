@@ -338,7 +338,7 @@
     // 名簿の読み戻しの順: (1) 行の氏名を確定する（氏名は個人の識別子なので一意にする。変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）
     // (2) 改名の追随（名簿の欄の rename と規則の rename）を複製で試し、失敗する改名は取り消す (3) 行を読む（土台は現在の職員。名前は確定した新しい名前）
     // (4) 読んだ後の設定・月に改名を適用する（プラグインの追随が、画面に残っていた古い値を読んだ後に効くように。失敗したら読み戻し全体を取り消す）
-    const backup = { rules: JSON.parse(JSON.stringify(R)), month: JSON.parse(JSON.stringify(state.month)) };
+    const backup = JSON.parse(JSON.stringify({ rules: R, month: state.month, result: state.result, base: state.base, baseRules: state.baseRules })); // 改名は結果・統合の基準にも及ぶので、取り消すときは全部戻す
     const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
     for (const r of rows) { if (r.old === r.name) continue;
@@ -358,7 +358,8 @@
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
     for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
-      replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return; }
+      replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
+      A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return; }
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
     readHardRules(R);
     A.ensureMonth(state.month); A.save();

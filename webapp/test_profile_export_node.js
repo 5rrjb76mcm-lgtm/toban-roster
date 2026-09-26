@@ -130,6 +130,13 @@ assert.ok(!("toban_profile" in A.state.rules));
     await new Promise(res => setTimeout(res, 0)); A.state.month.notes = "後から書いたメモ"; const j = JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.month.notes, A.state.result]);
     const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x)); A.undo(); A.toast = t0;
     assert.strictEqual(JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.month.notes, A.state.result]), j, "何も変えない"); assert.ok(toasts.some(x => /取り消せません/.test(x)), toasts.join("|")); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [5]); }
+  // 複数行の改名で 1 件目が成功し 2 件目の適用（読んだ後）が失敗したら、名簿・月・結果・統合の基準をまとめて操作前に戻す
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const B_ = r.doctors[1].name; const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [5], [B_]: [6] } }, r);
+    Object.assign(A.state, { rules: r, month: m, result: { asg: { "1:night": { work: A_, oc: [] }, "2:night": { work: B_, oc: [] } } }, base: { duty_days: { [A_]: {}, [B_]: {} } }, baseRules: null });
+    let trial = 0; const def = { id: "local.test.secondfail", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, rename(R, mm, o, n) { if (o === B_ && ++trial > 1) throw new Error("second apply fails"); } }; // B の試行は通り、読んだ後の適用で失敗する
+    T.RULE_DEFS.push(def); T.RULE_BY_ID[def.id] = def; const j = JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.result, A.state.base]);
+    try { withRows(mkRows(r, ["Fictional Staff Z", "Fictional Staff Y"]), toasts => { A.readSettings(); assert.ok(toasts.some(x => /読み戻しを取り消しました/.test(x)), toasts.join("|")); }); } finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[def.id]; }
+    assert.strictEqual(JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.result, A.state.base]), j, "1 件目の改名も含めて全部戻る"); }
   // ヘッダーの月選択から翌月を作る（空の月／引き継ぎ）と、前の月の取り消し履歴は消える
   for (const how of ["empty", "prev"]) { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null, meta: null });
     A.saveBeforeSwitch = async () => true; A.fsOK = () => false; A.dirHandle = null; A.storedHandle = null; A.choose = async () => how; A.showTab = () => { }; A.renderSettingsMonth = () => { }; A.renderAll = () => { }; A.renderHeader = () => { }; A.toast = () => { };
