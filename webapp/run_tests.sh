@@ -40,6 +40,12 @@ run test_lint_node.js "$HP"
 run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
 run test_plugins_node.js "$HP"
+# 実ブラウザの通し試験（Playwright + インストール済みの Chrome）。組み立てた HTML を一時ファイルに作って使う。Playwright か Chrome が無ければ試験の側が省略と表示する
+if [ -x "$PY" ]; then
+  E2E_HTML=$(mktemp -d)/toban_e2e.html
+  if "$PY" build.py --out "$E2E_HTML" >/dev/null 2>&1; then run test_browser_e2e.js "$E2E_HTML"; else echo "FAIL 通し試験用の組み立てに失敗"; fail=1; fi
+  rm -f "$E2E_HTML"
+else echo "--  実ブラウザの通し試験は省略（../tools/.venv が無いので組み立てられない）"; fi
 PY=../tools/.venv/bin/python
 PYSKIP=""
 if [ -x "$PY" ] && [ -f ../tools/toban.py ]; then
