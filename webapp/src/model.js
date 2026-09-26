@@ -725,11 +725,13 @@
   // 重みの鍵の改名（施設ごとの役割の文字 I/A/Y を含む名前をやめた。2026-09-23）。古い保存データは読み込み時に移す
   const WEIGHT_RENAMES = { same_day_IA_soft: "same_day_charge_other_soft", same_day_AY: "same_day_other_junior", same_day_AA: "same_day_other_both" };
   // プラグインのフック（normalize / normalizeMonth）は対象の複製に対して呼び、成功したときだけ中身を差し替える（途中で失敗しても元のデータを壊さない。参照は保つ）。
-  // 失敗は T.hookErrors（"規則id:フック名" → 文面）に残し、入力チェック（LINT_PLUGIN_HOOK）が知らせて計算と帳票の保存を止める。次に成功すれば消える
+  // 失敗は T.hookErrors に残し（鍵は "規則id:フック名:対象"。対象は設定なら rules、月なら年月）、入力チェック（LINT_PLUGIN_HOOK）がその対象のデータについて知らせて計算と帳票の保存を止める。
+  // 同じ対象で次に成功すれば消える。規則を登録し直す（プラグインの読み直し）と、その規則の記録は消えて次の整形で再評価される（フックが無くなれば出ない）
   T.hookErrors = new Map();
+  const hookTag = (hook, target) => hook === "normalizeMonth" ? `${target.year}${String(target.month).padStart(2, "0")}` : "rules";
   function runHook(def, hook, target, ...rest) {
-    const key = `${def.id}:${hook}`; let copy;
-    try { copy = JSON.parse(JSON.stringify(target)); def[hook](copy, ...rest); } catch (e) { T.hookErrors.set(key, (e && e.message) || String(e)); return false; }
+    const tag = hookTag(hook, target), key = `${def.id}:${hook}:${tag}`; let copy;
+    try { copy = JSON.parse(JSON.stringify(target)); def[hook](copy, ...rest); } catch (e) { T.hookErrors.set(key, { id: def.id, hook, tag, err: (e && e.message) || String(e) }); return false; }
     T.hookErrors.delete(key); for (const k of Object.keys(target)) delete target[k]; Object.assign(target, copy); return true;
   }
   T.runHook = runHook;

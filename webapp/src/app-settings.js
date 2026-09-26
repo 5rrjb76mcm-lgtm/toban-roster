@@ -337,15 +337,15 @@
     for (const c of cols) if (c.begin) acc[c.key] = c.begin(R);
     const docs = [];
     document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => {
-      const g = f => tr.querySelector(`[data-f="${f}"]`); const name = g("name").value.trim(); if (!name) return;
+      const g = f => tr.querySelector(`[data-f="${f}"]`); let name = g("name").value.trim(); if (!name) return;
       const old = oldNames[+tr.dataset.i], prev = prevDocs[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
+      if (old && old !== name && !renameDoctor(old, name)) name = old; // 改名の成否を先に確定してから欄を読む（本体とプラグインの追随をまとめて行い、失敗したら旧名のまま。知らせは renameDoctor）
       const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota: g("quota") ? (+g("quota").value || 0) : (+prev.quota || 0) }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未知の値として残す）
       if (g("share")) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
       // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま
       for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
-      if (old && old !== name && !renameDoctor(old, name)) d.name = old; // 本体とプラグイン（欄・規則）の追随をまとめて行う。失敗したら改名しない（知らせは renameDoctor）
     });
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
@@ -521,5 +521,5 @@
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, readSettings }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

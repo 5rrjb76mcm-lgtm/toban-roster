@@ -137,10 +137,10 @@
   const setDir = h => { A.dirHandle = h; A.dirGen++; };
   const openFolderUI = () => A.transition("folder", openFolder);
   const reconnectFolderUI = () => A.transition("folder", reconnectFolder);
-  async function reconnectFolder() {
+  async function reconnectFolder() { // 再接続を断られたら別のフォルダを選ぶ。その読込（プラグインの読取りまで）が終わるまで待つ（窓口の保護が途中で切れないように return する）
     if (!A.storedHandle) return openFolder();
     try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("再接続できませんでした: {err}", { err: e && e.message || e })); }
-    openFolder();
+    return openFolder();
   }
   async function openFolder() {
     if (!fsOK()) return alert(T.t("このブラウザではフォルダを直接開けません（Edge/Chrome で開いてください）。ダウンロードと「データを読込」で代用できます。"));

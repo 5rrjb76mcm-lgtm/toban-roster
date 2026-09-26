@@ -209,12 +209,12 @@
       }
       if (!ok) asg = null;
     }
-    return { status: st, asg, objective: sol.ObjectiveValue == null ? sol.ObjectiveValue : sol.ObjectiveValue + built.lp.objC, seconds: sec, vars: built.lp.vars.size, cons: built.lp.cons.length };
+    return { status: st, asg, objective: sol.ObjectiveValue == null ? sol.ObjectiveValue : sol.ObjectiveValue + built.lp.objC, seconds: sec, vars: built.lp.vars.size, cons: built.lp.cons.length, gap }; // gap: 実際に HiGHS へ渡した許容差
     };
     // mip_rel_gap: 目的関数値の許容誤差。規模の大きい施設（1枠複数名など）は、同じ点数の解が多くて
     // 最適性の証明に時間がかかる。既定 0（証明する）。規則 solver.mip_rel_gap か opts で緩められる
     const gap = +(opts.mipGap ?? (P.rules.solver || {}).mip_rel_gap ?? 0) || 0;
-    const sol = highs.solve(text, Object.assign({ time_limit: opts.timeLimit || 60, output_flag: false }, gap > 0 ? { mip_rel_gap: gap } : {}));
+    const sol = highs.solve(text, { time_limit: opts.timeLimit || 60, output_flag: false, mip_rel_gap: gap }); // 0 も明示して渡す（省略すると HiGHS の既定 1e-4 になり「許容差 0」と食い違う）
     return (sol && typeof sol.then === "function") ? sol.then(post) : post(sol);
   }
 

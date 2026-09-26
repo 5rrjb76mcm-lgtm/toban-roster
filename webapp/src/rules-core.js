@@ -17,6 +17,7 @@
   // 登録。同じ id が既にあればその場所に上書き（model.js の一覧にプラグインの実装を重ねる）、無ければ order の位置に挿す
   function register(def) {
     if (!def || !def.id) throw new Error("規則のプラグインに id がありません");
+    if (T.hookErrors) for (const k of [...T.hookErrors.keys()]) if (k.startsWith(def.id + ":")) T.hookErrors.delete(k); // 登録し直したら独自データの変換の失敗の記録は消す（次の整形で再評価）
     const impl = HOOKS.some(k => typeof def[k] === "function");
     if (impl) { // 実装を持つプラグインは、揃っているかを確かめる（登録の検査）
       if (def.api !== API) throw new Error(`規則のプラグイン ${def.id}: api が ${def.api}（本体は ${API}）`);
