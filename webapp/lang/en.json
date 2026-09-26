@@ -1257,7 +1257,9 @@
     "LINT_PLUGIN_OVERRIDE": "Facility plug-in {name} re-registered rule {who}, which {was} had already defined; the definition read later is in effect",
     "LINT_PLUGIN_OVERRIDE_HINT": "If this is not intended, change the rule id (local.<facility>.<name>) or remove the duplicate file",
     "LINT_RULE_OVERLAP": "Rules \"{who}\" and \"{other}\" cover the same thing and both are in use ({a}, {b})",
-    "LINT_RULE_OVERLAP_HINT": "Settings tab → Build the facility profile → Rules in use: turn one of them off, or keep both if that is what the facility wants"
+    "LINT_RULE_OVERLAP_HINT": "Settings tab → Build the facility profile → Rules in use: turn one of them off, or keep both if that is what the facility wants",
+    "LINT_PLUGIN_HOOK": "The {hook} step of facility plug-in rule {who} failed: {err}. Its data was left unchanged",
+    "LINT_PLUGIN_HOOK_HINT": "Until it succeeds, solving and writing the roster are stopped. Fix the plug-in file under plugins/ and press \"Reload the plug-ins\" on the settings tab, or tell the plug-in's author"
   },
   "help": {
     "about": {
