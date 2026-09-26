@@ -111,6 +111,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `test_penalty_node.js` — 減点の二重実装の突き合わせ。解いた割当について、検算の側で数え直した減点の合計（`check.js` の `penalty`）と、解く側の目的関数の値（同じ割当に全枠を固定して解いた値）が一致することを、見本の施設 4 種と規則の状態を変えた設定 19 通りで確かめる。乱数の重みで崩した割当（`solve` の `jitter`）も使い、どの設定でも 0 点だった項があれば一覧に出す
 - `test_plugins_node.js` — 施設の部品の見本（`../plugin-example`）が登録の検査を通り、解けて、`build.py --plugins` で取り込めるか
 - `test_profile_export_node.js` `test_save_node.js` `test_solve_guard_node.js` — 画面の層の検査（共有用プロファイルの匿名化、フォルダ保存の版と署名・保存中の切替、計算の入口の守り）。DOM・フォルダ・帳票の生成は代替
+- `../plugin-example/test_local_data_node.js` — プラグインの独自データの約束（`plugin-example/README.md` 6）のひな形の試験。施設の `plugins/` に複製して使う。一式では見本のプラグインに対して走らせる
 - `test_browser_e2e.js` — 実ブラウザの通し試験（Playwright ＋ インストール済みの Google Chrome、ヘッドレス）。編集→保存→閉じる→再読込、同名の別フォルダへ切替、プラグイン欠落時の計算・出力停止、共有用書き出しの 4 本を、画面の操作から保存されたファイルまで確かめる（約 30 秒）。フォルダは Node 側に置いた偽の FileSystemDirectoryHandle。`cd ~/.toban-test && npm i playwright` で入れると `run_tests.sh` が走らせる（無ければ省略）
 - `lint_same_node.js` — 入力チェックを部品に移すときの確認。git の版と いまの src で、見本の施設とわざと矛盾を入れた月の指摘の集合が同じかを比べる（`node lint_same_node.js HEAD`）
 - `lp_same_node.js` — 規則を部品に移すときの確認。git の版と いまの src で、解く側に渡す LP の文字列が同じかを 8 設定で比べる（`node lp_same_node.js HEAD`）

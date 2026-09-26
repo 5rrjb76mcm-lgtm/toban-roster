@@ -755,6 +755,7 @@
       for (const [k, v] of Object.entries(def.w0sub || {})) if (R.weights[k] === undefined || R.weights[k] === null || R.weights[k] === "") R.weights[k] = v; // sub の重みの既定（プラグインの規則は見本の重みの表に無いので自分で持つ）
     }
     if (Array.isArray(R.doctors)) { const names = new Set(R.doctors.map(d => d.name)); R.name_order = (R.name_order || []).filter(n => names.has(n)); }
+    for (const def of RULE_DEFS) if (typeof def.normalize === "function") { try { def.normalize(R); } catch (e) { } } // プラグインの独自データの補完・旧形式からの移行（plugin-example/README.md 6）。何度呼んでも同じ結果になるように書く
     return R;
   }
   T.fillDefaultRules = fillDefaultRules;
@@ -778,6 +779,7 @@
     m.exceptions ||= {}; m.targets ||= {}; m.holidays ||= []; m.closure_days ||= []; m.unavailable_other ||= []; m.confirmed_pm_external_night ||= [];
     m.prev_month ||= { last_days: [], last_weekend_charge: null, prev_weekend_charge: null };
     if (Array.isArray(m.avoid) && !m.avoid.length) delete m.avoid;
+    for (const def of RULE_DEFS) if (typeof def.normalizeMonth === "function") { try { def.normalizeMonth(m, rules); } catch (e) { } } // プラグインの月の値の補完・移行（plugin-example/README.md 6）
     return m;
   }
   T.normalizeMonth = normalizeMonth;

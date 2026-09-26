@@ -379,6 +379,7 @@
     const renAsg = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = ren1(v.work); if (v && v.oc) v.oc = v.oc.map(x => x === oldN ? newN : x); } };
     if (state.result) { renAsg(state.result.asg); renAsg(state.result.base_asg); if (state.result.avoid_ref && state.result.avoid_ref[oldN] !== undefined) { state.result.avoid_ref[newN] = state.result.avoid_ref[oldN]; delete state.result.avoid_ref[oldN]; } }
     if (state.base) { const mvb = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } }; mvb(state.base.duty_days); mvb(state.base.regular_duties); mvb(state.base.unavailable_night); mvb(state.base.targets); }
+    for (const d of T.RULE_DEFS || []) if (typeof d.rename === "function") { try { d.rename(state.rules, m, oldN, newN); } catch (e) { } } // プラグインが名簿の欄以外に持つ人ごとのデータ（rules.local_… / month.local_…）も追随させる（plugin-example/README.md 6）
   }
   // ---------- 施設プロファイルの書き出し・読み込み ----------
   // 書き出し: 規則そのもの（施設の構成・規則の状態・重み・値）。月データは含めない。
@@ -513,5 +514,5 @@
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

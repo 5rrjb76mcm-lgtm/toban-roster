@@ -65,4 +65,12 @@ assert.ok(!("toban_profile" in A.state.rules));
   const bad = { id: "local.test.badshare", share() { throw new Error("secret detail"); } }; T.RULE_DEFS.push(bad);
   try { const b0 = JSON.stringify(A.state.rules); assert.throws(() => A.profileForExport(false), e => /local\.test\.badshare/.test(e.message) && !/secret detail/.test(e.message), "失敗した規則の id を知らせ、詳細は出さない"); assert.strictEqual(JSON.stringify(A.state.rules), b0); } finally { T.RULE_DEFS.pop(); }
   Object.assign(A.state, { rules }); }
-console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）OK");
+// 独自データの約束のフック: normalize（設定の補完・移行）、normalizeMonth（月の値）、rename（名簿の欄以外の人ごとのデータの改名）
+{ const calls = []; const def = { id: "local.test.hooks", normalize(R) { calls.push("normalize"); (R.local_hooks ||= {}).max ??= 3; if (R.local_hooks.old !== undefined) { R.local_hooks.limit = R.local_hooks.old; delete R.local_hooks.old; } },
+    normalizeMonth(m, R) { calls.push("normalizeMonth"); (m.local_hooks ||= {}).days ??= []; }, rename(R, m, o, n) { calls.push("rename"); const b = (R.local_hooks || {}).by_name; if (b && b[o] !== undefined) { b[n] = b[o]; delete b[o]; } } };
+  T.RULE_DEFS.push(def);
+  try { const r = JSON.parse(before); r.local_hooks = { old: 5, by_name: { "Fictional Staff A": 1 } }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_hooks, { max: 3, limit: 5, by_name: { "Fictional Staff A": 1 } }, "normalize が既定値の補完と旧形式の移行をする"); const j = JSON.stringify(r); T.fillDefaultRules(r); assert.strictEqual(JSON.stringify(r), j, "冪等");
+    const m = T.normalizeMonth({ year: 2026, month: 11 }, r); assert.deepStrictEqual(m.local_hooks, { days: [] }, "normalizeMonth が月の値を補う");
+    Object.assign(A.state, { rules: r, month: m, result: null, base: null }); A.renameDoctor("Fictional Staff A", "Fictional Staff Z"); assert.deepStrictEqual(r.local_hooks.by_name, { "Fictional Staff Z": 1 }, "rename が名簿の欄以外のデータを追随させる");
+    assert.ok(calls.includes("normalize") && calls.includes("normalizeMonth") && calls.includes("rename")); } finally { T.RULE_DEFS.pop(); Object.assign(A.state, { rules }); } }
+console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename）OK");
