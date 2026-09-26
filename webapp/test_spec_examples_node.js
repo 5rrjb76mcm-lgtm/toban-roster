@@ -65,6 +65,14 @@ test("連勤の上限 4 日: 5 日続けて勤務すると違反 1。6 日続け
   const a = rotation(D); for (const d of [2, 3, 4, 5]) a[`${d}:day`].work = "Dr B"; let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]);
   a["6:day"].work = "Dr B"; r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]); assert.ok(/6/.test(r.V[0]), "6 日と分かる: " + r.V[0]);
 });
+test("連勤の指摘の数え方: 上限 4 で 1〜6 日勤務、1 日だけ固定 → 固定が絡む窓（1〜5 日）は許容 1、絡まない窓（2〜6 日）は違反 1。減点なら窓ごと: 重み 100 × 2 = 200", () => {
+  // 「6 連勤でも 1 件」は各窓の固定の関与が同じときのまとめ表示。関与が違う窓は分けて出る。減点は max+1 日の窓ごと（5 日の窓が 2 つ）
+  const { R, m, D } = base({ states: { run_length_max: "hard" }, rules: { run_length: { max: 4 } }, month: { fixed: { day: { 1: "Dr B" } } } });
+  const a = rotation(D); for (const d of [2, 3, 4, 5, 6]) a[`${d}:day`].work = "Dr B";
+  const r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]); assert.deepStrictEqual(wcodes(r), ["RUN_TOO_LONG"]);
+  const { R: R2, m: m2 } = base({ states: { run_length_max: "soft" }, rules: { run_length: { max: 4 } }, weights: { run_length_over: 100 } });
+  const it = pen(new T.Problem(R2, m2), a); assert.strictEqual(it.run_length_over, 200);
+});
 test("同じ日の 2 枠: 同じ人を同じ日の日勤と夜勤に入れると違反 1。その日勤を固定していれば許容", () => {
   const { R, m, D } = base({ states: { same_day_double: "hard" } }); const a = rotation(D); a["5:night"].work = a["5:day"].work;
   let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["SAME_DAY_DOUBLE"]);
@@ -79,6 +87,13 @@ test("0.5 人換算（比重）: 比重 1・1・1・0.5 の 4 名で 60 枠 → 
   const { R, m, D } = base({ n: 4, share: [1, 1, 1, 0.5] }); const P = new T.Problem(R, m);
   assert.deepStrictEqual(D.map(n => P.targets[n]), [17, 17, 17, 9]); assert.strictEqual(D.reduce((s, n) => s + P.targets[n], 0), 60, "合計は枠の数");
   const { R: R3, m: m3, D: D3 } = base({ n: 3, share: [1, 1, 0.5] }); const P3 = new T.Problem(R3, m3); assert.deepStrictEqual(D3.map(n => P3.targets[n]), [24, 24, 12], "割り切れれば端数なし");
+});
+test("按分の同率: 比重が全員 1 の 5 名で 62 枠（12 月）→ 12.4 ずつ。余り 2 は「履歴の過不足が少ない → 年数が短い → 名簿の順」で決める", () => {
+  const years = [30, 20, 10, 40, 50];
+  const mk = (bal) => { const b = base({ n: 5, share: [1, 1, 1, 1, 1], month: Object.assign({ year: 2026, month: 12, holidays: [] }, bal ? { history: { work_balance: bal } } : {}) }); b.R.doctors.forEach((d, i) => { d.years = years[i]; }); return b; };
+  let { R, m, D } = mk(null); let P = new T.Problem(R, m); assert.strictEqual(P.N, 31); assert.deepStrictEqual(D.map(n => P.targets[n]), [12, 13, 13, 12, 12], "年数の短い 2 人（10・20 年）に");
+  ({ R, m, D } = mk({ [D[4]]: -2 })); P = new T.Problem(R, m); assert.deepStrictEqual(D.map(n => P.targets[n]), [12, 12, 13, 12, 13], "履歴で不足している人が先、次に年数の短い人");
+  ({ R, m, D } = mk(null)); R.doctors.forEach(d => { d.years = 10; }); P = new T.Problem(R, m); assert.deepStrictEqual(D.map(n => P.targets[n]), [13, 13, 12, 12, 12], "全部同じなら名簿の順");
 });
 test("夜勤の希望: 7 日と 8 日を希望し 8 日だけ入った → 叶わなかった 1 件 × 重み 30 = 30", () => {
   const { R, m, D } = base({ states: { wish_night: "soft" }, weights: { wish_night: 30 }, month: { wishes: { night_on: { "Dr B": [7, 8] } } } }); // 基準では 8 日の夜勤が Dr B、7 日は Dr G

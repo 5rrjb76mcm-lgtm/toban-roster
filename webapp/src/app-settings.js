@@ -345,7 +345,7 @@
       for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
-      if (old && old !== name) { renameDoctor(old, name); for (const c of T.rules.columnsAll(R)) if (c.rename) c.rename(R, old, name); } // プラグインの欄が持つ人ごとの一覧も追随させる
+      if (old && old !== name && !renameDoctor(old, name)) d.name = old; // 本体とプラグイン（欄・規則）の追随をまとめて行う。失敗したら改名しない（知らせは renameDoctor）
     });
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
@@ -362,8 +362,13 @@
     R.oncall_requirement = out;
     for (const k of ["day_oc_none", "night_oc_none"]) { const tbl = (m.fixed || {})[k]; if (!tbl) continue; for (const d of Object.keys(tbl)) tbl[d] = [].concat(tbl[d] || []).map(x => x === oldId ? newId : x); }
   }
+  // 改名は月データ・設定の複製に対して行い（本体の追随とプラグインの追随の両方）、全部成功したときだけ採用する。プラグインの追随（columns の rename / 規則の rename）が失敗したら何も変えずに false を返す
+  const replaceInto = (target, src) => { for (const k of Object.keys(target)) delete target[k]; Object.assign(target, src); };
   function renameDoctor(oldN, newN) {
-    const m = state.month; const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
+    const R2 = JSON.parse(JSON.stringify(state.rules)), m2 = JSON.parse(JSON.stringify(state.month));
+    try { for (const c of T.rules.columnsAll(R2)) if (c.rename) c.rename(R2, oldN, newN); for (const d of T.RULE_DEFS || []) if (typeof d.rename === "function") d.rename(R2, m2, oldN, newN); }
+    catch (e) { A.toast(T.t("{who} の改名を取り消しました: プラグインの人ごとのデータの追随に失敗しました（{err}）。プラグインの作成者に知らせてください", { who: oldN, err: e && e.message || e })); return false; }
+    const m = m2; const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
     mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance);
     for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
@@ -379,7 +384,7 @@
     const renAsg = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = ren1(v.work); if (v && v.oc) v.oc = v.oc.map(x => x === oldN ? newN : x); } };
     if (state.result) { renAsg(state.result.asg); renAsg(state.result.base_asg); if (state.result.avoid_ref && state.result.avoid_ref[oldN] !== undefined) { state.result.avoid_ref[newN] = state.result.avoid_ref[oldN]; delete state.result.avoid_ref[oldN]; } }
     if (state.base) { const mvb = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } }; mvb(state.base.duty_days); mvb(state.base.regular_duties); mvb(state.base.unavailable_night); mvb(state.base.targets); }
-    for (const d of T.RULE_DEFS || []) if (typeof d.rename === "function") { try { d.rename(state.rules, m, oldN, newN); } catch (e) { } } // プラグインが名簿の欄以外に持つ人ごとのデータ（rules.local_… / month.local_…）も追随させる（plugin-example/README.md 6）
+    replaceInto(state.month, m2); replaceInto(state.rules, R2); return true; // 採用（参照は保つ。呼ぶ側が R.doctors を読み直しの結果で置き換える）
   }
   // ---------- 施設プロファイルの書き出し・読み込み ----------
   // 書き出し: 規則そのもの（施設の構成・規則の状態・重み・値）。月データは含めない。
@@ -419,7 +424,8 @@
     const name = `profile_${id}${withRoster ? "_with_roster" : ""}.json`, blob = new Blob([JSON.stringify(R, null, 1)], { type: "application/json" });
     if (A.dirHandle) { await A.writeFile(A.dirHandle, name, blob); A.toast(T.t("フォルダに {name} を保存しました", { name })); } else A.download(name, blob);
   }
-  async function importProfile(file) {
+  const importProfile = file => A.transition("data", () => importProfileCore(file));
+  async function importProfileCore(file) {
     let R; try { R = JSON.parse(await file.text()); } catch (e) { return alert(tx("プロファイルのファイルを読めませんでした（JSON の形式ではありません）")); }
     if (!R || typeof R !== "object" || (!R.profile && !Array.isArray(R.doctors))) return alert(tx("施設プロファイルのファイルではありません（profile も doctors もありません）"));
     const label = T.pickLabel((R.profile || {}).label, (R.profile || {}).id || file.name);
@@ -496,13 +502,14 @@
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { pushUndo(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更"); readSettings(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
-    $("#btnApplyRules").addEventListener("click", () => { try { const R = JSON.parse($("#rulesJson").value); if (!R || !Array.isArray(R.doctors)) throw new Error(T.t("doctors（{person}一覧）がありません")); pushUndo("JSON の反映"); state.rules = R; A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } });
+    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const R = JSON.parse($("#rulesJson").value); if (!R || !Array.isArray(R.doctors)) throw new Error(T.t("doctors（{person}一覧）がありません")); pushUndo("JSON の反映"); state.rules = R; A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
     // 既定に戻すのは重みだけ（医師の表・版の表記・その他の設定はそのまま）
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnLoadProfile") loadProfileById($("#setProfile").value); });    $("#btnResetRules").addEventListener("click", () => { if (confirm(T.t("調整目標の重みを既定（配布時の値）に戻します。{person}の表や他の設定は変わりません"))) { pushUndo("重みを既定に戻す"); state.rules.weights = JSON.parse(JSON.stringify(T.DEFAULT_RULES.weights || {})); A.save(); renderSettings(); A.toast(T.t("重みを既定に戻しました")); } });
   }
 
   // 同梱の施設プロファイルを読み込む（設定タブの第 1 段と、月の設定の「設定をこの月の施設に戻す」から）
-  function loadProfileById(id) {
+  const loadProfileById = id => A.transition("data", () => loadProfileCore(id)); // 設定を丸ごと読む入口も共通の窓口を通す（計算中は断る・保存を待つ）
+  function loadProfileCore(id) {
     const cur = (state.rules.profile || {}).id || "cardiology";
     if (id === cur) return A.toast(T.t("いま使用中のプロファイルです"));
     const src = profiles().find(x => (x.profile || {}).id === id);

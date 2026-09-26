@@ -12,6 +12,7 @@
   A.autosaveTimer = null;
   A.solving = false; // 計算・診断中（app-solve.js が立てる。プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない）
   A.pluginsPending = false;
+  A.switching = 0; // 切替の処理中（transition の中。計算の開始を断る）
   A.dirGen = 0; // 接続の世代（フォルダを開く・再接続するたびに進む）。保存の写しに入れ、保存中にフォルダが替わっていたら保存基準を更新しない // 計算中にフォルダへ接続した（プラグインの読み込みを計算後に回す。app-folder.js の loadPendingPlugins）
   const state = A.state;
 
@@ -51,7 +52,10 @@
   // 新しい切替のボタンを作るときは、処理をこの窓口に渡す（A.transition("month", async () => {...})）。断ったときは false を返す（呼ぶ側は選択肢の表示を元に戻す）。
   // 保存の待ち行列の中から呼ばれる接続（ensureFolder → openFolder）は窓口を通さない（自分の保存を待つと止まる）
   const BUSY = { month: "計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください", data: "計算中はデータを読み込めません。計算が終わってからもう一度選んでください", folder: "計算中は保存フォルダを変更できません。計算が終わってからもう一度押してください", lang: "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください", plugins: "計算中はプラグインを読み直せません。計算が終わってからもう一度押してください" };
-  async function transition(kind, fn) { if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; } /* A.toast: 試験が差し替えられるように公開した側を呼ぶ */ await awaitSaves(); return fn(); }
+  async function transition(kind, fn) { // A.toast: 試験が差し替えられるように公開した側を呼ぶ
+    if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; }
+    A.switching++; try { await awaitSaves(); if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; } return await fn(); } finally { A.switching--; } // 保存を待つ間に計算が始まっていたら断る。切替の間（A.switching）は計算を始めない（app-solve.js）
+  }
   function save() {
     persist(); A.renderHeader();
     if (A.dirHandle && isDirty()) { clearTimeout(A.autosaveTimer); A.autosaveTimer = setTimeout(() => A.autosaveJson(), 3000); }
@@ -68,7 +72,7 @@
     state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || s.where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
     state.base = s.base; state.baseRules = s.rules; persist(); A.renderHeader();
   }
-  const inputSig = () => sigOf(JSON.stringify([canon(state.month), canon(state.rules)])); // 計算の入力（月＋設定）の署名。計算中に変わったら結果を採用しない
+  const inputSig = () => { const m = Object.assign({}, state.month); delete m.doc_versions; return sigOf(JSON.stringify([canon(m), canon(state.rules)])); }; // 計算の入力（月＋設定）の署名。計算中に変わったら結果を採用しない。版の履歴（保存で増える）は入力ではないので除く
   const rulesSig = r => sigOf(JSON.stringify(canon(r)));
   const payloadOf = (S, at) => JSON.stringify({ rules: S.rules, month: S.month, result: S.result, saved_at: at }, null, 1);
   function payloadJson(at) { return payloadOf(state, at); }

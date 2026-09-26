@@ -27,6 +27,11 @@ function context() {
 }
 const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states: ["hard", "off"], def: "hard", label: "試験", messages: { X: { en: "x" } }, solve() {}, check() {}, penalty() {}, ${extra} })`;
 (async () => {
+  // 疑似のフォルダ（plugins/rules/new.js に既定 hard の規則）
+  const folderWith = (text, reads, files = {}) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => text }) }]; } };
+    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw new Error("nf"); } };
+    const monthDir = { getFileHandle: async (n, o) => { if (!(o && o.create) && !(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async b => { files[n] = typeof b === "string" ? b : await b.text(); }, close: async () => { } }) }; } };
+    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") { if (text === null) throw new Error("nf"); reads.n++; return plugDir; } if (o && o.create) return monthDir; throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; }; // text が null ならプラグインの無いフォルダ
   { // 1) 必須の規則が無い＋別のプラグインの lint が例外
     const x = context(); x.rules.rule_states["local.required.missing"] = "hard";
     const rec = x.T.plugins.load("rules", "rules/bug.js", PLUG("local.bug.lint", "lint() { throw new Error('fixture lint crashed'); }")); assert.ok(rec.ok);
@@ -56,20 +61,26 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     assert.ok(x.A.state.month.plugins_used.includes("local.versioned.rule"));
     assert.strictEqual(x.A.solving, false); assert.strictEqual(x.A.state.result.build, x.T.BUILD_ID, "本体の印も結果に残す");
     // 結果画面の状態の行: 保存／いまの入力で計算したか／検算／最適性
-    x.A.renderResult(); let html = x.el("#result").innerHTML; assert.ok(/status-strip/.test(html) && /いまの入力で計算した結果/.test(html) && /検算: 違反なし/.test(html) && /最適性: 証明済み/.test(html), "状態の行: " + html.slice(0, 300));
+    x.A.renderResult(); let html = x.el("#result").innerHTML; assert.ok(/status-strip/.test(html) && /いまの入力で計算した結果/.test(html) && /検算: 違反なし/.test(html) && /ソルバー判定: Optimal/.test(html), "状態の行: " + html.slice(0, 300));
     x.A.state.month.notes = "変更"; x.A.renderResult(); html = x.el("#result").innerHTML; assert.ok(/計算後に入力が変わっています/.test(html), "入力が変わると知らせる");
-    x.A.state.month.notes = ""; x.A.state.result.status = "TimeLimit"; x.A.renderResult(); assert.ok(/最適性: 未確認/.test(x.el("#result").innerHTML), "時間切れは未確認");
-    x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:site#h1"), "組み立て時のプラグインの印も結果に残す"); x.T.PLUGINS = [];
+    x.A.state.month.notes = ""; x.A.state.result.status = "TimeLimit"; x.A.renderResult(); assert.ok(/ソルバー判定: TimeLimit/.test(x.el("#result").innerHTML), "時間切れは判定をそのまま出す");
+    x.A.state.result.status = "Optimal"; x.A.state.result.gap = 0.05; x.A.renderResult(); assert.ok(/許容差 5%。厳密な最適とは限らない/.test(x.el("#result").innerHTML), "許容差を緩めた Optimal は断定しない");
+    delete x.A.state.result.gap; x.A.renderResult(); assert.ok(/許容差の記録なし/.test(x.el("#result").innerHTML), "記録の無い旧形式"); x.A.state.result.gap = 0; x.A.renderResult(); assert.ok(/許容差 0。計算時の入力での最適/.test(x.el("#result").innerHTML));
+    // 実物の保存で版の記録が増えても「いまの入力で計算した結果」のまま。その後に入力を変えると警告
+    { const reads = { n: 0 }, files = {}, dir = folderWith(null, reads, files); x.A.dirHandle = dir; x.A.saveToFolder = x.realSave; x.T.check = () => ({ V: [] }); // プラグインの無いフォルダ（読み込んだ規則はそのまま。印は計算時と同じ）
+      await x.A.saveToFolder(); assert.strictEqual((x.A.state.month.doc_versions || []).length, 1, "版が 1 つ増える"); x.A.renderResult(); assert.ok(/いまの入力で計算した結果/.test(x.el("#result").innerHTML), "版の記録は入力ではない");
+      x.A.state.month.unavailable_night[x.rules.name_order[0]] = [5]; x.A.renderResult(); assert.ok(/計算後に入力が変わっています/.test(x.el("#result").innerHTML));
+      x.T.plugins.load("rules", "rules/ver.js", PLUG("local.versioned.rule", "marker: 1")); x.A.saveToFolder = async () => { }; x.A.dirHandle = null; } // フォルダの接続で実行時のプラグインが戻されるので読み直す（以降の場合は保存を代替に戻す）
+    // プラグインが欠けていると「検算未完了」（緑にしない）
+    { x.A.state.rules.rule_states["local.review.missing"] = "hard"; x.A.renderResult(); const h = x.el("#result").innerHTML; assert.ok(/検算未完了/.test(h) && !/検算: 違反なし/.test(h), "欠落時は未完了: " + h.slice(0, 400)); delete x.A.state.rules.rule_states["local.review.missing"]; }
+    // 切替の処理中は計算を始めない
+    { x.A.switching = 1; const n0 = x.stat.solverCalls; await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, n0, "切替中は計算しない"); assert.ok(x.stat.toasts.some(t => /切り替えの処理中/.test(t))); x.A.switching = 0; }
+    x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:site#h1"), "組み立て時のプラグインの印も結果に残す: " + JSON.stringify(x.A.state.result.plugins) + " log=" + x.log().slice(-300)); x.T.PLUGINS = [];
   }
   { // 計算中の月の切替・プラグインの読み直しの受付（A.solving）
     const x = context(); let during = null; x.T.solveWithAvoidRef = async () => { during = x.A.solving; return { asg: {}, status: "Optimal", seconds: 0, objective: 0, vars: 0, cons: 0 }; };
     await x.A.runSolve(); assert.strictEqual(during, true, "計算中は A.solving"); assert.strictEqual(x.A.solving, false);
   }
-  // 疑似のフォルダ（plugins/rules/new.js に既定 hard の規則）
-  const folderWith = (text, reads, files = {}) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => text }) }]; } };
-    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw new Error("nf"); } };
-    const monthDir = { getFileHandle: async (n, o) => { if (!(o && o.create) && !(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async b => { files[n] = typeof b === "string" ? b : await b.text(); }, close: async () => { } }) }; } };
-    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") { reads.n++; return plugDir; } if (o && o.create) return monthDir; throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; };
   { // 6) 計算中にフォルダへ接続: 読み込みは成功後の保存より前に済ませ（1 回だけ）、その結果の勤務表は出さず、次の計算はその規則で行う（保存は実物）
     const x = context(), reads = { n: 0 }, files = {}, dir = folderWith(PLUG("local.new.rule"), reads, files); x.A.saveToFolder = x.realSave; x.T.check = () => ({ V: [] }); // 検算は代替（solver も代替で割当が 1 枠だけのため）
     const solve0 = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...a) => { x.A.dirHandle = dir; await x.A.refreshMonths(); return solve0(...a); };

@@ -6,7 +6,7 @@ globalThis.location = { pathname: "/x/toban.html", protocol: "file:", href: "fil
 globalThis.document = { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => { } }; globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => { }, removeItem: () => { } };
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "app-core.js", "app-settings.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "app-core.js", "app-settings.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 T.setLang("ja");
@@ -73,4 +73,15 @@ assert.ok(!("toban_profile" in A.state.rules));
     const m = T.normalizeMonth({ year: 2026, month: 11 }, r); assert.deepStrictEqual(m.local_hooks, { days: [] }, "normalizeMonth が月の値を補う");
     Object.assign(A.state, { rules: r, month: m, result: null, base: null }); A.renameDoctor("Fictional Staff A", "Fictional Staff Z"); assert.deepStrictEqual(r.local_hooks.by_name, { "Fictional Staff Z": 1 }, "rename が名簿の欄以外のデータを追随させる");
     assert.ok(calls.includes("normalize") && calls.includes("normalizeMonth") && calls.includes("rename")); } finally { T.RULE_DEFS.pop(); Object.assign(A.state, { rules }); } }
-console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename）OK");
+// フックが途中で失敗しても元のデータは壊れない（複製で試して成功時だけ採用）。失敗は入力チェック（LINT_PLUGIN_HOOK）が知らせ、改名は取り消される
+{ const bad = { id: "local.test.badhook", states: ["hard", "off"], def: "off", normalize(R) { delete R.local_bad.old_max; throw new Error("boom"); }, normalizeMonth(m) { delete m.local_bad.old; throw new Error("boom"); }, rename(R, m, o, n) { delete R.local_bad.by_name[o]; throw new Error("boom"); } };
+  T.RULE_DEFS.push(bad); T.RULE_BY_ID[bad.id] = bad;
+  try { const r = JSON.parse(before); r.local_bad = { old_max: 1, by_name: { "Fictional Staff A": 1 } }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_bad, { old_max: 1, by_name: { "Fictional Staff A": 1 } }, "normalize が途中で失敗しても元のまま");
+    const m = T.normalizeMonth({ year: 2026, month: 11, local_bad: { old: 2 } }, r); assert.deepStrictEqual(m.local_bad, { old: 2 }, "normalizeMonth も元のまま");
+    assert.ok(T.hookErrors.get("local.test.badhook:normalize") && T.hookErrors.get("local.test.badhook:normalizeMonth"), "失敗を記録");
+    const pl = T.lintPlugins(new T.Problem(r, m)); assert.ok(pl.filter(x => x.code === "LINT_PLUGIN_HOOK").length === 2, "入力チェックが知らせる: " + pl.map(x => x.code).join(","));
+    Object.assign(A.state, { rules: r, month: m, result: null, base: null }); const j = JSON.stringify(r) + JSON.stringify(m); const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x));
+    assert.strictEqual(A.renameDoctor("Fictional Staff A", "Fictional Staff Z"), false, "追随に失敗したら改名しない"); assert.strictEqual(JSON.stringify(r) + JSON.stringify(m), j, "何も変えない"); assert.ok(/改名を取り消しました/.test(toasts.pop())); A.toast = t0;
+    bad.normalize = R => { R.local_bad.max = R.local_bad.old_max; delete R.local_bad.old_max; }; T.fillDefaultRules(r); assert.deepStrictEqual(r.local_bad, { max: 1, by_name: { "Fictional Staff A": 1 } }, "直れば採用"); assert.ok(!T.hookErrors.has("local.test.badhook:normalize"), "成功で消える"); }
+  finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[bad.id]; T.hookErrors.clear(); Object.assign(A.state, { rules }); } }
+console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK");

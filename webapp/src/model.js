@@ -724,6 +724,15 @@
   // 規則の欠損項目を配布時の既定で補う（古い保存データ・rules.json・JSON 直接編集への備え）。値が違う項目は変えない
   // 重みの鍵の改名（施設ごとの役割の文字 I/A/Y を含む名前をやめた。2026-09-23）。古い保存データは読み込み時に移す
   const WEIGHT_RENAMES = { same_day_IA_soft: "same_day_charge_other_soft", same_day_AY: "same_day_other_junior", same_day_AA: "same_day_other_both" };
+  // プラグインのフック（normalize / normalizeMonth）は対象の複製に対して呼び、成功したときだけ中身を差し替える（途中で失敗しても元のデータを壊さない。参照は保つ）。
+  // 失敗は T.hookErrors（"規則id:フック名" → 文面）に残し、入力チェック（LINT_PLUGIN_HOOK）が知らせて計算と帳票の保存を止める。次に成功すれば消える
+  T.hookErrors = new Map();
+  function runHook(def, hook, target, ...rest) {
+    const key = `${def.id}:${hook}`; let copy;
+    try { copy = JSON.parse(JSON.stringify(target)); def[hook](copy, ...rest); } catch (e) { T.hookErrors.set(key, (e && e.message) || String(e)); return false; }
+    T.hookErrors.delete(key); for (const k of Object.keys(target)) delete target[k]; Object.assign(target, copy); return true;
+  }
+  T.runHook = runHook;
   function fillDefaultRules(R) {
     if (!R) return R;
     const D = T.DEFAULT_RULES || {};
@@ -755,7 +764,7 @@
       for (const [k, v] of Object.entries(def.w0sub || {})) if (R.weights[k] === undefined || R.weights[k] === null || R.weights[k] === "") R.weights[k] = v; // sub の重みの既定（プラグインの規則は見本の重みの表に無いので自分で持つ）
     }
     if (Array.isArray(R.doctors)) { const names = new Set(R.doctors.map(d => d.name)); R.name_order = (R.name_order || []).filter(n => names.has(n)); }
-    for (const def of RULE_DEFS) if (typeof def.normalize === "function") { try { def.normalize(R); } catch (e) { } } // プラグインの独自データの補完・旧形式からの移行（plugin-example/README.md 6）。何度呼んでも同じ結果になるように書く
+    for (const def of RULE_DEFS) if (typeof def.normalize === "function") runHook(def, "normalize", R); // プラグインの独自データの補完・旧形式からの移行（plugin-example/README.md 6）。複製で試し、成功したときだけ採用
     return R;
   }
   T.fillDefaultRules = fillDefaultRules;
@@ -779,7 +788,7 @@
     m.exceptions ||= {}; m.targets ||= {}; m.holidays ||= []; m.closure_days ||= []; m.unavailable_other ||= []; m.confirmed_pm_external_night ||= [];
     m.prev_month ||= { last_days: [], last_weekend_charge: null, prev_weekend_charge: null };
     if (Array.isArray(m.avoid) && !m.avoid.length) delete m.avoid;
-    for (const def of RULE_DEFS) if (typeof def.normalizeMonth === "function") { try { def.normalizeMonth(m, rules); } catch (e) { } } // プラグインの月の値の補完・移行（plugin-example/README.md 6）
+    for (const def of RULE_DEFS) if (typeof def.normalizeMonth === "function") runHook(def, "normalizeMonth", m, rules); // プラグインの月の値の補完・移行（plugin-example/README.md 6）。複製で試し、成功したときだけ採用
     return m;
   }
   T.normalizeMonth = normalizeMonth;

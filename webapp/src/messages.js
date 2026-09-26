@@ -68,6 +68,8 @@
     LINT_UNAVAIL_AND_AVOID_HINT: { en: "Per-person calendar → {who} → {day}: keep one of them", ja: "{person}別カレンダー → {who} → {day} をどちらかにする" },
     LINT_FIXED_NOT_CANDIDATE: { en: "Fixed \"{day} {slot} {who}\": {who} is not a duty candidate", ja: "固定指定「{day} {slot} {who}」: {who} は当直の候補ではありません" },
     LINT_FIXED_NOT_CANDIDATE_HINT: { en: "Month tab → fixed assignments → remove it. If the person is no longer on the roster, the box at the top of the month settings removes every input left for people not on the roster", ja: "月の設定 → 固定指定 から削除。名簿にいない人なら、月の設定の先頭の箱から「名簿にない人の入力を削除」で一括で消せます" },
+    LINT_PLUGIN_HOOK: { en: "The {hook} step of facility plug-in rule {who} failed: {err}. Its data was left unchanged", ja: "施設のプラグインの規則 {who} の {hook} が失敗しました: {err}。そのデータは変えずに残しています" },
+    LINT_PLUGIN_HOOK_HINT: { en: "Until it succeeds, solving and writing the roster are stopped. Fix the plug-in file under plugins/ and press \"Reload the plug-ins\" on the settings tab, or tell the plug-in's author", ja: "直るまで計算と勤務表の書き出しを止めます。保存フォルダの plugins/ のファイルを直して設定タブの「プラグインを読み直す」を押すか、プラグインの作成者に知らせてください" },
     LINT_PLUGIN_ERROR: { en: "Facility plug-in {name} could not be loaded: {err}", ja: "施設のプラグイン {name} が読めません: {err}" },
     LINT_PLUGIN_ERROR_HINT: { en: "Fix the file under plugins/ in the save folder, then press \"Reload the plug-ins\" on the settings tab (administrator section). The other parts keep working", ja: "保存フォルダの plugins/ のファイルを直し、設定タブの管理者向け「プラグインを読み直す」を押してください。他の部分は動いています" },
     LINT_PLUGIN_STALE: { en: "Facility plug-in rule {who} was loaded from a previous folder and is still registered", ja: "前のフォルダの施設のプラグイン {who} が残っています" },

@@ -1038,8 +1038,14 @@
     "いまの設定での検算: 違反 {n} 件": "Verified with the current settings: {n} violation(s)",
     "いまの設定での検算: 違反なし": "Verified with the current settings: no violations",
     "固定指定により許容 {n} 件（要確認）": "{n} allowed because of fixed assignments (please check)",
-    "最適性: 証明済み": "Optimality: proven",
-    "最適性: 未確認（{st}。時間内に見つかった最良の解）": "Optimality: not proven ({st}; best solution found within the time limit)"
+    "{who} の改名を取り消しました: プラグインの人ごとのデータの追随に失敗しました（{err}）。プラグインの作成者に知らせてください": "Renaming {who} was cancelled: a plug-in failed to follow the rename of its per-person data ({err}). Tell the plug-in's author",
+    "切り替えの処理中です。終わってからもう一度押してください": "A switch is in progress. Press again when it has finished",
+    "検算未完了: プラグインが足りない・読めない・変換に失敗（設定タブの管理者向けを確認）": "Verification incomplete: plug-ins are missing, unreadable or their conversion failed (check the administrator section of the settings tab)",
+    "。登録済みの規則では違反 {n} 件": ". {n} violation(s) among the registered rules",
+    "計算時のソルバー判定: {st}（時間内に見つかった最良の解）": "Solver status at solve time: {st} (best solution found within the time limit)",
+    "計算時のソルバー判定: Optimal（許容差の記録なし）": "Solver status at solve time: Optimal (tolerance not recorded)",
+    "計算時のソルバー判定: Optimal（許容差 {g}%。厳密な最適とは限らない）": "Solver status at solve time: Optimal (tolerance {g}%; not necessarily the exact optimum)",
+    "計算時のソルバー判定: Optimal（許容差 0。計算時の入力での最適）": "Solver status at solve time: Optimal (tolerance 0; optimal for the input at solve time)"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

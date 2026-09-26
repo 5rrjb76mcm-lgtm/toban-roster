@@ -12,10 +12,13 @@
     $("#monthTitle").innerHTML = `${monthSelectHtml()} <span>${esc(T.t("の勤務表を作成中"))}</span> <span class="note">${esc(T.t("施設: {name}", { name: T.pickLabel((state.rules.profile || {}).label, (state.rules.profile || {}).id || "") }))}</span>`;
     const dl = $("#docLabel"); if (dl && dl.value !== (m.doc_label || "確認版")) dl.value = m.doc_label || "確認版";
     bindMonthSelect();
-    const el = $("#saveState");
-    if (!A.isDirty()) { const at = new Date(state.meta.savedAt), loc = T.dateLocale(); el.className = "saved"; el.innerHTML = esc(T.t("保存済み {date} {time}（{where}）", { date: at.toLocaleDateString(loc, { month: "numeric", day: "numeric" }), time: at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }), where: whereLabel(state.meta.savedWhere) })); }
-    else { el.className = "dirty"; el.innerHTML = `${esc(T.t("未保存の変更あり"))}${A.dirHandle ? esc(T.t("（数秒後に自動保存）")) : ""} <button id="btnHeaderSave">${esc(T.t(A.dirHandle ? "今すぐ保存" : "接続して保存"))}</button>`; $("#btnHeaderSave").addEventListener("click", () => saveToFolder()); }
+    const el = $("#saveState"); let cls, html;
+    if (!A.isDirty()) { const at = new Date(state.meta.savedAt), loc = T.dateLocale(); cls = "saved"; html = esc(T.t("保存済み {date} {time}（{where}）", { date: at.toLocaleDateString(loc, { month: "numeric", day: "numeric" }), time: at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }), where: whereLabel(state.meta.savedWhere) })); }
+    else { cls = "dirty"; html = `${esc(T.t("未保存の変更あり"))}${A.dirHandle ? esc(T.t("（数秒後に自動保存）")) : ""} <button id="btnHeaderSave">${esc(T.t(A.dirHandle ? "今すぐ保存" : "接続して保存"))}</button>`; }
+    // 内容が同じなら DOM を触らない。入力欄から「今すぐ保存」へクリックすると、欄の blur の change でここが呼ばれる。そのたびにボタンを作り直すと、押している途中のボタンが別の要素になりクリックが消える
+    if (el.className !== cls || saveStateHtml !== html || (cls === "dirty" && !$("#btnHeaderSave"))) { el.className = cls; el.innerHTML = html; saveStateHtml = html; if (cls === "dirty") $("#btnHeaderSave").addEventListener("click", () => saveToFolder()); }
   }
+  let saveStateHtml = null; // 前回描いた保存状態の中身
   // 別のPCが同じ月を先に保存していないか（保存前の競合検出）。true=保存してよい
   // 3者統合を自動で行う（最後に保存した版を共通の元として、自分の変更と相手の変更を両方残す）。
   // 衝突（同じ項目を両方が変えた）がなければ確認なしで統合し、衝突があるときだけどちらを採るかを聞く。
@@ -300,16 +303,16 @@
       return "saved";
     } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
   }
-  // 1) 写しから出力を作る。この時点の写し（月・設定・結果・年月・言語・接続の世代）を 1 つ取り、保存先のファイル名・検算・版の署名・勤務表・説明資料・月データをすべてその写しから作る。
-  // 生成の間に入った編集は写しに入らず未保存として残る。戻り値 { S, at, files: [{name, blob}], version, note, hasAsg }。state は変えない
+  // 1) 写しから出力を作る。この時点の写し（月・設定・結果・年月・言語・接続の世代）を 1 つ取り、保存先のファイル名・検算・版の署名・勤務表・説明資料をすべてその写しから作る。
+  // 生成の間に入った編集は写しに入らず未保存として残る。戻り値 { S, at, docs: [{name, blob}], version, note, hasAsg }。docs は勤務表と説明資料（版の記録 version は書けたときだけ 2) で写しに足す）。state は変えない
   async function prepareSave(at = new Date().toISOString()) {
-    const S = A.snapshot(at), hasAsg = !!(S.result && S.result.asg), prep = { S, at, files: [], version: null, note: "", hasAsg };
+    const S = A.snapshot(at), hasAsg = !!(S.result && S.result.asg), prep = { S, at, docs: [], version: null, note: "", hasAsg, docsWritten: false };
     // 勤務表・説明資料を出す前の確認。どれかに当たれば月データだけ（順に: 入力を読めない／プラグインが欠けた・読めない（計算ボタンと同じ判定）／
     // 計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。検算は印の有無によらず必ず行う
     let P = null, stop = null;
     if (hasAsg) {
       try { P = new T.Problem(S.rules, S.month); } catch (e) { stop = T.t("（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）", { err: e && e.message || e }); }
-      if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"].includes(x.code)); } catch (e) { pl = null; }
+      if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { pl = null; }
         if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）"); }
       if (!stop) { const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
         if (stampRes !== null && stampRes !== stampNow) stop = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）"); }
@@ -320,33 +323,37 @@
     else if (hasAsg) {
       // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
       const label = S.month.doc_label || "確認版", vsig = versionSig(label, S);
-      const versS = (S.month.doc_versions ||= []), last = versS[versS.length - 1];
+      const versS = S.month.doc_versions || [], last = versS[versS.length - 1]; // 写しには足さない（書けたときに writeSave が足す）
       if (!last || last.sig !== vsig) {
         const ver = (last ? last.ver : 0) + 1, docxName = A.FILES.roster(S.tag, ver, label), htmlName = A.FILES.report(S.tag, ver, label);
         try { // 様式のプラグインが無いなどで作れなくても、月データの保存は続ける
           const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
           const html = new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" });
-          prep.files.push({ name: docxName, blob: docx }, { name: htmlName, blob: html });
-          prep.version = { ver, at, label, sig: vsig, docx: docxName, html: htmlName }; versS.push(prep.version); // 写し（保存する中身）に版の記録を足す。現在の状態へは commitSave
+          prep.docs.push({ name: docxName, blob: docx }, { name: htmlName, blob: html });
+          prep.version = { ver, at, label, sig: vsig, docx: docxName, html: htmlName }; // 版の記録は、書けたときだけ writeSave が写しに足す
           prep.note = T.t("（勤務表 v{v} を追加）", { v: ver });
         } catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
       } else prep.note = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
     }
-    S.refresh(); // 版の追加を反映した署名と中身
-    prep.files.push({ name: A.FILES.data(S.tag), blob: new Blob([S.payload], { type: "application/json" }) });
     return prep;
   }
-  // 2) フォルダへ書く。写しの年月のフォルダに、直前の月データを 1 世代退避してから、出力（勤務表・説明資料・月データ）を書く
+  // 2) フォルダへ書く。写しの年月のフォルダに、直前の月データを 1 世代退避してから、勤務表・説明資料、次に月データを書く。
+  // 勤務表・説明資料だけが書けなかったときは版の記録を足さずに月データを保存する（月データが書けなければ例外＝保存失敗）
   async function writeSave(root, prep) {
     const dir = await root.getDirectoryHandle(prep.S.tag, { create: true });
     try { const prev = await readJson(dir, A.FILES.data(prep.S.tag)); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { } // 誤操作や統合の取り違えからの復元用
-    for (const f of prep.files) await writeFile(dir, f.name, f.blob);
+    if (prep.docs.length) {
+      try { for (const f of prep.docs) await writeFile(dir, f.name, f.blob); prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); }
+      catch (e) { prep.docsWritten = false; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
+    }
+    prep.S.refresh(); // 版の記録（書けたときだけ）を反映した署名と中身
+    await writeFile(dir, A.FILES.data(prep.S.tag), new Blob([prep.S.payload], { type: "application/json" }));
   }
-  // 3) 保存済みにする。書いた写しの署名だけを保存済みにする（生成・書込み中の入力は未保存のまま）。版の記録は、写しと現在の月・接続先が同じときだけ現在の状態にも足す
+  // 3) 保存済みにする。書いた写しの署名だけを保存済みにする（生成・書込み中の入力は未保存のまま）。版の記録は、書けていて、写しと現在の月・接続先が同じときだけ現在の状態にも足す
   // （ほかに編集が無ければ署名が一致して「保存済み」になる。月や接続先が替わっていたら markSaved も基準を更新しない）
   function commitSave(prep) {
     const S = prep.S;
-    if (prep.version && A.tag() === S.tag && S.dirGen === A.dirGen) (state.month.doc_versions ||= []).push(JSON.parse(JSON.stringify(prep.version)));
+    if (prep.docsWritten && prep.version && A.tag() === S.tag && S.dirGen === A.dirGen) (state.month.doc_versions ||= []).push(JSON.parse(JSON.stringify(prep.version)));
     A.markSaved(undefined, prep.at, S);
   }
   // 当直表の版の識別。保存時の版付与とダウンロード時の版表示で共通。出力に使うものを全部含める:

@@ -192,6 +192,7 @@
     const used = ((P.m || {}).plugins_used || []).filter(id => !T.RULE_BY_ID[id]); // プラグインの規則で計算した月を、プラグインなしで開いている
     const onButAbsent = Object.entries((P.rules || {}).rule_states || {}).filter(([id, st]) => st && st !== "off" && !T.RULE_BY_ID[id]).map(([id]) => id); // 設定で使うことになっているのに登録が無い
     const missing = [...new Set(used.concat(onButAbsent))]; if (missing.length) push("LINT_PLUGIN_MISSING", { who: missing.join("・") });
+    for (const [k, err] of (T.hookErrors || new Map())) { const i = k.indexOf(":"), id = k.slice(0, i), hook = k.slice(i + 1); if (T.RULE_BY_ID[id]) push("LINT_PLUGIN_HOOK", { who: id, hook, err }); } // 独自データの変換（normalize / normalizeMonth）が失敗している
   }
   const lintPlugins = P => { const out = []; pluginChecks(P, pusher(P, out)); return out; };
   function lint(P) {

@@ -34,7 +34,7 @@
 
   // 計算・診断の間は A.solving を立てる（プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない。app-folder.js / app-settings.js）
   // 計算中に接続したフォルダのプラグインは後始末で読む（読み終わるまで busy のままなので次の計算は始まらない）
-  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); runSolve.busy = true; A.solving = true;
+  async function runSolve() { if (runSolve.busy) return A.toast(T.t("計算中です")); if (A.switching) return A.toast(T.t("切り替えの処理中です。終わってからもう一度押してください")); runSolve.busy = true; A.solving = true;
     try { await runSolveCore(); }
     finally { A.solving = false; try { await A.loadPendingPlugins(); } catch (e) { A.toast(T.t("フォルダのプラグインを読めませんでした: {err}", { err: e && e.message || e })); } runSolve.busy = false; $("#btnSolve").disabled = false; } }
   async function runSolveCore() {
@@ -47,7 +47,7 @@
     let P;
     try { P = new T.Problem(rulesForRun, state.month); } catch (e) { log(T.t("入力の読み取りに失敗: {e}", { e })); return; }
     // プラグインが欠けた・読めない状態では、規則が黙って落ちるので計算しない。この判定は規則ごとの入力チェックとは別口（プラグインの lint が例外を出しても判定できる）
-    const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"];
+    const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"];
     let blocking; try { blocking = T.lintPlugins(P); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }
     if (blocking.length) { log(T.t("施設のプラグインが足りない、または読めないため計算しません:")); blocking.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); return; }
     // 入力チェックが途中で失敗したら計算しない（集めかけの指摘が消えたまま進めない）
@@ -95,7 +95,7 @@
       return;
     }
     state.month.plugins_used = T.plugins.ruleIds().filter(id => T.ruleState(state.rules, id) !== "off"); // プラグインの規則のうち使ったもの（無い環境で開いたときの入力チェック用）
-    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges, plugins: T.plugins.stamp(), build: T.BUILD_ID, input_sig: A.inputSig() }; // input_sig: 計算時の入力（月＋設定）の署名。結果画面で「いまの入力で計算した結果か」を示す（plugins_used を書いた後の値。runSig との一致は上で確認済み） // plugins: 実行時に読んだプラグインの名前と中身の印（あとで同じ規則で計算したか確かめる用）
+    state.result = { asg: res.asg, status: res.status, seconds: res.seconds, objective: res.objective, at: new Date().toISOString(), rules_version: state.rules.rules_version, avoid_ref: res.avoidRef || null, base_asg: baseAsg, mark_changes: markChanges, plugins: T.plugins.stamp(), build: T.BUILD_ID, input_sig: A.inputSig(), gap: +((state.rules.solver || {}).mip_rel_gap ?? 0) || 0 }; // gap: 実際に使った許容差（0 なら計算時の入力での最適を証明） // input_sig: 計算時の入力（月＋設定）の署名。結果画面で「いまの入力で計算した結果か」を示す（plugins_used を書いた後の値。runSig との一致は上で確認済み） // plugins: 実行時に読んだプラグインの名前と中身の印（あとで同じ規則で計算したか確かめる用）
     A.save();
     let rep; try { rep = T.buildReport(P, res.asg, { status: res.status, seconds: res.seconds, avoidRef: res.avoidRef, baseAsg: markChanges ? baseAsg : null }); } catch (e) { log(T.t("結果の検算・表示でエラーが起きました: {e}。設定（名簿・専門業務の必要人数）を確認してください", { e: e && e.message || e })); return; }
     log(T.t("必須条件の違反 {n} 件", { n: rep.V.length }) + (rep.W && rep.W.length ? T.t("、固定指定により許容した条件 {n} 件（要確認）", { n: rep.W.length }) : "") + T.t("。「3-1 結果」タブを開いてください。"));
@@ -119,21 +119,28 @@
     let P; try { P = new T.Problem(state.rules, state.month); } catch (e) { $("#result").innerHTML = `<p>${esc(T.t("入力に問題があります: {e}", { e }))}</p>`; return; }
     let rep; try { rep = T.buildReport(P, r.asg, { status: r.status, seconds: r.seconds, avoidRef: r.avoid_ref, baseAsg: r.mark_changes ? r.base_asg : null }); } catch (e) { $("#result").innerHTML = `<p class="ng">${esc(T.t("結果の検算・表示でエラーが起きました: {e}。設定（名簿・専門業務の必要人数）を確認するか、再計算してください", { e: e && e.message || e }))}</p>`; return; }
     const vers = state.month.doc_versions || [];
-    const mainHtml = statusStrip(r, rep) + `<p class="note">${esc(T.t("計算日時 {at}　この結果は入力を変えても保持されます。入力を変えた場合は再計算してください。", { at: r.at ? new Date(r.at).toLocaleString(T.dateLocale()) : "" }))}</p>` + (vers.length ? `<p class="note">${esc(T.t("書き出した版: {list}", { list: vers.map(v => T.t("v{ver}（{label}、{at}）", { ver: v.ver, label: T.t(v.label || ""), at: new Date(v.at).toLocaleString(T.dateLocale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) })).join(T.listSep()) }))}</p>` : "") + rep.sections.map(s => `<section id="${s.id}"><h3>${esc(s.title)}</h3>${s.html}</section>`).join("");
+    const mainHtml = statusStrip(r, rep, P) + `<p class="note">${esc(T.t("計算日時 {at}　この結果は入力を変えても保持されます。入力を変えた場合は再計算してください。", { at: r.at ? new Date(r.at).toLocaleString(T.dateLocale()) : "" }))}</p>` + (vers.length ? `<p class="note">${esc(T.t("書き出した版: {list}", { list: vers.map(v => T.t("v{ver}（{label}、{at}）", { ver: v.ver, label: T.t(v.label || ""), at: new Date(v.at).toLocaleString(T.dateLocale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) })).join(T.listSep()) }))}</p>` : "") + rep.sections.map(s => `<section id="${s.id}"><h3>${esc(s.title)}</h3>${s.html}</section>`).join("");
     // 結果は2画面（ヘッダーのタブ 3-1 結果／3-2 医師別カレンダー で切り替える。どちらも #result の中）
     $("#result").innerHTML = `<div id="resMain"${resSub === "resMain" ? "" : " hidden"}>${mainHtml}</div><div id="resCal"${resSub === "resCal" ? "" : " hidden"}><section id="docCal"></section></div>`;
     try { renderDocCal(P, r.asg); } catch (e) { const b = $("#docCal"); if (b) b.innerHTML = ""; }
   }
   // 結果の状態の 1 行（採用の判断に要る別々の情報をまとめて出す）: 保存の状態／計算時の入力と同じか／計算後にプラグインが変わっていないか／いまの設定での検算（違反・固定指定による許容）／最適性（証明済みか時間切れか）
-  function statusStrip(r, rep) {
+  function statusStrip(r, rep, P) {
     const items = [];
     items.push(A.isDirty() ? ["warn", T.t("未保存の変更あり")] : ["ok", T.t("保存済み")]);
     if (!r.input_sig) items.push(["", T.t("計算時の入力: 記録なし（旧形式の結果）")]);
     else items.push(r.input_sig === A.inputSig() ? ["ok", T.t("いまの入力で計算した結果")] : ["warn", T.t("計算後に入力が変わっています（再計算が必要）")]);
     { const now = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), res = Array.isArray(r.plugins) ? JSON.stringify(r.plugins) : null; if (res !== null && res !== now) items.push(["warn", T.t("計算後にプラグインが変わっています（再計算が必要）")]); }
-    items.push(rep.V.length ? ["ng", T.t("いまの設定での検算: 違反 {n} 件", { n: rep.V.length })] : ["ok", T.t("いまの設定での検算: 違反なし")]);
+    // 検算は、プラグインが欠けた・読めない・変換に失敗した状態では「未完了」（登録済みの規則だけの違反数を添える。緑にはしない）
+    let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { pl = null; }
+    if (!pl || pl.length) items.push(["ng", T.t("検算未完了: プラグインが足りない・読めない・変換に失敗（設定タブの管理者向けを確認）") + (rep.V.length ? T.t("。登録済みの規則では違反 {n} 件", { n: rep.V.length }) : "")]);
+    else items.push(rep.V.length ? ["ng", T.t("いまの設定での検算: 違反 {n} 件", { n: rep.V.length })] : ["ok", T.t("いまの設定での検算: 違反なし")]);
     if (rep.W && rep.W.length) items.push(["warn", T.t("固定指定により許容 {n} 件（要確認）", { n: rep.W.length })]);
-    items.push(r.status === "Optimal" ? ["ok", T.t("最適性: 証明済み")] : ["warn", T.t("最適性: 未確認（{st}。時間内に見つかった最良の解）", { st: r.status || "" })]);
+    // 最適性は「計算時の入力に対する solver の判定」。許容差を緩めた Optimal は厳密な最適とは限らない。記録の無い旧形式は判定だけ
+    if (r.status !== "Optimal") items.push(["warn", T.t("計算時のソルバー判定: {st}（時間内に見つかった最良の解）", { st: r.status || "" })]);
+    else if (r.gap === undefined) items.push(["", T.t("計算時のソルバー判定: Optimal（許容差の記録なし）")]);
+    else if (r.gap > 0) items.push(["warn", T.t("計算時のソルバー判定: Optimal（許容差 {g}%。厳密な最適とは限らない）", { g: Math.round(r.gap * 10000) / 100 })]);
+    else items.push(["ok", T.t("計算時のソルバー判定: Optimal（許容差 0。計算時の入力での最適）")]);
     return `<p class="status-strip">${items.map(([c, t]) => `<span class="${c}">${esc(t)}</span>`).join("")}</p>`;
   }
   // 医師別の当番カレンダー（結果タブの先頭。日勤・夜勤=赤系、OC=黄。外来・病棟番・外勤・不在は午前／午後を添えて淡色で表示）
