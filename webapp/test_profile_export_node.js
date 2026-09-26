@@ -6,7 +6,7 @@ globalThis.location = { pathname: "/x/toban.html", protocol: "file:", href: "fil
 globalThis.document = { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => { } }; globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => { }, removeItem: () => { } };
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "app-core.js", "app-settings.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "app-core.js", "app-settings.js", "app-month.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 T.setLang("ja");
@@ -110,14 +110,31 @@ assert.ok(!("toban_profile" in A.state.rules));
     withRows(mkRows(r, [B_]), toasts => { A.readSettings(); assert.ok(toasts.some(x => /重なる/.test(x)), "知らせる: " + toasts.join("|")); });
     assert.deepStrictEqual(r.doctors.map(d => d.name).slice(0, 2), [A_, B_], "改名は取り消される（重複しない）"); assert.deepStrictEqual(m.unavailable_night[A_], [1]); assert.deepStrictEqual(m.unavailable_night[B_], [2], "別人の不可日は残る");
     const dup = JSON.parse(before); dup.doctors[1].name = A_; T.fillDefaultRules(dup); assert.ok(T.lint(new T.Problem(dup, T.normalizeMonth({ year: 2026, month: 11 }, dup))).some(x => x.code === "LINT_NAME_DUP"), "重複した名簿は入力チェックが指摘"); }
-  // 成功した追随を読み戻しで上書きしない
-  { const r = JSON.parse(before); r.doctors[1].local_mentor = A_; T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [1] } }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
-    const def = { id: "local.test.mentor", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, rename(R, mm, o, n) { for (const d of R.doctors) if (d.local_mentor === o) d.local_mentor = n; } }; T.RULE_DEFS.push(def); T.RULE_BY_ID[def.id] = def;
-    try { withRows(mkRows(r, ["Fictional Staff Z"]), () => A.readSettings()); } finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[def.id]; }
-    assert.strictEqual(A.state.rules.doctors[0].name, "Fictional Staff Z"); assert.strictEqual(A.state.rules.doctors[1].local_mentor, "Fictional Staff Z", "他の職員の属性の追随が残る"); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [1]); }
+  // 成功した追随を読み戻しで上書きしない（隠れた属性でも、表示中の独自欄でも）
+  for (const shown of [false, true]) { const r = JSON.parse(before); r.doctors[1].local_mentor = A_; T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [1] } }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
+    const def = { id: "local.test.mentor", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, rename(R, mm, o, n) { for (const d of R.doctors) if (d.local_mentor === o) d.local_mentor = n; },
+      columns: shown ? [{ key: "mentor", label: "指導者", field: "local_mentor", when: () => true, render() { return ""; }, read(td, d) { const v = td.querySelector("[data-f=mentor]").value; if (v) d.local_mentor = v; }, rename(R, o, n) { for (const d of R.doctors) if (d.local_mentor === o) d.local_mentor = n; } }] : [] };
+    T.RULE_DEFS.push(def); T.RULE_BY_ID[def.id] = def; r.rule_states[def.id] = "hard";
+    const rows = mkRows(r, ["Fictional Staff Z"]); if (shown) for (const [i, row] of rows.entries()) { const q0 = row.querySelector; row.querySelector = sel => { const col = (sel.match(/data-col="([^"]+)"/) || [])[1]; if (col === "mentor") return { querySelector: () => ({ value: i === 1 ? A_ : "" }) }; return q0(sel); }; } // 画面に残る古い値（A）
+    try { withRows(rows, () => A.readSettings()); } finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[def.id]; }
+    assert.strictEqual(A.state.rules.doctors[0].name, "Fictional Staff Z"); assert.strictEqual(A.state.rules.doctors[1].local_mentor, "Fictional Staff Z", (shown ? "表示中の欄でも" : "隠れた属性でも") + "他の職員の属性の追随が残る"); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [1]); }
+
 }
 (async () => {
   const A_ = "Fictional Staff A";
+  const mkRows = (r, names) => r.doctors.map((d, i) => { const vals = { name: names[i] ?? d.name, team: d.team, years: String(d.years || 0), quota: String(d.quota || 0), duty: d.duty || "" }; return { dataset: { i: String(i) }, querySelector: sel => { const f = (sel.match(/data-f="([^"]+)"/) || [])[1]; if (f) return f in vals ? { value: vals[f] } : null; return null; } }; });
+  const withRows = (rows, fn) => { const q0 = document.querySelectorAll; document.querySelectorAll = sel => /#doctorTable tr\[data-i\]/.test(sel) ? rows : []; const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x)); A.renderHeader = () => { }; A.renderSettings = () => { }; try { fn(toasts); } finally { document.querySelectorAll = q0; A.toast = t0; } };
+  // 改名 → 月別条件の編集 → 元に戻す: 設定だけ戻すと氏名の対応が壊れるので取り消しを拒み、何も変えない
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [5] } }, r); Object.assign(A.state, { rules: r, month: m, result: { asg: { "1:night": { work: A_, oc: [] } } }, base: null }); A.renderAll = () => { }; A.renderHeader = () => { };
+    A.clearUndo(); A.pushUndo("名簿の変更"); withRows(mkRows(r, ["Fictional Staff Z"]), () => A.readSettings());
+    await new Promise(res => setTimeout(res, 0)); A.state.month.notes = "後から書いたメモ"; const j = JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.month.notes, A.state.result]);
+    const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x)); A.undo(); A.toast = t0;
+    assert.strictEqual(JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.month.notes, A.state.result]), j, "何も変えない"); assert.ok(toasts.some(x => /取り消せません/.test(x)), toasts.join("|")); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [5]); }
+  // ヘッダーの月選択から翌月を作る（空の月／引き継ぎ）と、前の月の取り消し履歴は消える
+  for (const how of ["empty", "prev"]) { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null, meta: null });
+    A.saveBeforeSwitch = async () => true; A.fsOK = () => false; A.dirHandle = null; A.storedHandle = null; A.choose = async () => how; A.showTab = () => { }; A.renderSettingsMonth = () => { }; A.renderAll = () => { }; A.renderHeader = () => { }; A.toast = () => { };
+    A.clearUndo(); A.pushUndo("重みの変更"); A.state.rules.weights.wish_night = 999; await new Promise(res => setTimeout(res, 0));
+    await A.onMonthChange(2026, 12); assert.strictEqual(A.state.month.month, 12, how); A.undo(); assert.strictEqual(A.state.rules.weights.wish_night, 999, `${how}: 前の月の履歴は使えない`); }
   // 元に戻す: 後から月別条件を触っていなければ月・結果も戻す。触っていれば設定だけ戻す。切替で履歴は消える
   { const r = JSON.parse(before); T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11 }, r); Object.assign(A.state, { rules: r, month: m, result: { asg: { a: 1 } }, base: null }); A.renderAll = () => { }; A.renderHeader = () => { }; A.toast = () => { };
     A.clearUndo(); A.pushUndo("試験"); A.state.rules.weights.wish_night = 999; A.state.month.notes = "変更の一部"; await new Promise(res => setTimeout(res, 0)); // 変更の直後の月が記録される

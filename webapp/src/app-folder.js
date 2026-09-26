@@ -310,8 +310,8 @@
     if (!(S.result && S.result.asg)) return { stop: T.t("（まだ計算していません）"), P: null };
     let P = null, stop = null;
     try { P = new T.Problem(S.rules, S.month); } catch (e) { stop = T.t("（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）", { err: e && e.message || e }); }
-    if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { pl = null; }
-      if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）"); }
+    if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK", "LINT_NAME_DUP"].includes(x.code)); } catch (e) { pl = null; }
+      if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない・読めない、または名簿の氏名が重なっているため勤務表と説明資料は書き出しません。入力チェックを確認してください）"); }
     if (!stop) { const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
       if (stampRes !== null && stampRes !== stampNow) stop = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）"); }
     if (!stop) { let viol = -1; try { viol = T.check(P, S.result.asg).V.length; } catch (e) { viol = -1; }

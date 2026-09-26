@@ -104,8 +104,8 @@
           { label: T.t("{y}年{m}月 のデータから引き継いで作成", { y: c.slice(0, 4), m: +c.slice(4) }), sub: T.t("引き継ぐ: 曜日パターンのうち「翌月へ引き継ぐ」を付けた行（業務・避けたい日）、土日いずれかの日勤の希望、履歴、前月末の接続。引き継がない: 印のない行、不可日・日付の当直希望・固定指定"), value: "prev", primary: true },
           { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
           { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
-        if (v === "prev") { if (o2.rules) state.rules = o2.rules; state.meta = null; state.base = null; state.month = fromPrevious(o2, ny, nm); state.result = null; state.ui.doctor = 0; A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); return; }
-        if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); return; }
+        if (v === "prev") { if (o2.rules) state.rules = o2.rules; state.meta = null; state.base = null; state.month = fromPrevious(o2, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); return; }
+        if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); return; }
         A.renderSettingsMonth(); return;
       }
     }
@@ -113,8 +113,8 @@
       { label: T.t("現在の入力（{y}年{m}月）から引き継いで作成", { y: state.month.year, m: state.month.month }), sub: T.t("引き継ぐ: 曜日パターンのうち「翌月へ引き継ぐ」を付けた行（業務・避けたい日）、土日いずれかの日勤の希望、履歴、前月末の接続。引き継がない: 印のない行、不可日・日付の当直希望・固定指定"), value: "prev", primary: true },
       { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
       { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
-    if (v === "prev") { const base = { rules: state.rules, month: state.month, result: state.result }; state.meta = null; state.base = null; state.month = fromPrevious(base, ny, nm); state.result = null; state.ui.doctor = 0; A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); }
-    else if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); }
+    if (v === "prev") { const base = { rules: state.rules, month: state.month, result: state.result }; state.meta = null; state.base = null; state.month = fromPrevious(base, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); }
+    else if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); }
     else A.renderSettingsMonth();
   }
 

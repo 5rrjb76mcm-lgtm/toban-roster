@@ -155,7 +155,10 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const r = T.solve(P, highs, { timeLimit: 60 }); assert(!r.asg && r.status === "Infeasible", "必須では解なし: " + r.status);
     const soft = JSON.parse(JSON.stringify(two)); soft.rule_states.days_off_min = "soft"; const Ps = new T.Problem(soft, m); const rs = T.solve(Ps, highs, { timeLimit: 60 }); assert(rs.asg, "減点なら解ける");
     const pen = T.penalty(Ps, rs.asg).total; assert(Math.abs(rs.objective - pen) < 1e-6, `減点版の目的関数 ${rs.objective} ＝ 数え直し ${pen}`); assert(T.check(Ps, rs.asg).V.length === 0);
-    passed++; console.log("ok   有給込みの休みの必要日数が月を超える: 入力チェック・必須は解なし・減点は目的関数と一致"); }
+    // 不足が暦の日数を超える極端な固定（全夜勤を固定）でも、減点なら解けて目的関数＝減点（補助変数の上限は必要日数まで）
+    const mF = JSON.parse(JSON.stringify(m)); mF.fixed.night = {}; for (let d = 1; d <= 30; d++) mF.fixed.night[d] = two.doctors[0].name; const PF = new T.Problem(soft, T.normalizeMonth(mF, soft));
+    const rf = T.solve(PF, highs, { timeLimit: 60 }); assert(rf.asg, "全夜勤を固定しても減点なら解ける: " + rf.status); const pf = T.penalty(PF, rf.asg).total; assert(Math.abs(rf.objective - pf) < 1e-6, `目的関数 ${rf.objective} ＝ 減点 ${pf}`); assert(pf >= 31 * 80, "不足 31 日以上 × 80");
+    passed++; console.log("ok   有給込みの休みの必要日数が月を超える: 入力チェック・必須は解なし・減点は目的関数と一致（全夜勤固定でも）"); }
   { // 連勤の下限（減点）＋明け休み（必須）＋連続する夜勤の固定: 固定例外のある人には性能用の切除を足さない（目的関数が減点の数え直しと一致）
     const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
     for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off";

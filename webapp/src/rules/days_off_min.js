@@ -12,8 +12,8 @@ T.rules.register({
       const maxWork = P.N - P.offTarget(n), days = []; // 有給込みの必要日数が月の日数を超えると負になる（必須なら解なし。検算と同じ扱い。入力チェック LINT_DAYS_OFF_PAID_OVER が知らせる）
       for (let d = 1; d <= P.N; d++) days.push(ctx.busy(d, n));
       if (st === "hard") lp.add(LP.sum(days), prm.exact ? "=" : "<=", maxWork);
-      else { const v = lp.auxInt("dofs", 0, P.N); lp.add(LP.sub(LP.sum(days), maxWork), "<=", v); lp.objAdd(P.softW("days_off_min"), v); // 減点: 足りない休みの日数
-        if (prm.exact) { const u = lp.auxInt("dofx", 0, P.N); lp.add(LP.sub(maxWork, LP.sum(days)), "<=", u); lp.objAdd(P.softW("days_off_min"), u); } } } // ちょうど: 多すぎる休みも減点
+      else { const bound = Math.max(P.N, P.offTarget(n)); const v = lp.auxInt("dofs", 0, bound); lp.add(LP.sub(LP.sum(days), maxWork), "<=", v); lp.objAdd(P.softW("days_off_min"), v); // 減点: 足りない休みの日数（必要日数が月を超えると不足も月を超えるので上限は必要日数まで）
+        if (prm.exact) { const u = lp.auxInt("dofx", 0, bound); lp.add(LP.sub(maxWork, LP.sum(days)), "<=", u); lp.objAdd(P.softW("days_off_min"), u); } } } // ちょうど: 多すぎる休みも減点
   },
   check(ctx, prm) {
     const { P } = ctx;

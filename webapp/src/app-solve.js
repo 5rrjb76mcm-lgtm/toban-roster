@@ -47,9 +47,9 @@
     let P;
     try { P = new T.Problem(rulesForRun, state.month); } catch (e) { log(T.t("入力の読み取りに失敗: {e}", { e })); return; }
     // プラグインが欠けた・読めない状態では、規則が黙って落ちるので計算しない。この判定は規則ごとの入力チェックとは別口（プラグインの lint が例外を出しても判定できる）
-    const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"];
+    const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK", "LINT_NAME_DUP"];
     let blocking; try { blocking = T.lintPlugins(P); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }
-    if (blocking.length) { log(T.t("施設のプラグインが足りない、または読めないため計算しません:")); blocking.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); return; }
+    if (blocking.length) { log(T.t("施設のプラグインが足りない・読めない、または名簿の氏名が重なっているため計算しません:")); blocking.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); return; }
     // 入力チェックが途中で失敗したら計算しない（集めかけの指摘が消えたまま進めない）
     let lint; try { lint = T.lint(P).filter(x => !BLOCKING.includes(x.code)); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }
     if (lint.length) { log(T.t("入力に矛盾の疑いが {n} 件あります（計算は続けます）:", { n: lint.length })); lint.forEach(x => log(`● ${x.msg}\n   → ${x.hint}`)); log(""); }
@@ -132,8 +132,8 @@
     else items.push(r.input_sig === A.inputSig() ? ["ok", T.t("いまの入力で計算した結果")] : ["warn", T.t("計算後に入力が変わっています（再計算が必要）")]);
     { const now = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), res = Array.isArray(r.plugins) ? JSON.stringify(r.plugins) : null; if (res !== null && res !== now) items.push(["warn", T.t("計算後にプラグインが変わっています（再計算が必要）")]); }
     // 検算は、プラグインが欠けた・読めない・変換に失敗した状態では「未完了」（登録済みの規則だけの違反数を添える。緑にはしない）
-    let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { pl = null; }
-    if (!pl || pl.length) items.push(["ng", T.t("検算未完了: プラグインが足りない・読めない・変換に失敗（設定タブの管理者向けを確認）") + (rep.V.length ? T.t("。登録済みの規則では違反 {n} 件", { n: rep.V.length }) : "")]);
+    let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK", "LINT_NAME_DUP"].includes(x.code)); } catch (e) { pl = null; }
+    if (!pl || pl.length) items.push(["ng", T.t("検算未完了: プラグインが足りない・読めない・変換に失敗、または名簿の氏名が重なっている（入力チェックを確認）") + (rep.V.length ? T.t("。登録済みの規則では違反 {n} 件", { n: rep.V.length }) : "")]);
     else items.push(rep.V.length ? ["ng", T.t("いまの設定での検算: 違反 {n} 件", { n: rep.V.length })] : ["ok", T.t("いまの設定での検算: 違反なし")]);
     if (rep.W && rep.W.length) items.push(["warn", T.t("固定指定により許容 {n} 件（要確認）", { n: rep.W.length })]);
     // 最適性は「計算時の入力に対する solver の判定」。許容差を緩めた Optimal は厳密な最適とは限らない。記録の無い旧形式は判定だけ

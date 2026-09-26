@@ -335,27 +335,30 @@
     const R = state.rules; const oldNames = R.doctors.map(d => d.name);
     const prevDocs = Object.fromEntries(R.doctors.map(d => [d.name, d])), cols = T.rules.columns(R), acc = {};
     for (const c of cols) if (c.begin) acc[c.key] = c.begin(R);
-    // 1 周目: 行の氏名を確定する。氏名は個人の識別子なので一意にする（変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）。
-    // そのうえで改名を順に適用する（本体とプラグインの追随。失敗したら旧名のまま）。改名の適用でプラグインが他の職員の属性を更新することがあるので、行を読むのはその後（2 周目）
+    // 名簿の読み戻しの順: (1) 行の氏名を確定する（氏名は個人の識別子なので一意にする。変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）
+    // (2) 改名の追随（名簿の欄の rename と規則の rename）を複製で試し、失敗する改名は取り消す (3) 行を読む（土台は現在の職員。名前は確定した新しい名前）
+    // (4) 読んだ後の設定・月に改名を適用する（プラグインの追随が、画面に残っていた古い値を読んだ後に効くように。失敗したら読み戻し全体を取り消す）
+    const backup = { rules: JSON.parse(JSON.stringify(R)), month: JSON.parse(JSON.stringify(state.month)) };
     const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
     for (const r of rows) { if (r.old === r.name) continue;
       if (taken.has(r.name)) { if (r.old && !taken.has(r.old)) { A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); r.name = r.old; } else { let k = 2; while (taken.has(`${r.name} ${k}`)) k++; A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k })); r.name = `${r.name} ${k}`; } }
       taken.add(r.name); }
-    for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name)) { taken.delete(r.name); r.name = r.old; } // 追随に失敗したら旧名のまま（知らせは renameDoctor）
-    // 2 周目: 行を読む。土台は改名を適用した後の職員（プラグインの追随を上書きしない）。規則が「なし」で欄を出していない項目は、元の値をそのまま残す
+    for (const r of rows) if (r.old && r.old !== r.name && !renameTrial(r.old, r.name)) { taken.delete(r.name); r.name = r.old; } // 追随に失敗する改名は取り消す（知らせは renameTrial）
     const cur = Object.fromEntries(R.doctors.map(d => [d.name, d])); const docs = [];
     for (const { tr, g, old, name } of rows) {
-      const prev = cur[old] || {};
+      const prev = cur[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
       const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota: g("quota") ? (+g("quota").value || 0) : (+prev.quota || 0) }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
       if (g("share")) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
-      // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま
+      // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま。氏名は確定した名前で読む（改名の適用はこの後）
       for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
     }
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
+    for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
+      replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return; }
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
     readHardRules(R);
     A.ensureMonth(state.month); A.save();
@@ -371,10 +374,16 @@
   }
   // 改名は月データ・設定の複製に対して行い（本体の追随とプラグインの追随の両方）、全部成功したときだけ採用する。プラグインの追随（columns の rename / 規則の rename）が失敗したら何も変えずに false を返す
   const replaceInto = (target, src) => { for (const k of Object.keys(target)) delete target[k]; Object.assign(target, src); };
-  function renameDoctor(oldN, newN) {
-    const R2 = JSON.parse(JSON.stringify(state.rules)), m2 = JSON.parse(JSON.stringify(state.month));
+  // 改名の追随（名簿の欄の rename と規則の rename）を複製で試す。成功なら複製 {R2, m2} を返し、失敗なら知らせて null
+  function renameTrialOn(R, m, oldN, newN) {
+    const R2 = JSON.parse(JSON.stringify(R)), m2 = JSON.parse(JSON.stringify(m));
     try { for (const c of T.rules.columnsAll(R2)) if (c.rename) c.rename(R2, oldN, newN); for (const d of T.RULE_DEFS || []) if (typeof d.rename === "function") d.rename(R2, m2, oldN, newN); }
-    catch (e) { A.toast(T.t("{who} の改名を取り消しました: プラグインの人ごとのデータの追随に失敗しました（{err}）。プラグインの作成者に知らせてください", { who: oldN, err: e && e.message || e })); return false; }
+    catch (e) { A.toast(T.t("{who} の改名を取り消しました: プラグインの人ごとのデータの追随に失敗しました（{err}）。プラグインの作成者に知らせてください", { who: oldN, err: e && e.message || e })); return null; }
+    return { R2, m2 };
+  }
+  const renameTrial = (oldN, newN) => !!renameTrialOn(state.rules, state.month, oldN, newN);
+  function renameDoctor(oldN, newN) {
+    const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     const m = m2; const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
     mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance);
@@ -466,11 +475,14 @@
   }
   function undo() {
     const last = undoStack.pop(); if (!last) return;
-    const o = JSON.parse(last.snap); state.rules = o.rules;
+    const o = JSON.parse(last.snap);
     const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
+    const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name)) !== JSON.stringify((state.rules.doctors || []).map(d => d.name));
+    if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
+    state.rules = o.rules;
     if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();
-    A.toast(T.t("元に戻しました（{what}）", { what: tx(last.label) }) + (monthUntouched ? "" : T.t("。月別条件はその後に変更されているので戻していません（名簿の氏名を変えていた場合は入力チェックで確かめてください）")));
+    A.toast(T.t("元に戻しました（{what}）", { what: tx(last.label) }) + (monthUntouched ? "" : T.t("。月別条件はその後に変更されているので戻していません")));
   }
   // 設定タブの表示モード: 日々の設定 / 施設の構成を作る。見る側の都合なので、この端末のブラウザにだけ覚える
   const MODE_KEY = "toban_setmode";
