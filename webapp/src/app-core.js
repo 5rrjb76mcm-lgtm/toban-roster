@@ -11,7 +11,8 @@
   A.dirHandle = null; A.monthDirs = []; A.storedHandle = null; // 接続中のフォルダ・月フォルダの一覧・前回のフォルダ参照
   A.autosaveTimer = null;
   A.solving = false; // 計算・診断中（app-solve.js が立てる。プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない）
-  A.pluginsPending = false; // 計算中にフォルダへ接続した（プラグインの読み込みを計算後に回す。app-folder.js の loadPendingPlugins）
+  A.pluginsPending = false;
+  A.dirGen = 0; // 接続の世代（フォルダを開く・再接続するたびに進む）。保存の写しに入れ、保存中にフォルダが替わっていたら保存基準を更新しない // 計算中にフォルダへ接続した（プラグインの読み込みを計算後に回す。app-folder.js の loadPendingPlugins）
   const state = A.state;
 
   // ブラウザ内の保存キー。file:// では同じPCの全ローカルHTMLが同じ領域を共有するので、HTML の場所と形式版で分ける
@@ -53,11 +54,11 @@
   // refresh() は写しの中身（版の履歴の追加）を反映して署名と payload を作り直す
   // tag（年月）と lang（表示言語）も写しに入れる: 保存先のファイル名と帳票の言語は写しのもので決め、保存中に月や言語が切り替わっても混ざらない
   function snapshot(at) { const S = { month: JSON.parse(JSON.stringify(state.month)), rules: JSON.parse(JSON.stringify(state.rules)), result: state.result ? JSON.parse(JSON.stringify(state.result)) : null };
-    return { at, month: S.month, base: S.month, rules: S.rules, result: S.result, tag: tag(S.month), lang: T.lang(), sig: sigOfState(S), payload: payloadOf(S, at), refresh() { this.sig = sigOfState(this); this.payload = payloadOf(this, this.at); return this; } }; }
+    return { at, month: S.month, base: S.month, rules: S.rules, result: S.result, tag: tag(S.month), lang: T.lang(), dirGen: A.dirGen, where: A.dirHandle ? "フォルダ " + A.dirHandle.name : null, sig: sigOfState(S), payload: payloadOf(S, at), refresh() { this.sig = sigOfState(this); this.payload = payloadOf(this, this.at); return this; } }; }
   function markSaved(where, at, snap) {
     const s = snap || snapshot(at || new Date().toISOString());
-    if (s.tag && s.tag !== tag()) { persist(); return; } // 保存した写しと現在の月が違う（保存中に月が切り替わった）: 現在の月の保存基準には触れない
-    state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
+    if ((s.tag && s.tag !== tag()) || (s.dirGen !== undefined && s.dirGen !== A.dirGen)) { persist(); return; } // 保存した写しと現在の月・接続先が違う（保存中に切り替わった）: 現在の保存基準には触れない
+    state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || s.where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
     state.base = s.base; state.baseRules = s.rules; persist(); A.renderHeader();
   }
   const inputSig = () => sigOf(JSON.stringify([canon(state.month), canon(state.rules)])); // 計算の入力（月＋設定）の署名。計算中に変わったら結果を採用しない

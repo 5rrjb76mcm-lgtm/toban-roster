@@ -54,7 +54,8 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     assert.strictEqual(x.stat.solverCalls, 1); assert.ok(x.A.state.result && x.A.state.result.asg, "結果を採用"); assert.strictEqual(x.stat.saves(), 1);
     assert.strictEqual(JSON.stringify(x.A.state.result.plugins.map(s => s.split("#")[0])), JSON.stringify(["rules/ver.js"]), "読んだプラグインの印を結果に残す"); // vm の配列は別の realm なので JSON で比べる
     assert.ok(x.A.state.month.plugins_used.includes("local.versioned.rule"));
-    assert.strictEqual(x.A.solving, false);
+    assert.strictEqual(x.A.solving, false); assert.strictEqual(x.A.state.result.build, x.T.BUILD_ID, "本体の印も結果に残す");
+    x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:site#h1"), "組み立て時のプラグインの印も結果に残す"); x.T.PLUGINS = [];
   }
   { // 計算中の月の切替・プラグインの読み直しの受付（A.solving）
     const x = context(); let during = null; x.T.solveWithAvoidRef = async () => { during = x.A.solving; return { asg: {}, status: "Optimal", seconds: 0, objective: 0, vars: 0, cons: 0 }; };

@@ -19,7 +19,7 @@ const dir = { name: "test", async *entries() { yield ["202611", { kind: "directo
   async getFileHandle(n, opt) { if (!(opt && opt.create) && !(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async x => { files[n] = typeof x === "string" ? x : await x.text(); writes.push(n); }, close: async () => { } }) }; } };
 globalThis.Blob = class { constructor(parts) { this.parts = parts; } async text() { return this.parts.join(""); } };
 Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }, { name: "Dr B", team: "I" }], name_order: ["Dr A", "Dr B"], weights: { w1: 1 } }, month: { year: 2026, month: 11, notes: "before", holidays: [3, 23], unavailable_night: { "Dr A": [4, 11] } }, result: { asg: { "1:night": { work: "Dr A", oc: [] } }, status: "Optimal", at: "2026-10-01T00:00:00Z", seconds: 1.5 }, ui: {} });
-const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { this.rules = r; this.m = m; }; T.check = () => ({ V: [] }); T.makeDocx = async () => new Blob(["roster"]); A.reportHtml = () => `report:${A.state.month.notes}:${T.lang()}`;
+const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { this.rules = r; this.m = m; }; T.check = () => ({ V: [] }); T.makeDocx = async () => new Blob(["roster"]); A.reportHtml = () => `report:${A.state.month.notes}:${T.lang()}`; T.lintPlugins = () => []; // check.js は読まないので代替（F3 の場合だけ欠落を返す）
 (async () => {
   const vers = () => A.state.month.doc_versions.map(v => `v${v.ver}:${v.label}`);
   await A.saveToFolder(); assert.deepStrictEqual(vers(), ["v1:確認版"]); assert.strictEqual(files["202611_report_v1_draft.html"], "report:before:ja");
@@ -96,5 +96,33 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     release(); await saving; await ch; assert.strictEqual(T.lang(), "en");
     assert.deepStrictEqual(langs, { docx: "ja", report: "ja" }, "同じ版の両方が切替前の言語"); assert.strictEqual(A.state.month.doc_versions[0].sig, A.versionSig("確認版", Object.assign({}, A.state, { lang: "ja" })), "版の署名も写しの言語");
     T.setLang("ja"); T.makeDocx = async () => new Blob(["roster"]); }
-  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替 OK");
+  // 帳票を出す前の確認: 印の無い旧形式の結果でも検算は必ず行い、違反・検算の例外・プラグインの欠落・組み立て時プラグインの違いなら月データだけ保存する
+  { const fresh = (extra = {}) => { for (const k of Object.keys(files)) delete files[k]; Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "n" }, result: Object.assign({ asg: { "1:night": { work: "Dr A", oc: [] } }, status: "Optimal" }, extra), meta: null }); };
+    const docs = () => Object.keys(files).filter(n => /_roster_|_report_/.test(n)).length;
+    let calls = 0; T.check = () => { calls++; return { V: [1] }; }; fresh(); await A.saveToFolder(); assert.ok(calls >= 1, "旧形式（印なし）でも検算する"); assert.strictEqual(docs(), 0, "違反ありなら帳票を出さない"); assert.ok(files["202611_data.json"], "月データは保存する"); assert.strictEqual(A.isDirty(), false);
+    T.check = () => { throw new Error("check broken"); }; fresh(); await A.saveToFolder(); assert.strictEqual(docs(), 0, "検算が完了しなければ出さない");
+    T.check = () => ({ V: [] }); fresh(); await A.saveToFolder(); assert.strictEqual(docs(), 2, "違反なしなら旧形式でも出す（互換）");
+    T.lintPlugins = () => [{ code: "LINT_PLUGIN_MISSING", msg: "", hint: "" }]; fresh({ plugins: [] }); await A.saveToFolder(); assert.strictEqual(docs(), 0, "規則が欠けていれば出さない（計算ボタンと同じ判定）");
+    T.lintPlugins = () => { throw new Error("lint broken"); }; fresh({ plugins: [] }); await A.saveToFolder(); assert.strictEqual(docs(), 0, "欠落の確認が完了しなければ出さない"); T.lintPlugins = () => [];
+    T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; assert.deepStrictEqual(T.plugins.stamp(), ["build:site#h1"], "組み立て時のプラグインも印に入る");
+    fresh({ plugins: [] }); await A.saveToFolder(); assert.strictEqual(docs(), 0, "プラグインなしで計算した結果は、組み立て時プラグインのある本体では出さない");
+    fresh({ plugins: ["build:site#h0"] }); await A.saveToFolder(); assert.strictEqual(docs(), 0, "同じ名前でも中身が違えば出さない");
+    fresh({ plugins: ["build:site#h1"] }); await A.saveToFolder(); assert.strictEqual(docs(), 2, "同じ組み立てなら出す"); T.PLUGINS = []; }
+  // 保存中のフォルダ変更: 画面からの変更は保存を待つ。待たずに接続先が替わっても、保存先は元のフォルダのままで、保存基準は更新しない（接続先に無い月は未保存）
+  { for (const k of Object.keys(files)) delete files[k]; const filesB = {}; const dirB = { name: "B", async *entries() { }, async getDirectoryHandle(n, o) { if (n === "plugins") throw new Error("nf"); return dirB; },
+      async getFileHandle(n, opt) { if (!(opt && opt.create) && !(n in filesB)) throw new Error("nf"); return { getFile: async () => ({ text: async () => filesB[n] }), createWritable: async () => ({ write: async x => { filesB[n] = typeof x === "string" ? x : await x.text(); }, close: async () => { } }) }; }, queryPermission: async () => "granted" };
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "n" }, result: null, meta: null }); A.dirHandle = dir; A.markSaved();
+    const gate = () => { let release; const g = new Promise(r => { release = r; }); return { g, release }; }; const w0 = dir.getFileHandle; let g1 = gate(); dir.getFileHandle = async (n, o) => { if (n === "202611_data.json" && o && o.create) await g1.g; return w0(n, o); };
+    A.state.month.notes = "edited"; let saving = A.saveToFolder(); await new Promise(r => setTimeout(r, 20));
+    A.dirHandle = dirB; A.dirGen++; // 待たずに接続先が替わった場合
+    g1.release(); await saving; assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "edited", "元のフォルダ A に書く"); assert.strictEqual(Object.keys(filesB).length, 0, "B には書かない");
+    assert.strictEqual(A.isDirty(), true, "B には未保存"); assert.ok(!(A.state.meta && /B/.test(A.state.meta.savedWhere)), "B に保存済みとは言わない");
+    A.dirHandle = dir; A.markSaved(); // 画面からの変更は保存を待ち、接続先に無い月は未保存になる
+    globalThis.window.showDirectoryPicker = async () => dirB; globalThis.confirm = () => false;
+    g1 = gate(); A.state.month.notes = "edited2"; saving = A.saveToFolder(); await new Promise(r => setTimeout(r, 20));
+    let opened = false; const op = A.openFolderUI().then(() => { opened = true; }); await new Promise(r => setTimeout(r, 20)); assert.strictEqual(opened, false, "フォルダの変更は保存を待つ"); assert.strictEqual(A.dirHandle, dir);
+    g1.release(); await saving; await op; assert.strictEqual(A.dirHandle, dirB, "保存後に B へ"); assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "edited2", "A への保存は完了");
+    assert.strictEqual(A.isDirty(), true, "B にこの月が無ければ未保存（自動保存で B に書く）");
+    dir.getFileHandle = w0; A.dirHandle = dir; delete globalThis.window.showDirectoryPicker; }
+  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

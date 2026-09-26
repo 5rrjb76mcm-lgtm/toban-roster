@@ -6,7 +6,7 @@
   （既定は build.py と同じ場所の libs/）。rules.json / サンプル月は data/ から埋め込む。
   --check は app-*.js の相互参照の検査だけを行う（組み立てない。run_tests.sh から呼ぶ）。組み立て時にも同じ検査を行う。
 """
-import base64, json, pathlib, datetime, argparse, re, sys, html as html_mod, yaml
+import base64, json, pathlib, datetime, argparse, re, sys, hashlib, html as html_mod, yaml
 
 here = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(here))
@@ -33,7 +33,7 @@ def check_app_split():
     """app-*.js の相互参照の検査。決まり: 他のファイルの関数・共有変数は A. を付けて参照する／A.xxx はどこかのファイルが Object.assign(A, {...}) で公開している
     ／同じ名前を2つのファイルで宣言しない／$・esc・state は使うファイルごとに const で別名を宣言する。違反を文字列の一覧で返す。"""
     LOCAL = {"$": "const $ = ", "esc": "const esc = ", "state": "const state = A.state"}  # 各ファイルで宣言する別名
-    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer", "solving", "pluginsPending"}  # app-core.js が A に置く共有変数
+    SHARED = {"state", "highs", "dirHandle", "monthDirs", "storedHandle", "autosaveTimer", "solving", "pluginsPending", "dirGen"}  # app-core.js が A に置く共有変数
     texts = {f: (here / "src" / f).read_text(encoding="utf-8") for f in APP_FILES}
     decl, exports, owner, errors = {}, {}, {}, []
     for f, t in texts.items():
@@ -164,7 +164,8 @@ for d in args.plugins:
         print(f"--plugins: {pdir.name}: 知らないサブフォルダは無視します: {', '.join(unknown)}（使えるのは {', '.join(PLUGIN_KINDS)}）")
     if not found:
         print(f"--plugins: {pdir.name}: 部品が見つかりません（rules/ calendars/ docx/ lang/ profiles/ の下に置きます）")
-    plugin_info.append({"dir": pdir.name, "files": found})
+    ptext = "".join(q.read_text(encoding="utf-8") for kind in PLUGIN_KINDS for q in (sorted((pdir / kind).glob(PLUGIN_KINDS[kind])) if (pdir / kind).is_dir() else []))
+    plugin_info.append({"dir": pdir.name, "files": found, "hash": hashlib.sha256(ptext.encode("utf-8")).hexdigest()[:12]})  # hash: 中身の印（T.plugins.stamp に入り、別の組み立てで開いたときに計算結果と帳票の同一性を見る）
 def plugin_src(kind):
     return "".join(f"\n// ============================================================\n// [部品 {name}]\n// ============================================================\nT.pluginSource = {json.dumps(kind + '/' + q.name, ensure_ascii=False)};\n" + q.read_text(encoding="utf-8") + "\n;T.pluginSource = null;\n" for name, q in plugin_files[kind])  # 出どころ（実行時の読み込みと同じ「種類/ファイル名」）
 def with_plugins(f, code):  # 本体のファイル f の後ろに、同じ種類の部品を続ける
@@ -199,7 +200,6 @@ put("/*__CSS__*/", css)
 put("/*__VERSION__*/", f"v{datetime.date.today():%Y.%m.%d}" + (" +" + "・".join(p["dir"] for p in plugin_info) if plugin_info else ""))  # 規則の内容は設定タブと説明資料が示すので版の文字列は出さない。部品を取り込んだときはそのフォルダ名
 assert "/*__PLUGINS__*/[]" in src, "model.js の T.PLUGINS の目印がありません"
 src = src.replace("/*__PLUGINS__*/[]", js_safe(json.dumps(plugin_info, ensure_ascii=False)), 1)  # T.PLUGINS（model.js）。src は後で埋め込む
-import hashlib
 lang_text = "".join(q.read_text(encoding="utf-8") for q in sorted((here / "lang").glob("*.json"))) + "".join(q.read_text(encoding="utf-8") for _, q in plugin_files["lang"])  # 帳票の文面（訳）も本体の印に入れる（訳だけ直した本体でも版が進む）
 src_stamp = hashlib.sha256((src + css + (here / "src/index.html").read_text(encoding="utf-8") + lang_text).encode("utf-8")).hexdigest()[:12] + " " + datetime.date.today().isoformat()
 assert '"/*__BUILD_ID__*/dev"' in src, "model.js の T.BUILD_ID の目印がありません"

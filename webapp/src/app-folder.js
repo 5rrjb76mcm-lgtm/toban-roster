@@ -114,29 +114,35 @@
     const fresh = { label: () => T.t("ブラウザ内の保存を消して最初から始める"), cancel: true, run: async () => {
       if (!confirm(T.t("このブラウザに残っている入力・設定・計算結果を消して、同梱のサンプルから始めます。フォルダに保存済みのデータは消えません。よろしいですか"))) return false;
       A.resetBrowserState(); location.reload(); return false; } };
-    const openOther = { label: T.t("別のフォルダを開く"), run: async () => { await openFolder(); return !!A.dirHandle; } };
+    const openOther = { label: T.t("別のフォルダを開く"), run: async () => { await openFolderUI(); return !!A.dirHandle; } };
     if (A.storedHandle) {
-      try { if ((await A.storedHandle.queryPermission({ mode: "readwrite" })) === "granted") { A.dirHandle = A.storedHandle; await refreshMonths(); A.toast(T.t("フォルダ「{name}」に接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); renderFolderBar(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("前回のフォルダに接続できませんでした: {err}", { err: e && e.message || e })); }
+      try { if ((await A.storedHandle.queryPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); renderFolderBar(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("前回のフォルダに接続できませんでした: {err}", { err: e && e.message || e })); }
       await showStartGate(() => T.t("前回の保存フォルダ「{name}」に再接続してから始めます。\n「開始」を押すと、ブラウザがフォルダへの保存の許可を求めることがあります。許可してください。", { name: A.storedHandle.name }), [
-        { label: () => T.t("開始（フォルダ「{name}」に再接続）", { name: A.storedHandle.name }), primary: true, run: async () => { try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { A.dirHandle = A.storedHandle; await refreshMonths(); $("#startGate").hidden = true; A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return true; } } catch (e) { A.dirHandle = null; } A.toast(T.t("再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください")); return false; } },
+        { label: () => T.t("開始（フォルダ「{name}」に再接続）", { name: A.storedHandle.name }), primary: true, run: async () => { await A.awaitSaves(); try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); $("#startGate").hidden = true; A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return true; } } catch (e) { A.dirHandle = null; } A.toast(T.t("再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください")); return false; } },
         Object.assign({}, openOther, { label: () => T.t("別のフォルダを開く") }), Object.assign({}, noFolder, { label: () => T.t("フォルダなしで続ける（保存はダウンロードになります。通常は使いません）") }), fresh,
       ]);
     } else {
       await showStartGate(() => T.t("保存フォルダを開いてから始めます。このHTMLと同じ場所にある月ごとのフォルダの親（例: 勤務表）を選んでください。"), [
-        { label: () => T.t("フォルダを開いて開始"), primary: true, run: async () => { await openFolder(); return !!A.dirHandle; } },
+        { label: () => T.t("フォルダを開いて開始"), primary: true, run: async () => { await openFolderUI(); return !!A.dirHandle; } },
         Object.assign({}, noFolder, { label: () => T.t("フォルダなしで続ける（保存はダウンロードになります。通常は使いません）") }), fresh,
       ]);
     }
     renderFolderBar();
   }
+  // 画面からのフォルダの変更・再接続は、進行中の保存（帳票の生成・書込み）が終わってから行う（保存中に接続先が替わると、保存先と保存済みの表示がずれる）。
+  // 保存処理の中からの接続（ensureFolder）は待たない版（openFolder / reconnectFolder）を使う（自分の保存を待つと止まる）
+  const setDir = h => { A.dirHandle = h; A.dirGen++; };
+  async function openFolderUI() { await A.awaitSaves(); return openFolder(); }
+  async function reconnectFolderUI() { await A.awaitSaves(); return reconnectFolder(); }
   async function reconnectFolder() {
     if (!A.storedHandle) return openFolder();
-    try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { A.dirHandle = A.storedHandle; await refreshMonths(); A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("再接続できませんでした: {err}", { err: e && e.message || e })); }
+    try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("再接続できませんでした: {err}", { err: e && e.message || e })); }
     openFolder();
   }
   async function openFolder() {
     if (!fsOK()) return alert(T.t("このブラウザではフォルダを直接開けません（Edge/Chrome で開いてください）。ダウンロードと「データを読込」で代用できます。"));
-    try { A.dirHandle = await window.showDirectoryPicker({ id: "toban-root", mode: "readwrite", startIn: A.storedHandle || "documents" }); } catch (e) { return; }
+    let h; try { h = await window.showDirectoryPicker({ id: "toban-root", mode: "readwrite", startIn: A.storedHandle || "documents" }); } catch (e) { return; }
+    setDir(h);
     A.storedHandle = A.dirHandle; await idbSet(A.DIR_KEY, A.dirHandle);
     try { await refreshMonths(); await reconcileWithFolder(); } catch (e) { A.dirHandle = null; renderFolderBar(); return A.toast(T.t("フォルダを読めませんでした: {err}", { err: e && e.message || e })); }
     A.toast(T.t("フォルダ「{name}」を開きました", { name: A.dirHandle.name }));
@@ -159,6 +165,7 @@
     if (!f.data) {
       if (!A.monthDirs.length && state.meta && state.meta.savedAt && confirm(T.t("このフォルダには月データがありません。ブラウザ内に残っている {tag} の状態（保存 {at}）を捨てて、同梱のサンプルから始めますか？\n「キャンセル」＝ブラウザ内の状態をこのフォルダに保存して続けます", { tag: A.tag(), at: new Date(state.meta.savedAt).toLocaleString(T.dateLocale()) })))
         { A.resetBrowserState(); location.reload(); await new Promise(() => { }); } // 読み直すまで止める
+      if (state.meta && state.meta.savedWhere !== "フォルダ " + A.dirHandle.name) state.meta = null; // この月はこのフォルダにまだ無い: 未保存として扱い、自動保存で書く（別のフォルダに保存済みでも、接続先に無ければ保存済みとは言わない）
       return; }
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedAt) || "";
     const sameSaved = state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
@@ -209,8 +216,8 @@
       else el.innerHTML = `<button id="btnOpenFolder">${esc(T.t("フォルダを開く"))}</button> <span class="note">${esc(fsOK() ? T.t("保存先＝このHTMLがあるフォルダ{name}", { name: hn ? "「" + hn + "」" : "" }) : T.t("この環境ではフォルダに直接保存できません（JSONダウンロードで運用）"))}</span>`;
     }
     else el.innerHTML = `<span>📁 <b>${esc(A.dirHandle.name)}</b></span> ${htmlDirUrl() ? `<button id="btnShowFolder" title="${esc(T.t("このHTMLと同じ場所にある当月フォルダのファイル一覧を別タブで表示します"))}">${esc(T.t("{tag} フォルダを表示", { tag: A.tag() }))}</button>` : ""} <button id="btnOpenFolder" title="${esc(T.t("保存フォルダを変更します。通常は不要です"))}">${esc(T.t("保存フォルダを変更（管理者）"))}</button>`;
-    $("#btnOpenFolder").addEventListener("click", openFolder);
-    const rc = $("#btnReconnect"); if (rc) rc.addEventListener("click", reconnectFolder);
+    $("#btnOpenFolder").addEventListener("click", openFolderUI);
+    const rc = $("#btnReconnect"); if (rc) rc.addEventListener("click", reconnectFolderUI);
     const sf = $("#btnShowFolder"); if (sf) sf.addEventListener("click", () => { const base = htmlDirUrl(); if (!base) return; window.open(base + encodeURIComponent(A.tag()) + "/", "_blank"); });
     renderHeader();
   }
@@ -290,14 +297,21 @@
       try { const prev = await readJson(dir, A.FILES.data(S.tag)); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { }
       let verNote = "";
       const hasAsg = !!(S.result && S.result.asg);
-      // 計算した後にプラグインの登録が変わっていたら（result.plugins と今の印が違う）、その結果の勤務表は出さない（接続先の規則を満たすとは限らない。再計算を促す）
-      const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = hasAsg && Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
-      const viol = hasAsg && stampRes === stampNow ? (() => { try { return T.check(new T.Problem(S.rules, S.month), S.result.asg).V.length; } catch (e) { return -1; } })() : 0;
-      if (hasAsg && stampRes !== null && stampRes !== stampNow) verNote = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）");
-      else if (hasAsg && viol !== 0) verNote = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) });
+      // 勤務表・説明資料を出す前の確認。どれかに当たれば月データだけ保存する（順に: 入力を読めない／プラグインが欠けた・読めない（計算ボタンと同じ判定）／
+      // 計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。検算は印の有無によらず必ず行う
+      let P = null, stop = null;
+      if (hasAsg) {
+        try { P = new T.Problem(S.rules, S.month); } catch (e) { stop = T.t("（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）", { err: e && e.message || e }); }
+        if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"].includes(x.code)); } catch (e) { pl = null; }
+          if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）"); }
+        if (!stop) { const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
+          if (stampRes !== null && stampRes !== stampNow) stop = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）"); }
+        if (!stop) { let viol = -1; try { viol = T.check(P, S.result.asg).V.length; } catch (e) { viol = -1; }
+          if (viol !== 0) stop = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) }); }
+      }
+      if (stop) verNote = stop;
       else if (hasAsg) {
         // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
-        const P = new T.Problem(S.rules, S.month);
         const label = S.month.doc_label || "確認版";
         const vsig = versionSig(label, S);
         const versS = (S.month.doc_versions ||= []); const last = versS[versS.length - 1];
@@ -335,5 +349,5 @@
     state.ui.doctor = 0; A.ensureMonth(state.month); A.persist(); A.markSaved(o.month && o.rules ? (A.dirHandle ? "フォルダ " + A.dirHandle.name : "読込ファイル") : undefined, o.saved_at || undefined); A.renderAll(); A.showTab("input"); A.toast(msg);
   }
 
-  Object.assign(A, { repaintStartGate, renderHeader, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
+  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

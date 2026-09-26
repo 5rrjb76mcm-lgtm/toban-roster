@@ -1024,7 +1024,9 @@
     "共有用は個人別の条件を除いた雛形です。共有先では名簿と個人別の条件（資格・回数など）を設定するまで解けないことがあります。プラグインが名簿の外に個人の記録を持つ場合、氏名をキーにした項目と name が氏名の要素は落としますが、ほかの形は残ります（プラグイン側の share で除けます）。": "The shared export is a template without per-person conditions. The receiving facility may not get a solution until it fills in the roster and per-person conditions (qualifications, counts). If a plug-in keeps per-person records outside the roster, entries keyed by a name and array items whose name is a roster name are dropped, but other shapes remain (a plug-in can remove them with share).",
     "フォルダのプラグインを読めませんでした: {err}": "Could not read the folder's plug-ins: {err}",
     "（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）": "(plug-ins changed after the solve, so the roster and report are not written; press \"Solve\" again)",
-    "プラグインの規則 {ids} の共有用の変換に失敗したため、書き出しを中止しました（除けなかった個人の記録を含めないため）": "The share conversion of plug-in rule(s) {ids} failed, so the export was cancelled (to avoid including personal records that could not be removed)"
+    "プラグインの規則 {ids} の共有用の変換に失敗したため、書き出しを中止しました（除けなかった個人の記録を含めないため）": "The share conversion of plug-in rule(s) {ids} failed, so the export was cancelled (to avoid including personal records that could not be removed)",
+    "（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）": "(the input could not be read, so the roster and report are not written: {err})",
+    "（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）": "(facility plug-ins are missing or could not be loaded, so the roster and report are not written; check the administrator section of the settings tab)"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

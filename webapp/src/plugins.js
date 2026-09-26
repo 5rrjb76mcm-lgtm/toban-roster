@@ -85,7 +85,7 @@
     session = {}; loaded.length = 0; generation++;
   }
   // 実行時に読んだプラグインの一覧（名前と中身の印。読めたものだけ、名前順）。版の署名と計算結果の記録に使う
-  const stamp = () => loaded.filter(x => x.ok).map(x => `${x.name}#${x.hash}`).sort();
+  const stamp = () => loaded.filter(x => x.ok).map(x => `${x.name}#${x.hash}`).concat((T.PLUGINS || []).map(p => `build:${p.dir}#${p.hash || ""}`)).sort(); // 組み立て時に取り込んだ分も（build.py が中身の印を埋める）
   const stale = () => []; // 以前は「前のフォルダの規則が残っている」を知らせていた。いまは beginFolder が外すので残らない（入力チェックの LINT_PLUGIN_STALE は互換のため残す）
   T.plugins = { KINDS, loaded, load, errors, overrides, inventory, ruleIds, beginFolder, stale, generation: () => generation, stamp, recording: null };
 })(globalThis.T = globalThis.T || {});
