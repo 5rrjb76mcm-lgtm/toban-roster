@@ -464,7 +464,7 @@
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
-    $("#btnReloadPlugins").addEventListener("click", async () => { if (A.solving) return A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); await A.awaitSaves(); /* 保存中の帳票の生成が終わってから */ const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); });
+    $("#btnReloadPlugins").addEventListener("click", () => A.transition("plugins", async () => { if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); }));
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）

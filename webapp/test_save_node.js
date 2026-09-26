@@ -124,5 +124,26 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     g1.release(); await saving; await op; assert.strictEqual(A.dirHandle, dirB, "保存後に B へ"); assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "edited2", "A への保存は完了");
     assert.strictEqual(A.isDirty(), true, "B にこの月が無ければ未保存（フォルダ名が同じでも）"); await A.saveToFolder(); assert.ok(filesB["202611_data.json"], "自動保存に相当する保存で B に月データが作られる"); assert.strictEqual(A.isDirty(), false);
     dir.getFileHandle = w0; A.dirHandle = dir; delete globalThis.window.showDirectoryPicker; }
-  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更 OK");
+  // 共通の窓口 A.transition: 計算中は断って false（知らせる）、進行中の保存を待ってから実行し、戻り値を返す
+  { const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m));
+    A.solving = true; let ran = false; assert.strictEqual(await A.transition("month", async () => { ran = true; return 1; }), false, "計算中は断る"); assert.strictEqual(ran, false); assert.ok(/計算中は月を切り替えられません/.test(toasts.pop()));
+    assert.strictEqual(await A.transition("lang", async () => 1), false); assert.ok(/表示言語/.test(toasts.pop())); assert.strictEqual(await A.transition("folder", async () => 1), false); assert.ok(/保存フォルダ/.test(toasts.pop())); assert.strictEqual(await A.transition("plugins", async () => 1), false); assert.strictEqual(await A.transition("data", async () => 1), false); assert.strictEqual(await A.transition("unknown", async () => 1), false);
+    A.solving = false; A.toast = t0;
+    for (const k of Object.keys(files)) delete files[k]; A.dirHandle = dir; Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "n" }, result: null, meta: null }); A.markSaved();
+    const gate = () => { let release; const g = new Promise(r => { release = r; }); return { g, release }; }; const w0 = dir.getFileHandle; const g1 = gate(); dir.getFileHandle = async (n, o) => { if (n === "202611_data.json" && o && o.create) await g1.g; return w0(n, o); };
+    A.state.month.notes = "t"; const saving = A.saveToFolder(); await new Promise(r => setTimeout(r, 20));
+    let ran2 = false; const tr = A.transition("data", async () => { ran2 = true; return "done"; }); await new Promise(r => setTimeout(r, 20)); assert.strictEqual(ran2, false, "進行中の保存を待つ");
+    g1.release(); await saving; assert.strictEqual(await tr, "done", "保存後に実行して戻り値を返す"); assert.strictEqual(ran2, true); dir.getFileHandle = w0; }
+  // 保存の 3 段階: prepareSave は state を変えず（版の記録も現在の月には足さない）、writeSave が写しの月のフォルダに書き、commitSave が版の記録を足して保存済みにする
+  { for (const k of Object.keys(files)) delete files[k]; T.check = () => ({ V: [] }); T.makeDocx = async () => new Blob(["roster"]); A.reportHtml = () => "report";
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "p" }, result: { asg: { "1:night": { work: "Dr A", oc: [] } }, status: "Optimal", plugins: [] }, meta: null });
+    const before = JSON.stringify(A.state.month) + JSON.stringify(A.state.rules), sig0 = A.sig();
+    const prep = await A.prepareSave("2026-10-01T00:00:00.000Z");
+    assert.strictEqual(JSON.stringify(A.state.month) + JSON.stringify(A.state.rules), before, "prepareSave は state を変えない"); assert.strictEqual(A.sig(), sig0); assert.ok(!A.state.month.doc_versions, "版の記録はまだ現在の月に無い");
+    assert.deepStrictEqual(prep.files.map(f => f.name), ["202611_roster_v1_draft.docx", "202611_report_v1_draft.html", "202611_data.json"], "出力は写しから 3 つ"); assert.strictEqual(prep.version.ver, 1); assert.strictEqual(prep.S.month.doc_versions.length, 1, "写しには版の記録が入る"); assert.strictEqual(Object.keys(files).length, 0, "まだ書かない");
+    await A.writeSave(dir, prep); assert.deepStrictEqual(Object.keys(files).sort(), ["202611_data.json", "202611_report_v1_draft.html", "202611_roster_v1_draft.docx"], "writeSave が書く"); assert.strictEqual(JSON.parse(files["202611_data.json"]).month.doc_versions.length, 1); assert.strictEqual(A.isDirty(), true, "まだ保存済みではない");
+    A.commitSave(prep); assert.strictEqual(A.state.month.doc_versions.length, 1, "commitSave が版の記録を現在の月に足す"); assert.strictEqual(A.isDirty(), false, "保存済みになる"); assert.strictEqual(A.state.meta.savedTag, "202611");
+    // 月が替わっていたら commitSave は現在の月に触れない
+    const prep2 = await A.prepareSave("2026-10-01T00:01:00.000Z"); A.state.month = { year: 2026, month: 12, notes: "dec" }; A.state.meta = null; A.commitSave(prep2); assert.strictEqual(A.state.meta, null); assert.ok(!A.state.month.doc_versions); }
+  console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口・保存の 3 段階 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

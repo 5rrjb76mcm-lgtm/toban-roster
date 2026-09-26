@@ -23,12 +23,13 @@
     T.setLang(l || (state.rules || {}).lang || nav);
     const opts = () => T.LANGS().map(([k, label]) => `<option value="${k}"${k === T.lang() ? " selected" : ""}>${label}</option>`).join("");
     // ヘッダーと開始画面の両方に言語の選択を置く（開始画面はヘッダーより前に出るので、そこで選べないと最初の画面が読めない）
-    const change = async v => {
-      await A.awaitSaves(); // 保存中（帳票の生成・書込み）は終わってから切り替える（同じ版の勤務表と説明資料が別の言語にならない）
-      T.setLang(v); try { localStorage.setItem(LANG_KEY, v); } catch (e) { }
-      for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (x) x.value = v; }
-      A.readAll(); renderAll(); // 役割・勤務帯の表示名もその言語で読み直す
-      A.repaintStartGate();
+    const change = async v => { // 共通の窓口を通す（計算中は断る・保存中は終わってから。同じ版の勤務表と説明資料が別の言語にならない）
+      const r = await A.transition("lang", async () => {
+        T.setLang(v); try { localStorage.setItem(LANG_KEY, v); } catch (e) { }
+        A.readAll(); renderAll(); // 役割・勤務帯の表示名もその言語で読み直す
+        A.repaintStartGate(); return true;
+      });
+      for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (x) x.value = r === false ? T.lang() : v; } // 断られたら選択肢を元に戻す
     };
     for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (!x) continue; x.innerHTML = opts(); x.addEventListener("change", () => change(x.value)); }
   }
@@ -58,10 +59,10 @@
     });
     $("#btnReportHtml").addEventListener("click", A.downloadReportHtml);
     $("#btnSaveJson").addEventListener("click", () => { A.readAll(); const at = new Date().toISOString(); A.download(A.dataFileName(), new Blob([A.payloadJson(at)], { type: "application/json" })); A.markSaved("ダウンロード", at); }); // savedWhere は内部の値（表示は whereLabel が訳す）
-    $("#fileLoadJson").addEventListener("change", async ev => { const f = ev.target.files[0]; if (!f) return; if (!(await A.saveBeforeSwitch())) { ev.target.value = ""; return; } const rd = new FileReader(); rd.onload = () => { try { A.applyLoaded(JSON.parse(rd.result), T.t("読み込みました")); } catch (e) { alert(T.t("読み込み失敗: {err}", { err: e })); } }; rd.readAsText(f); ev.target.value = ""; });
-    $("#fileFromPrev").addEventListener("change", async ev => { const f = ev.target.files[0]; if (!f) return; if (!(await A.saveBeforeSwitch())) { ev.target.value = ""; return; } const rd = new FileReader(); rd.onload = () => { try { const o = JSON.parse(rd.result); if (!o.month) throw new Error(T.t("勤務表データJSONではありません")); if (o.rules) state.rules = o.rules; state.meta = null; state.base = null; state.month = A.fromPrevious(o); state.result = null; state.ui.doctor = 0; A.save(); renderAll(); showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month })); } catch (e) { alert(T.t("読み込み失敗: {err}", { err: e })); } }; rd.readAsText(f); ev.target.value = ""; });
-    $("#btnNewMonth").addEventListener("click", async () => { if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("入力を空にして新しい月を作ります。よろしいですか"))) return; const y = +prompt(T.t("年"), state.month.year), mo = +prompt(T.t("月"), (state.month.month % 12) + 1); if (!y || !mo) return; state.meta = null; state.base = null; state.month = A.blankMonth(y, mo); state.result = null; state.ui.doctor = 0; A.save(); renderAll(); showTab("input"); });
-    $("#btnSample").addEventListener("click", async () => { if (!T.SAMPLE_MONTH) return; if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("サンプル（2026年11月）を読み込みます"))) return; state.rules = JSON.parse(JSON.stringify(T.DEFAULT_RULES)); state.meta = null; state.base = null; state.month = JSON.parse(JSON.stringify(T.SAMPLE_MONTH)); state.result = null; state.ui.doctor = 0; A.ensureMonth(state.month); A.save(); renderAll(); showTab("input"); });
+    $("#fileLoadJson").addEventListener("change", ev => A.transition("data", async () => { const f = ev.target.files[0]; if (!f) return; if (!(await A.saveBeforeSwitch())) { ev.target.value = ""; return; } const rd = new FileReader(); rd.onload = () => { try { A.applyLoaded(JSON.parse(rd.result), T.t("読み込みました")); } catch (e) { alert(T.t("読み込み失敗: {err}", { err: e })); } }; rd.readAsText(f); ev.target.value = ""; }).then(r => { if (r === false) ev.target.value = ""; }));
+    $("#fileFromPrev").addEventListener("change", ev => A.transition("data", async () => { const f = ev.target.files[0]; if (!f) return; if (!(await A.saveBeforeSwitch())) { ev.target.value = ""; return; } const rd = new FileReader(); rd.onload = () => { try { const o = JSON.parse(rd.result); if (!o.month) throw new Error(T.t("勤務表データJSONではありません")); if (o.rules) state.rules = o.rules; state.meta = null; state.base = null; state.month = A.fromPrevious(o); state.result = null; state.ui.doctor = 0; A.save(); renderAll(); showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month })); } catch (e) { alert(T.t("読み込み失敗: {err}", { err: e })); } }; rd.readAsText(f); ev.target.value = ""; }).then(r => { if (r === false) ev.target.value = ""; }));
+    $("#btnNewMonth").addEventListener("click", () => A.transition("month", async () => { if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("入力を空にして新しい月を作ります。よろしいですか"))) return; const y = +prompt(T.t("年"), state.month.year), mo = +prompt(T.t("月"), (state.month.month % 12) + 1); if (!y || !mo) return; state.meta = null; state.base = null; state.month = A.blankMonth(y, mo); state.result = null; state.ui.doctor = 0; A.save(); renderAll(); showTab("input"); }));
+    $("#btnSample").addEventListener("click", () => A.transition("month", async () => { if (!T.SAMPLE_MONTH) return; if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("サンプル（2026年11月）を読み込みます"))) return; state.rules = JSON.parse(JSON.stringify(T.DEFAULT_RULES)); state.meta = null; state.base = null; state.month = JSON.parse(JSON.stringify(T.SAMPLE_MONTH)); state.result = null; state.ui.doctor = 0; A.ensureMonth(state.month); A.save(); renderAll(); showTab("input"); }));
     showTab("input");
     T.applyI18n();
   }

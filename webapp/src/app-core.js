@@ -44,7 +44,14 @@
   // 保存系の処理は一度に1つだけ動かす（自動保存・今すぐ保存・月切替・計算後の保存が重なっても確認画面が取り違えられない）
   let saveChain = Promise.resolve();
   const serialized = fn => { const p = saveChain.then(fn, fn); saveChain = p.catch(() => { }); return p; };
-  const awaitSaves = () => serialized(async () => { }); // 進行中の保存が終わるのを待つ（月の切替・JSON の読込・言語の切替・プラグインの読み直しの前に。保存の待ち行列の中からは呼ばない）
+  const awaitSaves = () => serialized(async () => { }); // 進行中の保存が終わるのを待つ（transition が使う。保存の待ち行列の中からは呼ばない）
+  // 状態を切り替える操作の共通の窓口: 月の切替・新しい月・サンプル・JSON の読込（data）、保存フォルダの変更と再接続（folder）、表示言語（lang）、プラグインの読み直し（plugins）。
+  // 約束は 2 つで、ここにだけ書く: (1) 計算・診断中（A.solving）は受け付けない（結果を採用する規則・設定と、検算・帳票の規則がずれる）
+  // (2) 進行中の保存（帳票の生成・書込み）が終わるのを待ってから実行する（保存先と保存済みの表示が混ざらない）。
+  // 新しい切替のボタンを作るときは、処理をこの窓口に渡す（A.transition("month", async () => {...})）。断ったときは false を返す（呼ぶ側は選択肢の表示を元に戻す）。
+  // 保存の待ち行列の中から呼ばれる接続（ensureFolder → openFolder）は窓口を通さない（自分の保存を待つと止まる）
+  const BUSY = { month: "計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください", data: "計算中はデータを読み込めません。計算が終わってからもう一度選んでください", folder: "計算中は保存フォルダを変更できません。計算が終わってからもう一度押してください", lang: "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください", plugins: "計算中はプラグインを読み直せません。計算が終わってからもう一度押してください" };
+  async function transition(kind, fn) { if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; } /* A.toast: 試験が差し替えられるように公開した側を呼ぶ */ await awaitSaves(); return fn(); }
   function save() {
     persist(); A.renderHeader();
     if (A.dirHandle && isDirty()) { clearTimeout(A.autosaveTimer); A.autosaveTimer = setTimeout(() => A.autosaveJson(), 3000); }
@@ -118,5 +125,5 @@
   }
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
 
-  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

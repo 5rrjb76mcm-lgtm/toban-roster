@@ -118,7 +118,7 @@
     if (A.storedHandle) {
       try { if ((await A.storedHandle.queryPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); renderFolderBar(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("前回のフォルダに接続できませんでした: {err}", { err: e && e.message || e })); }
       await showStartGate(() => T.t("前回の保存フォルダ「{name}」に再接続してから始めます。\n「開始」を押すと、ブラウザがフォルダへの保存の許可を求めることがあります。許可してください。", { name: A.storedHandle.name }), [
-        { label: () => T.t("開始（フォルダ「{name}」に再接続）", { name: A.storedHandle.name }), primary: true, run: async () => { await A.awaitSaves(); try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); $("#startGate").hidden = true; A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return true; } } catch (e) { A.dirHandle = null; } A.toast(T.t("再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください")); return false; } },
+        { label: () => T.t("開始（フォルダ「{name}」に再接続）", { name: A.storedHandle.name }), primary: true, run: () => A.transition("folder", async () => { try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); $("#startGate").hidden = true; A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return true; } } catch (e) { A.dirHandle = null; } A.toast(T.t("再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください")); return false; }) },
         Object.assign({}, openOther, { label: () => T.t("別のフォルダを開く") }), Object.assign({}, noFolder, { label: () => T.t("フォルダなしで続ける（保存はダウンロードになります。通常は使いません）") }), fresh,
       ]);
     } else {
@@ -129,11 +129,11 @@
     }
     renderFolderBar();
   }
-  // 画面からのフォルダの変更・再接続は、進行中の保存（帳票の生成・書込み）が終わってから行う（保存中に接続先が替わると、保存先と保存済みの表示がずれる）。
-  // 保存処理の中からの接続（ensureFolder）は待たない版（openFolder / reconnectFolder）を使う（自分の保存を待つと止まる）
+  // 画面からのフォルダの変更・再接続は共通の窓口（A.transition: 計算中は断り、進行中の保存を待つ）を通す。
+  // 保存処理の中からの接続（ensureFolder）は窓口を通さない版（openFolder / reconnectFolder）を使う（自分の保存を待つと止まる）
   const setDir = h => { A.dirHandle = h; A.dirGen++; };
-  async function openFolderUI() { await A.awaitSaves(); return openFolder(); }
-  async function reconnectFolderUI() { await A.awaitSaves(); return reconnectFolder(); }
+  const openFolderUI = () => A.transition("folder", openFolder);
+  const reconnectFolderUI = () => A.transition("folder", reconnectFolder);
   async function reconnectFolder() {
     if (!A.storedHandle) return openFolder();
     try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("再接続できませんでした: {err}", { err: e && e.message || e })); }
@@ -190,7 +190,7 @@
   // 保存フォルダの plugins/（rules/ calendars/ docx/ lang/ profiles/）を読んで登録する。無ければ何もしない。docs/rule-modules.md §8
   async function loadFolderPlugins(root = A.dirHandle) {
     if (!root) return 0;
-    if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return 0; }
+    if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return 0; } // 画面からは窓口（A.transition("plugins")）が先に断る。ここは保存処理の中からの接続など窓口を通らない経路の安全側
     T.plugins.beginFolder(); // 前のフォルダで読んだ分（規則・区分・拡張・暦・様式・文面・訳・プロファイル）を最初の写しへ戻す。保存データが参照する規則が無ければ入力チェック（LINT_PLUGIN_MISSING）が知らせる
     let pdir = null; try { pdir = await root.getDirectoryHandle("plugins"); } catch (e) { A.renderAll(); return 0; }
     let n = 0; const errs = [];
@@ -234,10 +234,12 @@
   function bindMonthSelect() {
     $("#monthSel").addEventListener("change", async ev => {
       let t = ev.target.value; if (t === A.tag()) return;
-      if (A.solving) { ev.target.value = A.tag(); return A.toast(T.t("計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください")); }
-      if (t === "__other__") { ev.target.value = A.tag(); const y = +prompt(T.t("年"), state.month.year); if (!y) return; const mo = +prompt(T.t("月（1〜12）"), state.month.month); if (!mo || mo < 1 || mo > 12) return; t = `${y}${String(mo).padStart(2, "0")}`; if (t === A.tag()) return; }
-      if (A.dirHandle) { const f = await findMonthData(t); if (f.data) { if (!(await saveBeforeSwitch())) { ev.target.value = A.tag(); return; } applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return; } }
-      ev.target.value = A.tag(); A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); // 保存の確認は onMonthChange 側で1回だけ行う
+      const r = await A.transition("month", async () => { // 共通の窓口（計算中は断る・進行中の保存を待つ）
+        if (t === "__other__") { ev.target.value = A.tag(); const y = +prompt(T.t("年"), state.month.year); if (!y) return true; const mo = +prompt(T.t("月（1〜12）"), state.month.month); if (!mo || mo < 1 || mo > 12) return true; t = `${y}${String(mo).padStart(2, "0")}`; if (t === A.tag()) return true; }
+        if (A.dirHandle) { const f = await findMonthData(t); if (f.data) { if (!(await saveBeforeSwitch())) { ev.target.value = A.tag(); return true; } applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return true; } }
+        ev.target.value = A.tag(); await A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); return true; // 保存の確認は onMonthChange 側で1回だけ行う
+      });
+      if (r === false) ev.target.value = A.tag(); // 計算中で断られた
     });
   }
   // 月データを探す: YYYYMM フォルダ内 → フォルダ直下 → YYYYMM で始まる名前のフォルダ内
@@ -261,7 +263,7 @@
   }
   // 月を切り替える前に現在の月を保存する。未接続なら接続を求め、断られたら「保存せずに切替」を確認
   async function saveBeforeSwitch() {
-    await A.awaitSaves(); // 進行中の保存（帳票の生成・書込み）が終わってから判定する。未保存でなくても、書込み中に月を替えると保存の基準が混ざる
+    await A.awaitSaves(); // 進行中の保存（帳票の生成・書込み）が終わってから判定する（呼ぶ側が窓口を通していても、ここで待つのは安全側。未保存でなくても書込み中に月を替えると保存の基準が混ざる）
     A.readAll();
     if (!A.isDirty()) return true;
     if (!A.dirHandle) {
@@ -280,6 +282,8 @@
     return v === true;
   }
   async function saveToFolder() { clearTimeout(A.autosaveTimer); return A.serialized(saveToFolderCore); }
+  // フォルダへの保存は 3 段階。1) prepareSave: 写しを取り、出力（勤務表・説明資料・月データ）を作る（state は読むだけ） 2) writeSave: フォルダへ書く 3) commitSave: 保存済みにする
+  // saveToFolderCore はその並べ方（接続の確保・競合の確認・3 段階・一覧の更新・知らせ）だけを持つ
   async function saveToFolderCore() {
     A.readAll();
     if (!A.dirHandle) {
@@ -288,53 +292,62 @@
     }
     if (!(await checkConflict())) { A.toast(T.t("保存を見送りました")); return "skipped"; } // ここで自動統合が入ることがある（統合後の内容を書く）
     try {
-      const at = new Date().toISOString();
-      // この時点の写し（月・設定・結果・年月・言語）を 1 つ取り、保存先のフォルダ名・ファイル名・検算・版の署名・勤務表・説明資料・月データをすべてその写しから作る。
-      // 生成・書込みの間に入った編集は未保存として残り、月が切り替わっても写しの月のファイルにしか書かない（markSaved も写しの月が現在の月のときだけ基準を更新する）
-      const S = A.snapshot(at), root = A.dirHandle;
-      const dir = await root.getDirectoryHandle(S.tag, { create: true });
-      // 上書き前に直前の保存データを1世代退避する（誤操作や統合の取り違えからの復元用）
-      try { const prev = await readJson(dir, A.FILES.data(S.tag)); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { }
-      let verNote = "";
-      const hasAsg = !!(S.result && S.result.asg);
-      // 勤務表・説明資料を出す前の確認。どれかに当たれば月データだけ保存する（順に: 入力を読めない／プラグインが欠けた・読めない（計算ボタンと同じ判定）／
-      // 計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。検算は印の有無によらず必ず行う
-      let P = null, stop = null;
-      if (hasAsg) {
-        try { P = new T.Problem(S.rules, S.month); } catch (e) { stop = T.t("（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）", { err: e && e.message || e }); }
-        if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"].includes(x.code)); } catch (e) { pl = null; }
-          if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）"); }
-        if (!stop) { const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
-          if (stampRes !== null && stampRes !== stampNow) stop = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）"); }
-        if (!stop) { let viol = -1; try { viol = T.check(P, S.result.asg).V.length; } catch (e) { viol = -1; }
-          if (viol !== 0) stop = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) }); }
-      }
-      if (stop) verNote = stop;
-      else if (hasAsg) {
-        // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
-        const label = S.month.doc_label || "確認版";
-        const vsig = versionSig(label, S);
-        const versS = (S.month.doc_versions ||= []); const last = versS[versS.length - 1];
-        if (!last || last.sig !== vsig) {
-          const ver = (last ? last.ver : 0) + 1;
-          const docxName = A.FILES.roster(S.tag, ver, label), htmlName = A.FILES.report(S.tag, ver, label);
-          try { // 様式のプラグインが無いなどで書き出せなくても、月データの保存は続ける
-            const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
-            await writeFile(dir, docxName, docx);
-            await writeFile(dir, htmlName, new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" }));
-            const entry = { ver, at, label, sig: vsig, docx: docxName, html: htmlName };
-            versS.push(entry); if (A.tag() === S.tag) (state.month.doc_versions ||= []).push(JSON.parse(JSON.stringify(entry))); // 写し（保存する中身）と、同じ月のままなら現在の状態にも足す（ほかに編集が無ければ署名が一致して「保存済み」になる）
-            verNote = T.t("（勤務表 v{v} を追加）", { v: ver });
-          } catch (e) { verNote = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
-        } else verNote = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
-      }
-      S.refresh(); // 版の追加を反映した署名と中身。書いた中身だけを保存済みにする（生成・書込み中の入力は未保存のまま）
-      await writeFile(dir, A.FILES.data(S.tag), new Blob([S.payload], { type: "application/json" }));
-      A.markSaved(undefined, at, S);
+      const root = A.dirHandle, prep = await prepareSave();
+      await writeSave(root, prep);
+      commitSave(prep);
       await refreshMonths();
-      A.toast(T.t("{tag} フォルダに保存しました", { tag: S.tag }) + (hasAsg ? verNote : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
+      A.toast(T.t("{tag} フォルダに保存しました", { tag: prep.S.tag }) + (prep.hasAsg ? prep.note : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
       return "saved";
     } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
+  }
+  // 1) 写しから出力を作る。この時点の写し（月・設定・結果・年月・言語・接続の世代）を 1 つ取り、保存先のファイル名・検算・版の署名・勤務表・説明資料・月データをすべてその写しから作る。
+  // 生成の間に入った編集は写しに入らず未保存として残る。戻り値 { S, at, files: [{name, blob}], version, note, hasAsg }。state は変えない
+  async function prepareSave(at = new Date().toISOString()) {
+    const S = A.snapshot(at), hasAsg = !!(S.result && S.result.asg), prep = { S, at, files: [], version: null, note: "", hasAsg };
+    // 勤務表・説明資料を出す前の確認。どれかに当たれば月データだけ（順に: 入力を読めない／プラグインが欠けた・読めない（計算ボタンと同じ判定）／
+    // 計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。検算は印の有無によらず必ず行う
+    let P = null, stop = null;
+    if (hasAsg) {
+      try { P = new T.Problem(S.rules, S.month); } catch (e) { stop = T.t("（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）", { err: e && e.message || e }); }
+      if (!stop) { let pl = null; try { pl = T.lintPlugins(P).filter(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE"].includes(x.code)); } catch (e) { pl = null; }
+        if (!pl || pl.length) stop = T.t("（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）"); }
+      if (!stop) { const stampNow = JSON.stringify(T.plugins && T.plugins.stamp ? T.plugins.stamp() : []), stampRes = Array.isArray(S.result.plugins) ? JSON.stringify(S.result.plugins) : null;
+        if (stampRes !== null && stampRes !== stampNow) stop = T.t("（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）"); }
+      if (!stop) { let viol = -1; try { viol = T.check(P, S.result.asg).V.length; } catch (e) { viol = -1; }
+        if (viol !== 0) stop = T.t("（検算に違反が{n}ため勤務表と説明資料は書き出しません。入力を直して再計算してください）", { n: viol < 0 ? T.t("確認できない") : T.t("{n} 件", { n: viol }) }); }
+    }
+    if (stop) prep.note = stop;
+    else if (hasAsg) {
+      // 配布物は上書きせず版を追加する。出力に関わるもの（versionSig）が前回と同じなら新しい版は作らない
+      const label = S.month.doc_label || "確認版", vsig = versionSig(label, S);
+      const versS = (S.month.doc_versions ||= []), last = versS[versS.length - 1];
+      if (!last || last.sig !== vsig) {
+        const ver = (last ? last.ver : 0) + 1, docxName = A.FILES.roster(S.tag, ver, label), htmlName = A.FILES.report(S.tag, ver, label);
+        try { // 様式のプラグインが無いなどで作れなくても、月データの保存は続ける
+          const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
+          const html = new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" });
+          prep.files.push({ name: docxName, blob: docx }, { name: htmlName, blob: html });
+          prep.version = { ver, at, label, sig: vsig, docx: docxName, html: htmlName }; versS.push(prep.version); // 写し（保存する中身）に版の記録を足す。現在の状態へは commitSave
+          prep.note = T.t("（勤務表 v{v} を追加）", { v: ver });
+        } catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
+      } else prep.note = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
+    }
+    S.refresh(); // 版の追加を反映した署名と中身
+    prep.files.push({ name: A.FILES.data(S.tag), blob: new Blob([S.payload], { type: "application/json" }) });
+    return prep;
+  }
+  // 2) フォルダへ書く。写しの年月のフォルダに、直前の月データを 1 世代退避してから、出力（勤務表・説明資料・月データ）を書く
+  async function writeSave(root, prep) {
+    const dir = await root.getDirectoryHandle(prep.S.tag, { create: true });
+    try { const prev = await readJson(dir, A.FILES.data(prep.S.tag)); if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { } // 誤操作や統合の取り違えからの復元用
+    for (const f of prep.files) await writeFile(dir, f.name, f.blob);
+  }
+  // 3) 保存済みにする。書いた写しの署名だけを保存済みにする（生成・書込み中の入力は未保存のまま）。版の記録は、写しと現在の月・接続先が同じときだけ現在の状態にも足す
+  // （ほかに編集が無ければ署名が一致して「保存済み」になる。月や接続先が替わっていたら markSaved も基準を更新しない）
+  function commitSave(prep) {
+    const S = prep.S;
+    if (prep.version && A.tag() === S.tag && S.dirGen === A.dirGen) (state.month.doc_versions ||= []).push(JSON.parse(JSON.stringify(prep.version)));
+    A.markSaved(undefined, prep.at, S);
   }
   // 当直表の版の識別。保存時の版付与とダウンロード時の版表示で共通。出力に使うものを全部含める:
   // 設定（規則・重み・様式・名簿）、月の条件（メモ・日ごとの予定など。版の履歴は除く）、割当と変更表示の基準、表題、表示言語、本体の印（T.BUILD_ID）、実行時に読んだプラグインの中身。
@@ -349,5 +362,5 @@
     state.ui.doctor = 0; A.ensureMonth(state.month); A.persist(); A.markSaved(o.month && o.rules ? (A.dirHandle ? "フォルダ " + A.dirHandle.name : "読込ファイル") : undefined, o.saved_at || undefined); A.renderAll(); A.showTab("input"); A.toast(msg);
   }
 
-  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
+  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

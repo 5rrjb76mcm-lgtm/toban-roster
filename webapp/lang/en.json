@@ -1026,7 +1026,10 @@
     "（計算した後にプラグインが変わったため勤務表と説明資料は書き出しません。もう一度「計算する」を押してください）": "(plug-ins changed after the solve, so the roster and report are not written; press \"Solve\" again)",
     "プラグインの規則 {ids} の共有用の変換に失敗したため、書き出しを中止しました（除けなかった個人の記録を含めないため）": "The share conversion of plug-in rule(s) {ids} failed, so the export was cancelled (to avoid including personal records that could not be removed)",
     "（入力を読み取れないため勤務表と説明資料は書き出しません: {err}）": "(the input could not be read, so the roster and report are not written: {err})",
-    "（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）": "(facility plug-ins are missing or could not be loaded, so the roster and report are not written; check the administrator section of the settings tab)"
+    "（施設のプラグインが足りない、または読めないため勤務表と説明資料は書き出しません。設定タブの管理者向けを確認してください）": "(facility plug-ins are missing or could not be loaded, so the roster and report are not written; check the administrator section of the settings tab)",
+    "計算中はデータを読み込めません。計算が終わってからもう一度選んでください": "Data cannot be loaded while solving. Choose it again after the solve finishes",
+    "計算中は保存フォルダを変更できません。計算が終わってからもう一度押してください": "The save folder cannot be changed while solving. Press again after the solve finishes",
+    "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください": "The language cannot be switched while solving. Choose it again after the solve finishes"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

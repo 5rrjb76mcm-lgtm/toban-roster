@@ -115,6 +115,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `lint_same_node.js` — 入力チェックを部品に移すときの確認。git の版と いまの src で、見本の施設とわざと矛盾を入れた月の指摘の集合が同じかを比べる（`node lint_same_node.js HEAD`）
 - `lp_same_node.js` — 規則を部品に移すときの確認。git の版と いまの src で、解く側に渡す LP の文字列が同じかを 8 設定で比べる（`node lp_same_node.js HEAD`）
 - `test_brute_node.js` — 総当たりとの突き合わせ。一度解いた割当のうち数枠（窓）だけを空け、窓に入りうる割当をすべて並べて、検算で規則を満たすものを `penalty` で採点した最小値と、同じ窓を HiGHS で解いた最適値が一致することを確かめる（見本 4 施設、15 窓、約 23 万通り）。あわせて、規則を満たす割当（50 通り以下なら全部、多ければ 30 通り）を全枠固定で解き、解く側が最適でない割当まで禁止していないかを見る。`solve` の `pin` は一部の枠だけでもよい（無い枠は固定しない）
+- 画面の側の約束（新しい操作を足す人へ）: 状態を切り替える操作（月・データの読込・フォルダ・言語・プラグイン）は `A.transition(kind, fn)` に処理を渡す（計算中は断り、進行中の保存を待つ）。フォルダへの保存は `A.prepareSave` → `A.writeSave` → `A.commitSave` の 3 段階（`docs/rule-modules.md` §8）
 - `build.py --check` — 画面（`app-*.js`）の相互参照の検査（`run_tests.sh` の先頭で実行。組み立て時にも同じ検査が走る）
 - highs パッケージは組み込みの wasm と同じ `highs@1.15.2` を使う（`run_tests.sh` が無ければ `~/.toban-test` に入れる）
 
