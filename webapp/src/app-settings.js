@@ -335,18 +335,25 @@
     const R = state.rules; const oldNames = R.doctors.map(d => d.name);
     const prevDocs = Object.fromEntries(R.doctors.map(d => [d.name, d])), cols = T.rules.columns(R), acc = {};
     for (const c of cols) if (c.begin) acc[c.key] = c.begin(R);
-    const docs = [];
-    document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => {
-      const g = f => tr.querySelector(`[data-f="${f}"]`); let name = g("name").value.trim(); if (!name) return;
-      const old = oldNames[+tr.dataset.i], prev = prevDocs[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
-      if (old && old !== name && !renameDoctor(old, name)) name = old; // 改名の成否を先に確定してから欄を読む（本体とプラグインの追随をまとめて行い、失敗したら旧名のまま。知らせは renameDoctor）
-      const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota: g("quota") ? (+g("quota").value || 0) : (+prev.quota || 0) }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未知の値として残す）
+    // 1 周目: 行の氏名を確定する。氏名は個人の識別子なので一意にする（変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）。
+    // そのうえで改名を順に適用する（本体とプラグインの追随。失敗したら旧名のまま）。改名の適用でプラグインが他の職員の属性を更新することがあるので、行を読むのはその後（2 周目）
+    const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
+    const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
+    for (const r of rows) { if (r.old === r.name) continue;
+      if (taken.has(r.name)) { if (r.old && !taken.has(r.old)) { A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); r.name = r.old; } else { let k = 2; while (taken.has(`${r.name} ${k}`)) k++; A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k })); r.name = `${r.name} ${k}`; } }
+      taken.add(r.name); }
+    for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name)) { taken.delete(r.name); r.name = r.old; } // 追随に失敗したら旧名のまま（知らせは renameDoctor）
+    // 2 周目: 行を読む。土台は改名を適用した後の職員（プラグインの追随を上書きしない）。規則が「なし」で欄を出していない項目は、元の値をそのまま残す
+    const cur = Object.fromEntries(R.doctors.map(d => [d.name, d])); const docs = [];
+    for (const { tr, g, old, name } of rows) {
+      const prev = cur[old] || {};
+      const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota: g("quota") ? (+g("quota").value || 0) : (+prev.quota || 0) }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
       if (g("share")) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
       // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま
       for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
-    });
+    }
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
@@ -441,24 +448,29 @@
   // ---------- 元に戻す ----------
   // 設定タブでの変更（表の編集・追加・削除・プロファイルの読み込み・JSON の反映・重みの初期化）の直前の状態を積み、1 つずつ取り消す。
   // 積むのはこの画面を開いている間だけ（再読み込みで消える）。月データも一緒に戻す（名簿の変更は月データの氏名にも及ぶため）
+  // 履歴は「変更の直前」の写し（設定・月・結果）と、変更の直後の月の写し（after。同じ処理の中で変更が終わった後に取る）。
+  // 戻すときに月が after と違っていれば（後から月別条件を入力した）、月と結果は戻さず設定だけ戻す。月・施設・JSON を切り替えたら履歴は捨てる（A.clearUndo）
   const undoStack = [], UNDO_MAX = 30;
   function pushUndo(label) {
-    const snap = JSON.stringify({ rules: state.rules, month: state.month });
+    const snap = JSON.stringify({ rules: state.rules, month: state.month, result: state.result });
     if (undoStack.length && undoStack[undoStack.length - 1].snap === snap) return;
-    undoStack.push({ snap, label }); if (undoStack.length > UNDO_MAX) undoStack.shift();
+    const entry = { snap, label, after: null }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
+    queueMicrotask(() => { if (entry.after === null) entry.after = JSON.stringify(state.month); }); // 変更を行った処理が終わった直後の月
     renderUndo();
   }
+  function clearUndo() { undoStack.length = 0; renderUndo(); }
   function renderUndo() {
-    const b = $("#btnUndo"); if (!b) return;
-    const last = undoStack[undoStack.length - 1];
-    b.disabled = !last;
-    $("#undoNote").textContent = last ? T.t("直前の変更: {what}（あと {n} 回戻せます）", { what: tx(last.label), n: undoStack.length }) : tx("取り消せる変更はありません");
+    const b = $("#btnUndo"), note = $("#undoNote"); const last = undoStack[undoStack.length - 1];
+    if (b) b.disabled = !last; if (!note) return; // 設定タブを描く前でも呼ばれる（切替時の履歴の破棄など）
+    note.textContent = last ? T.t("直前の変更: {what}（あと {n} 回戻せます）", { what: tx(last.label), n: undoStack.length }) : tx("取り消せる変更はありません");
   }
   function undo() {
     const last = undoStack.pop(); if (!last) return;
-    const o = JSON.parse(last.snap); state.rules = o.rules; state.month = o.month;
+    const o = JSON.parse(last.snap); state.rules = o.rules;
+    const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
+    if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();
-    A.toast(T.t("元に戻しました（{what}）", { what: tx(last.label) }));
+    A.toast(T.t("元に戻しました（{what}）", { what: tx(last.label) }) + (monthUntouched ? "" : T.t("。月別条件はその後に変更されているので戻していません（名簿の氏名を変えていた場合は入力チェックで確かめてください）")));
   }
   // 設定タブの表示モード: 日々の設定 / 施設の構成を作る。見る側の都合なので、この端末のブラウザにだけ覚える
   const MODE_KEY = "toban_setmode";
@@ -488,7 +500,7 @@
         (R.profile ||= {}).roles = roles;
         T.fillDefaultRules(R); A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); return;
       }
-      if (b.dataset.act === "add") R.doctors.push({ name: T.t("新規"), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null });
+      if (b.dataset.act === "add") R.doctors.push({ name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null });
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
         R.doctors.splice(i, 1); if (refs) T.purgeMonthNames(state.month, [nm]); }
@@ -521,5 +533,5 @@
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, readSettings }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

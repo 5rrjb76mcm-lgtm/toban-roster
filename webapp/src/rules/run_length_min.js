@@ -20,7 +20,8 @@ T.rules.register({
       // 有効な切除（最適解を変えず、線形緩和の下界を上げる。docs §6.42）:
       //   (1) 連の開始の数 ≥ 夜勤の数 − 前月末からの連 − 不可で数えなかった開始（明けが休みの施設だけ。夜勤はそれぞれ別の連の終わり）
       //   (2) L ×（開始 − 短い連）≤ 勤務日数（短くない連は L 日以上を占め、互いに重ならない）
-      if (ake) { const e = { t: {}, c: 0 }; for (const st of sts) LP.addTo(e, st, 1);
+      // 固定指定のある人には (1) を足さない（固定した連続の夜勤は明け休みの例外になり「夜勤ごとに連が終わる」前提が崩れて、余分な短い連を数えてしまう）
+      if (ake && !P.hasFixedEng(n)) { const e = { t: {}, c: 0 }; for (const st of sts) LP.addTo(e, st, 1);
         for (let d = 1; d <= last; d++) if (ctx.has([d, "night"])) LP.addTo(e, ctx.work([d, "night"], n), -1);
         LP.addTo(e, ctx.y(0, n), 1); lp.add(e, ">=", -skipped); }
       { const e = { t: {}, c: 0 }; for (const st of sts) LP.addTo(e, st, L); for (const sh of shorts) LP.addTo(e, sh, -L);

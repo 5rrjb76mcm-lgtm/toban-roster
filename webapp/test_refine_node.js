@@ -145,6 +145,28 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
 (async () => {
   if (!highsPath) { console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}（ソルバーのテストは highs のパス指定時のみ）`); return; }
   const highs = await require(highsPath)();
+  { // 有給込みの休みの必要日数が月の日数を超える: 入力チェックが知らせ、必須なら解なし（検算と同じ）。減点なら目的関数＝減点の数え直し
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off";
+    two.rule_states.days_off_min = "hard"; two.days_off = { min: 9, hours_per_week: 40, hours_per_day: 8 }; two.weights.days_off_short = 80;
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], unavailable_other: Array.from({ length: 22 }, (_, i) => ({ name: two.doctors[0].name, day: i + 1, part: "allday", paid: true })) }, two);
+    const P = new T.Problem(two, m); assert.strictEqual(P.offTarget(two.doctors[0].name), 31, "必要日数 9＋22");
+    assert(T.lint(P).some(x => x.code === "LINT_DAYS_OFF_PAID_OVER"), "入力チェックが知らせる");
+    const r = T.solve(P, highs, { timeLimit: 60 }); assert(!r.asg && r.status === "Infeasible", "必須では解なし: " + r.status);
+    const soft = JSON.parse(JSON.stringify(two)); soft.rule_states.days_off_min = "soft"; const Ps = new T.Problem(soft, m); const rs = T.solve(Ps, highs, { timeLimit: 60 }); assert(rs.asg, "減点なら解ける");
+    const pen = T.penalty(Ps, rs.asg).total; assert(Math.abs(rs.objective - pen) < 1e-6, `減点版の目的関数 ${rs.objective} ＝ 数え直し ${pen}`); assert(T.check(Ps, rs.asg).V.length === 0);
+    passed++; console.log("ok   有給込みの休みの必要日数が月を超える: 入力チェック・必須は解なし・減点は目的関数と一致"); }
+  { // 連勤の下限（減点）＋明け休み（必須）＋連続する夜勤の固定: 固定例外のある人には性能用の切除を足さない（目的関数が減点の数え直しと一致）
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off";
+    two.rule_states.run_length_min = "soft"; two.rule_states.shift_sequence = "hard"; two.run_length = { min: 3, exempt_qual: "X" }; two.weights.run_short = 20; two.weights.fixed_conflict = 50;
+    two.doctors.slice(1).forEach(d => { d.quals = ["X"]; }); const who = two.doctors[0].name;
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed: { night: { 2: who, 3: who } } }, two);
+    const P = new T.Problem(two, m); assert(P.hasFixedEng(who) && !P.hasFixedEng(two.doctors[1].name));
+    const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける: " + r.status); const rep = T.check(P, r.asg); assert.strictEqual(rep.V.length, 0); assert(rep.W.length >= 1, "固定した連続夜勤は許容");
+    const pen = T.penalty(P, r.asg).total; assert(Math.abs(r.objective - pen) < 1e-6, `目的関数 ${r.objective} ＝ 減点の数え直し ${pen}`);
+    const pin = T.solve(P, highs, { timeLimit: 60, pin: r.asg }); assert(Math.abs(pin.objective - pen) < 1e-6, `全枠固定の目的関数 ${pin.objective} ＝ ${pen}`);
+    passed++; console.log("ok   連勤の下限＋明け休み必須＋固定した連続夜勤: 目的関数が減点の数え直しと一致（固定例外のある人に切除を足さない）"); }
   const solveOK = (rules, month, label) => { const P = new T.Problem(rules, month); const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, label + ": 解あり（status " + r.status + "）"); const c = T.check(P, r.asg); return { P, r, c }; };
   test("OC構成の表（oncall_requirement）を変えるとソルバーも検算も同じ表で動く", () => {
     const rules = clone(real.rules); rules.oncall_requirement.A = { I: 0, Y: 1 }; const month = T.normalizeMonth(clone(real.month), rules);

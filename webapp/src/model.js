@@ -418,6 +418,7 @@
       return parts.join(T.listSep ? T.listSep() : "・") || t("全員", {});
     }
     // その人の休みの日数（ちょうど／以上の基準）: 土日祝の数（または労働時間から）＋有給の日数
+    hasFixedEng(n) { for (const k of this.fixedEngKeys) if (k.endsWith("|" + n)) return true; return false; } // その人に固定指定（勤務・OC）があるか
     offTarget(n) { return this.minDaysOff + ((this.paidDays || {})[n] ? [...this.paidDays[n]].filter(d => d <= this.N).length : 0); }
     // その枠で勤務者の役割ごとに必要なオンコール（勤務帯がオンコールを付けないなら全員 0）。解く側・検算・減点・説明資料が同じものを使う
     ocReqAt(s) { const sh = (this.shifts || []).find(x => x.id === s[1]); return !sh || sh.oncall !== false ? this.ocReq : this.ocReqNone; }

@@ -100,4 +100,29 @@ assert.ok(!("toban_profile" in A.state.rules));
   assert.strictEqual(r.doctors[0].name, "Fictional Staff A", "名簿の名前は戻る"); assert.ok(toasts.some(x => /改名を取り消しました/.test(x)));
   assert.deepStrictEqual(r.friday_night_min, { "Fictional Staff A": 1 }, "欄の集計も旧名のまま"); assert.ok(!JSON.stringify(r).includes("Review New"), "新しい名前はどこにも残らない: " + JSON.stringify(r).slice(0, 200));
   Object.assign(A.state, { rules }); }
-console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK");
+// 名簿の読み戻し（画面相当の行）: 既存の職員と同じ氏名への改名は取り消す（別人の不可日を上書きしない）。成功したプラグインの追随（他の職員の属性）は読み戻しで消えない。「元に戻す」の範囲
+{ const mkRows = (r, names, extra = {}) => r.doctors.map((d, i) => { const vals = { name: names[i] ?? d.name, team: d.team, years: String(d.years || 0), quota: String(d.quota || 0), duty: d.duty || "" };
+    return { dataset: { i: String(i) }, querySelector: sel => { const f = (sel.match(/data-f="([^"]+)"/) || [])[1]; if (f) return f in vals ? { value: vals[f] } : null; return null; } }; });
+  const withRows = (rows, fn) => { const q0 = document.querySelectorAll; document.querySelectorAll = sel => /#doctorTable tr\[data-i\]/.test(sel) ? rows : []; const toasts = []; const t0 = A.toast; A.toast = x => toasts.push(String(x)); A.renderHeader = () => { }; try { fn(toasts); } finally { document.querySelectorAll = q0; A.toast = t0; } };
+  const A_ = "Fictional Staff A", B_ = "Fictional Staff B";
+  // 既存の職員と同じ氏名へ
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [1], [B_]: [2] } }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
+    withRows(mkRows(r, [B_]), toasts => { A.readSettings(); assert.ok(toasts.some(x => /重なる/.test(x)), "知らせる: " + toasts.join("|")); });
+    assert.deepStrictEqual(r.doctors.map(d => d.name).slice(0, 2), [A_, B_], "改名は取り消される（重複しない）"); assert.deepStrictEqual(m.unavailable_night[A_], [1]); assert.deepStrictEqual(m.unavailable_night[B_], [2], "別人の不可日は残る");
+    const dup = JSON.parse(before); dup.doctors[1].name = A_; T.fillDefaultRules(dup); assert.ok(T.lint(new T.Problem(dup, T.normalizeMonth({ year: 2026, month: 11 }, dup))).some(x => x.code === "LINT_NAME_DUP"), "重複した名簿は入力チェックが指摘"); }
+  // 成功した追随を読み戻しで上書きしない
+  { const r = JSON.parse(before); r.doctors[1].local_mentor = A_; T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [1] } }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
+    const def = { id: "local.test.mentor", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, rename(R, mm, o, n) { for (const d of R.doctors) if (d.local_mentor === o) d.local_mentor = n; } }; T.RULE_DEFS.push(def); T.RULE_BY_ID[def.id] = def;
+    try { withRows(mkRows(r, ["Fictional Staff Z"]), () => A.readSettings()); } finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[def.id]; }
+    assert.strictEqual(A.state.rules.doctors[0].name, "Fictional Staff Z"); assert.strictEqual(A.state.rules.doctors[1].local_mentor, "Fictional Staff Z", "他の職員の属性の追随が残る"); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [1]); }
+}
+(async () => {
+  const A_ = "Fictional Staff A";
+  // 元に戻す: 後から月別条件を触っていなければ月・結果も戻す。触っていれば設定だけ戻す。切替で履歴は消える
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11 }, r); Object.assign(A.state, { rules: r, month: m, result: { asg: { a: 1 } }, base: null }); A.renderAll = () => { }; A.renderHeader = () => { }; A.toast = () => { };
+    A.clearUndo(); A.pushUndo("試験"); A.state.rules.weights.wish_night = 999; A.state.month.notes = "変更の一部"; await new Promise(res => setTimeout(res, 0)); // 変更の直後の月が記録される
+    A.undo(); assert.notStrictEqual(A.state.rules.weights.wish_night, 999, "設定が戻る"); assert.ok(!A.state.month.notes, "月も戻る"); assert.deepStrictEqual(A.state.result, { asg: { a: 1 } });
+    A.pushUndo("試験2"); A.state.rules.weights.wish_night = 999; await new Promise(res => setTimeout(res, 0)); A.state.month.wishes.night_on[A_] = [17]; // 後から入れた希望
+    A.undo(); assert.notStrictEqual(A.state.rules.weights.wish_night, 999); assert.deepStrictEqual(A.state.month.wishes.night_on[A_], [17], "後から入れた希望は消えない");
+    A.pushUndo("試験3"); A.clearUndo(); const before3 = JSON.stringify(A.state.rules); A.undo(); assert.strictEqual(JSON.stringify(A.state.rules), before3, "履歴を捨てたら戻らない"); Object.assign(A.state, { rules }); }
+})().then(() => { console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK"); }).catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

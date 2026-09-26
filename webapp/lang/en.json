@@ -1045,7 +1045,14 @@
     "計算時のソルバー判定: {st}（時間内に見つかった最良の解）": "Solver status at solve time: {st} (best solution found within the time limit)",
     "計算時のソルバー判定: Optimal（許容差の記録なし）": "Solver status at solve time: Optimal (tolerance not recorded)",
     "計算時のソルバー判定: Optimal（許容差 {g}%。厳密な最適とは限らない）": "Solver status at solve time: Optimal (tolerance {g}%; not necessarily the exact optimum)",
-    "計算時のソルバー判定: Optimal（許容差 0。計算時の入力での最適）": "Solver status at solve time: Optimal (tolerance 0; optimal for the input at solve time)"
+    "計算時のソルバー判定: Optimal（許容差 0。計算時の入力での最適）": "Solver status at solve time: Optimal (tolerance 0; optimal for the input at solve time)",
+    "（まだ計算していません）": "(not solved yet)",
+    "氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました": "The name \"{name}\" is already used by another {person}, so renaming {who} was cancelled",
+    "氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました": "The name \"{name}\" is already used by another {person}, so it was changed to \"{name} {k}\"",
+    "。月別条件はその後に変更されているので戻していません（名簿の氏名を変えていた場合は入力チェックで確かめてください）": ". The month's conditions were changed afterwards and were left as they are (if names were changed in the roster, check them with the input check)",
+    "先に計算してください": "Solve first",
+    "勤務表を書き出せません": "The roster cannot be written",
+    "説明資料を書き出せません": "The report cannot be written"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",
@@ -1259,7 +1266,11 @@
     "LINT_RULE_OVERLAP": "Rules \"{who}\" and \"{other}\" cover the same thing and both are in use ({a}, {b})",
     "LINT_RULE_OVERLAP_HINT": "Settings tab → Build the facility profile → Rules in use: turn one of them off, or keep both if that is what the facility wants",
     "LINT_PLUGIN_HOOK": "The {hook} step of facility plug-in rule {who} failed: {err}. Its data was left unchanged",
-    "LINT_PLUGIN_HOOK_HINT": "Until it succeeds, solving and writing the roster are stopped. Fix the plug-in file under plugins/ and press \"Reload the plug-ins\" on the settings tab, or tell the plug-in's author"
+    "LINT_PLUGIN_HOOK_HINT": "Until it succeeds, solving and writing the roster are stopped. Fix the plug-in file under plugins/ and press \"Reload the plug-ins\" on the settings tab, or tell the plug-in's author",
+    "LINT_NAME_DUP": "The same name appears more than once in the roster: {who}. Names identify people, so make them distinct",
+    "LINT_NAME_DUP_HINT": "Fix the names on the settings tab (e.g. add an initial). Conditions such as unavailable days are keyed by name and one person's would overwrite the other's",
+    "LINT_DAYS_OFF_PAID_OVER": "{who}: the required days off ({min} + {paid} paid) exceed the days in the month ({N})",
+    "LINT_DAYS_OFF_PAID_OVER_HINT": "As a hard rule this has no solution. Reduce the paid days or the minimum, or set the rule to Penalty"
   },
   "help": {
     "about": {

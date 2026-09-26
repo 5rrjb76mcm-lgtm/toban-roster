@@ -158,5 +158,9 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     A.state.month.notes = "t"; const saving = A.saveToFolder(); await new Promise(r => setTimeout(r, 20));
     const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m)); let ran = false; const tr = A.transition("lang", async () => { ran = true; }); await new Promise(r => setTimeout(r, 20)); assert.strictEqual(A.switching, 1, "切替の処理中");
     A.solving = true; g1.release(); await saving; assert.strictEqual(await tr, false, "待っている間に計算が始まっていたら断る"); assert.strictEqual(ran, false); assert.ok(/表示言語/.test(toasts.pop())); A.solving = false; A.toast = t0; assert.strictEqual(A.switching, 0); dir.getFileHandle = w0; }
+  // 月データを当てる: 接続中のフォルダから読んだ内容だけ「保存済み」。外部の JSON は未保存（自動保存でフォルダに書かれる）
+  { A.showTab = () => { }; A.renderAll = () => { }; A.dirHandle = dir; const o = { rules: { profile: { id: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "imported-new" }, result: null, saved_at: "2026-10-01T00:00:00Z" };
+    A.applyLoaded(JSON.parse(JSON.stringify(o)), "x", { fromFolder: false }); assert.strictEqual(A.isDirty(), true, "外部の JSON は未保存"); assert.strictEqual(A.state.month.notes, "imported-new");
+    A.applyLoaded(JSON.parse(JSON.stringify(o)), "x"); assert.strictEqual(A.isDirty(), false, "フォルダから読んだ内容は保存済み"); assert.ok(/フォルダ test/.test(A.state.meta.savedWhere)); }
   console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口（待機中の計算開始も断る）・保存の 3 段階（帳票だけの失敗でも月データは保存）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

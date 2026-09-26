@@ -7,6 +7,7 @@
 //  2) 同名の別フォルダへ切替: 空のフォルダに替えると未保存になり、自動保存でそのフォルダに月データが作られる
 //  3) プラグイン欠落時の計算・出力停止: プラグインの規則で計算・保存した月を、プラグインを外して開くと入力チェックが知らせ、計算せず、保存しても勤務表を出さない
 //  4) 共有用書き出し: 名簿を含めない書き出しは役割名＋番号・役割・目安だけになり、フォルダに書かれる
+//  5) 外部 JSON の読込: 読んだ直後は未保存、自動保存でフォルダに書かれ、開き直しても読んだ内容で再開する
 const fs = require("fs"), path = require("path"), http = require("http"), assert = require("assert");
 const HTML = path.resolve(process.argv[2] || path.join(__dirname, "toban.html"));
 let chromium; try { ({ chromium } = require(path.join(process.env.HOME, ".toban-test/node_modules/playwright"))); } catch (e) { console.log("--  実ブラウザの通し試験は省略（cd ~/.toban-test && npm i playwright で入れると走る）"); process.exit(0); }
@@ -106,6 +107,13 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       throw new Error("帳票を止めた知らせが無い: " + JSON.stringify(dbg)); } await waitSaved(page);
     const files2 = fs.names("A/202611"); assert.ok(!files2.some(n => /_v2_/.test(n)), "保存しても勤務表・説明資料の新しい版は出ない: " + files2.join(","));
     const saved2 = JSON.parse(fs.text("A/202611/202611_data.json")); assert.strictEqual(saved2.month.notes, "欠落したまま編集", "月データは保存される"); assert.strictEqual(saved2.month.doc_versions.length, 1, "版は増えない");
+    // 直接ダウンロード（ヘッダーの「勤務表 docx」「説明資料 HTML」）も止まる
+    await page.evaluate(() => { window.__downloads = []; T.app.download = name => { window.__downloads.push(name); }; });
+    await page.click("#btnDocx"); await page.click("#btnReportHtml"); await page.waitForTimeout(1500);
+    const dl = await page.evaluate(() => ({ downloads: window.__downloads, alerts: (window.__alerts || []).slice(-2) })); assert.deepStrictEqual(dl.downloads, [], "ダウンロードしない"); assert.ok(dl.alerts.length === 2 && dl.alerts.every(a => /プラグインが足りない/.test(a)), "理由を知らせる: " + JSON.stringify(dl.alerts));
+    // 表題を変えても「書き直しました」とは言わず、版も増えない
+    const n3 = await page.evaluate(() => window.__toasts.length); await page.selectOption("#docLabel", { index: 1 }).catch(async () => { await page.fill("#docLabel", "確定版"); await page.dispatchEvent("#docLabel", "change"); }); await waitSaved(page); await page.waitForTimeout(500);
+    const t3 = await page.evaluate(n => window.__toasts.slice(n), n3); assert.ok(!t3.some(t => /書き直しました/.test(t)), "成功と言い切らない: " + JSON.stringify(t3)); assert.ok(!fs.names("A/202611").some(n => /_v2_/.test(n)), "版は増えない");
     await ctx.close();
   });
   await test("共有用書き出し: 名簿を含めない書き出しは役割名＋番号・役割・目安だけ", async () => {
@@ -121,6 +129,21 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.ok(!("years" in prof.doctors[0]));
     await ctx.close();
   });
+  await test("外部 JSON の読込: 読んだ直後は未保存で、自動保存でフォルダに書かれ、開き直しても読んだ内容で再開（旧内容に戻らない）", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx);
+    await start(page); await waitSaved(page); await setNotes(page, "old-on-folder"); await waitSaved(page);
+    const cur = JSON.parse(fs.text("A/202611/202611_data.json")); cur.month.notes = "imported-new"; cur.saved_at = "2026-01-01T00:00:00.000Z";
+    await page.click('.tab[data-tab="input"]'); await page.setInputFiles("#fileLoadJson", { name: "x.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(cur), "utf8") });
+    await page.waitForFunction(() => /imported-new/.test((document.querySelector('textarea[data-path="notes"]') || {}).value || ""), null, { timeout: 10000 });
+    assert.ok(/未保存/.test(await page.locator("#saveState").textContent()), "読んだ直後は未保存");
+    // 自動保存は、フォルダ側の別の版との競合確認を出す（自動統合の元が無い）。読んだ内容で上書きする、を選ぶ
+    let answered = false; for (let i = 0; i < 100 && !answered; i++) { const b = page.locator("#modalBtns button", { hasText: "このブラウザの状態で上書きする" }); if (await b.count() && await b.first().isVisible()) { await b.first().click(); answered = true; break; } await page.waitForTimeout(150); }
+    assert.ok(answered, "競合の確認が出る（外部の JSON はフォルダに対する変更として扱う）");
+    await waitSaved(page); assert.strictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.notes, "imported-new", "確認のあと自動保存でフォルダに書かれる");
+    ({ ctx, page } = await reopen(ctx, fs)); await start(page); await page.click('.tab[data-tab="input"]');
+    assert.strictEqual(await page.locator('textarea[data-path="notes"]').inputValue(), "imported-new", "開き直しても読んだ内容");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 4 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 5 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

@@ -196,18 +196,19 @@
   function reportHtml(P, label, S = state) { // 完成した HTML の組み立ては report.js（試験が完成形を見られるように）。S は月・設定・結果の組（保存では写しを渡す）
     const r = S.result; return T.reportHtml(P, r.asg, { status: r.status, seconds: r.seconds, avoidRef: r.avoid_ref, baseAsg: r.mark_changes ? r.base_asg : null }, { label: label || S.month.doc_label, notes: S.month.notes });
   }
+  // 直接ダウンロードも、フォルダ保存と同じ確認（A.outputCheck: プラグインの欠落・変化、検算）を写しに対して通してから、同じ写しから作る
   async function downloadDocx() {
-    if (!state.result || !state.result.asg) return alert("先に計算してください");
-    const P = new T.Problem(state.rules, state.month);
-    const vers = state.month.doc_versions || [], label = $("#docLabel").value || "確認版";
-    const last = vers[vers.length - 1], cur = last && last.sig === A.versionSig(label) ? last : null; // 保存済みの版と同じ内容のときだけ版番号を付ける
+    if (!state.result || !state.result.asg) return alert(T.t("先に計算してください"));
+    const S = A.snapshot(), { stop, P } = A.outputCheck(S); if (stop) return alert(T.t("勤務表を書き出せません") + stop);
+    const vers = S.month.doc_versions || [], label = S.month.doc_label || "確認版";
+    const last = vers[vers.length - 1], cur = last && last.sig === A.versionSig(label, S) ? last : null; // 保存済みの版と同じ内容のときだけ版番号を付ける
     const vtxt = cur ? `${label} v${cur.ver}` : `${label}（未保存の内容）`;
-    try { A.download(A.FILES.roster(A.tag(), cur ? cur.ver : 0, label), await T.makeDocx(P, state.result.asg, vtxt, { baseAsg: state.result.mark_changes ? state.result.base_asg : null })); } catch (e) { alert(T.t("勤務表を書き出せませんでした: {err}", { err: e && e.message || e })); return; }
+    try { A.download(A.FILES.roster(S.tag, cur ? cur.ver : 0, label), await T.makeDocx(P, S.result.asg, vtxt, { baseAsg: S.result.mark_changes ? S.result.base_asg : null })); } catch (e) { alert(T.t("勤務表を書き出せませんでした: {err}", { err: e && e.message || e })); return; }
   }
   function downloadReportHtml() {
-    if (!state.result || !state.result.asg) return alert("先に計算してください");
-    const P = new T.Problem(state.rules, state.month);
-    A.download(A.FILES.report(A.tag()), new Blob([reportHtml(P)], { type: "text/html" }));
+    if (!state.result || !state.result.asg) return alert(T.t("先に計算してください"));
+    const S = A.snapshot(), { stop, P } = A.outputCheck(S); if (stop) return alert(T.t("説明資料を書き出せません") + stop);
+    A.download(A.FILES.report(S.tag), new Blob([reportHtml(P, null, S)], { type: "text/html" }));
   }
 
   Object.assign(A, { runSolve, renderResult, reportHtml, downloadDocx, downloadReportHtml }); // 他のファイルから使う関数

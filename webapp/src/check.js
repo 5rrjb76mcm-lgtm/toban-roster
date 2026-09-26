@@ -204,6 +204,7 @@
     const cctx = T.rules.checkCtx(P, new Asg(P, {}), "lint", push), { unN, unO } = cctx;
     // 名簿・設定
     for (const n of (P.rules.name_order || [])) if (!P.doctors[n]) push("LINT_NAME_ORDER_UNKNOWN", { who: n });
+    { const seen = new Set(), dup = new Set(); for (const d of P.rules.doctors || []) { if (seen.has(d.name)) dup.add(d.name); seen.add(d.name); } if (dup.size) push("LINT_NAME_DUP", { who: [...dup].join("・") }); } // 氏名は個人の識別子。重なると別人の条件を上書きする
     pluginChecks(P, push); // プラグインが読めない・欠けている（計算を止める種類。T.lintPlugins でも単独で見られる）
     if (T.plugins && T.plugins.overrides) for (const o of T.plugins.overrides()) push("LINT_PLUGIN_OVERRIDE", { name: o.name, who: o.id, was: o.was || T.t("本体") }); // 別の出どころの規則と同じ id
     { const on = id => P.state(id) !== "off", seen = new Set(); // 「同じことを扱う」と宣言した規則（overlaps）が両方とも使われている

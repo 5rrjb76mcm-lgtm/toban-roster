@@ -9,7 +9,7 @@ T.rules.register({
   solve(ctx, prm) {
     const { P, lp, LP } = ctx, st = P.state("days_off_min");
     for (const n of ctx.names) { if (P.isExempt(n)) continue; // 原則配置しない役割は数えない
-      const maxWork = Math.max(0, P.N - P.offTarget(n)), days = [];
+      const maxWork = P.N - P.offTarget(n), days = []; // 有給込みの必要日数が月の日数を超えると負になる（必須なら解なし。検算と同じ扱い。入力チェック LINT_DAYS_OFF_PAID_OVER が知らせる）
       for (let d = 1; d <= P.N; d++) days.push(ctx.busy(d, n));
       if (st === "hard") lp.add(LP.sum(days), prm.exact ? "=" : "<=", maxWork);
       else { const v = lp.auxInt("dofs", 0, P.N); lp.add(LP.sub(LP.sum(days), maxWork), "<=", v); lp.objAdd(P.softW("days_off_min"), v); // 減点: 足りない休みの日数
@@ -25,7 +25,7 @@ T.rules.register({
     const { P, pos } = ctx;
     for (const n of ctx.names) { if (P.isExempt(n)) continue;
       let worked = 0; for (let d = 1; d <= ctx.N; d++) worked += ctx.busy(n, d);
-      const maxWork = Math.max(0, ctx.N - P.offTarget(n));
+      const maxWork = ctx.N - P.offTarget(n); // 検算（休み < 必要日数）と同じ数え方（丸めない）
       ctx.add("days_off_short", P.softW("days_off_min"), pos(worked - maxWork) + (prm.exact ? pos(maxWork - worked) : 0)); }
   },
   ui: {
@@ -62,6 +62,7 @@ T.rules.register({
     // 休みの日数が設定として成り立つか（減点でも見る）
     if (prm.min >= P.N) ctx.push("LINT_DAYS_OFF_TOO_MANY", { min: prm.min, N: P.N });
     else for (const n of P.dutyNames) { const q = P.quota(n); if (P.isExempt(n)) continue;
+      if (P.offTarget(n) > P.N) ctx.push("LINT_DAYS_OFF_PAID_OVER", { who: n, min: prm.min, paid: P.offTarget(n) - prm.min, N: P.N }); // 有給込みの必要日数が月を超える
       if (q - P.tol > P.N - prm.min) ctx.push("LINT_QUOTA_VS_DAYS_OFF", { who: n, quota: q, min: prm.min, maxWork: P.N - prm.min }); }
     if (!P.isHard("days_off_min")) return;
     // 休みの日数から決まる勤務日の合計と、枠が求める延べの勤務日（休みをちょうどにすると、人数と枠が整数で合わないと解が無い）。

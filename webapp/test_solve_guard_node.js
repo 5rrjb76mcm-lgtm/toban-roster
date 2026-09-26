@@ -105,6 +105,12 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     await x.A.runSolve(); x.T.solveWithAvoidRef = solve0; await x.A.runSolve();
     assert.strictEqual(x.stat.solverCalls, 1, "読めないプラグインがある間は計算しない"); assert.ok(/読めません/.test(x.log()));
   }
+  { // 8b) 直接ダウンロードも保存と同じ確認を通る: プラグインが欠けていれば勤務表・説明資料を作らず知らせる。揃っていれば作る
+    const x = context(); const alerts = []; x.c.alert = m => alerts.push(String(m)); let made = 0, dl = 0; x.T.makeDocx = async () => { made++; return new x.c.Blob(["r"]); }; x.A.download = () => { dl++; }; x.T.check = () => ({ V: [] });
+    x.A.state.result = { asg: { "1:night": { work: x.rules.name_order[0], oc: [] } }, status: "Optimal", plugins: [] }; x.A.state.rules.rule_states["local.review.missing"] = "hard";
+    await x.A.downloadDocx(); x.A.downloadReportHtml(); assert.strictEqual(made + dl, 0, "欠落時は作らない"); assert.ok(alerts.length === 2 && alerts.every(a => /プラグインが足りない/.test(a)), "理由を知らせる: " + alerts.join("|"));
+    delete x.A.state.rules.rule_states["local.review.missing"]; await x.A.downloadDocx(); x.A.downloadReportHtml(); assert.strictEqual(made, 1); assert.strictEqual(dl, 2, "揃っていれば両方出る");
+    x.T.check = () => ({ V: [1] }); await x.A.downloadDocx(); assert.strictEqual(dl, 2, "検算に違反があれば出さない"); assert.ok(/違反/.test(alerts.pop())); }
   { // 9) 許容差: solver は 0 も含めて mip_rel_gap を HiGHS へ渡し、渡した値を結果に返す（結果画面の「許容差 0」が計算条件と一致する）
     const x = context(); const P = new x.T.Problem(x.rules, x.month); let captured = null; const fake = { solve: (text, opts) => { captured = opts; return { Status: "Infeasible" }; } };
     let r = await x.T.solve(P, fake, {}); assert.strictEqual(captured.mip_rel_gap, 0, "既定は 0 を明示"); assert.strictEqual(r.gap, 0);
