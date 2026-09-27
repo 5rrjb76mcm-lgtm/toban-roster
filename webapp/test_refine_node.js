@@ -170,6 +170,24 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const pen = T.penalty(P, r.asg).total; assert(Math.abs(r.objective - pen) < 1e-6, `目的関数 ${r.objective} ＝ 減点の数え直し ${pen}`);
     const pin = T.solve(P, highs, { timeLimit: 60, pin: r.asg }); assert(Math.abs(pin.objective - pen) < 1e-6, `全枠固定の目的関数 ${pin.objective} ＝ ${pen}`);
     passed++; console.log("ok   連勤の下限＋明け休み必須＋固定した連続夜勤: 目的関数が減点の数え直しと一致（固定例外のある人に切除を足さない）"); }
+  { // 日中の業務との衝突（夜勤→翌朝外勤）: 固定指定による許容は、その夜勤の枠を固定したときだけ（同じ日の日勤だけの固定では許容しない）。検算と解く側（全枠 pin）が一致する
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.duty_conflicts = "hard"; const D = two.doctors.map(d => d.name), who = D[0];
+    const rot = () => { const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: D[(d - 1) % 5], oc: [] }; a[`${d}:night`] = { work: D[(d + 2) % 5], oc: [] }; } a["4:day"].work = who; a["4:night"].work = who; return a; }; // 4 日の日勤と夜勤、5 日午前に外勤
+    const mk = fixed => T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], duty_days: { [who]: { 5: { am: "external" } } }, fixed }, two);
+    let P = new T.Problem(two, mk({})); let r = T.check(P, rot()); assert.strictEqual(r.V.length, 1, "固定なし: 違反"); assert(!T.solve(P, highs, { timeLimit: 60, pin: rot() }).asg, "固定なし: 全枠 pin は解なし");
+    P = new T.Problem(two, mk({ day: { 4: who } })); r = T.check(P, rot()); assert.strictEqual(r.V.length, 1, "同じ日の日勤だけの固定: 違反のまま（許容しない）"); assert.strictEqual(r.W.length, 0); assert(!T.solve(P, highs, { timeLimit: 60, pin: rot() }).asg, "解く側も解なし");
+    P = new T.Problem(two, mk({ night: { 4: who } })); r = T.check(P, rot()); assert.strictEqual(r.V.length, 0); assert.strictEqual(r.W.length, 1, "その夜勤を固定: 許容"); assert(T.solve(P, highs, { timeLimit: 60, pin: rot() }).asg, "解く側も解あり");
+    passed++; console.log("ok   日中の業務との衝突: 固定指定の許容の範囲が検算と解く側で一致（同じ日の別の勤務帯の固定では許容しない）"); }
+  { // 週休日: 休日の日勤か休日前日の夜勤だけを数える（平日の日勤は数えない）。必須は全枠 pin で解なし、減点は 100 ＝ 減点の数え直し
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.rest_day = "hard"; two.weights.rest_day_missing = 100; const D = two.doctors.map(d => d.name), who = D[0], others = D.slice(1);
+    const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: others[(d - 1) % 4], oc: [] }; a[`${d}:night`] = { work: others[(d + 1) % 4], oc: [] }; } a["4:day"].work = who; // 4 日（水）の日勤だけ
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], duty_days: { [who]: { 5: { am: "external" } } } }, two);
+    let P = new T.Problem(two, m); assert.strictEqual(T.check(P, a).V.length, 1, "平日の日勤だけでは週休日なし"); assert(!T.solve(P, highs, { timeLimit: 60, pin: a }).asg, "必須: 全枠 pin は解なし");
+    const soft = JSON.parse(JSON.stringify(two)); soft.rule_states.rest_day = "soft"; const Ps = new T.Problem(soft, m); const rs = T.solve(Ps, highs, { timeLimit: 60, pin: a }); assert(rs.asg && Math.abs(rs.objective - 100) < 1e-6, "減点: 100"); assert.strictEqual(T.penalty(Ps, a).total, 100);
+    a["4:day"].work = others[3]; a["7:day"].work = who; assert.strictEqual(T.check(P, a).V.length, 0, "土曜の日勤で成立"); assert(T.solve(P, highs, { timeLimit: 60, pin: a }).asg);
+    passed++; console.log("ok   週休日: 休日の日勤か休日前日の夜勤だけを数える（解く側・減点・検算が一致）"); }
   const solveOK = (rules, month, label) => { const P = new T.Problem(rules, month); const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, label + ": 解あり（status " + r.status + "）"); const c = T.check(P, r.asg); return { P, r, c }; };
   test("OC構成の表（oncall_requirement）を変えるとソルバーも検算も同じ表で動く", () => {
     const rules = clone(real.rules); rules.oncall_requirement.A = { I: 0, Y: 1 }; const month = T.normalizeMonth(clone(real.month), rules);

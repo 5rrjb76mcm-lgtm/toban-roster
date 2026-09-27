@@ -109,15 +109,17 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
       root.querySelectorAll("[data-dflag]").forEach(el => { if (el.checked) (m.day_flags[+el.dataset.d] ||= []).push(el.dataset.dflag); });
       root.querySelectorAll("[data-dnote]").forEach(el => { const v = el.value.trim(); if (v) m.day_notes[+el.dataset.dnote] = v; }); }
-    m.history ||= {}; m.history.work_balance = {}; root.querySelectorAll("[data-bal]").forEach(el => { if (el.value !== "" && +el.value !== 0) m.history.work_balance[el.dataset.bal] = +el.value; });
-    m.prev_month = m.prev_month || {}; m.prev_month.last_days = [];
-    root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => g(f).split(/[・,、|\n]+/).filter(Boolean);
-      const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
-      const date = g("date"); if (!date) return; const e = { date: +date };
-      const dw = w("day"), nw = w("night");
-      if (dw.length) { e.day = dw; e.day_oc = list("day_oc"); } if (nw.length) { e.night = nw; e.night_oc = list("night_oc"); }
-      m.prev_month.last_days.push(e); });
-    m.history.weekend_charge = {}; m.history.holiday_charge = {}; root.querySelectorAll("[data-hist]").forEach(el => { const [k, n] = el.dataset.hist.split(":"); if (el.value !== "") m.history[k][n] = +el.value; });
+    // 履歴・前月末の接続は、画面に出ている欄だけ書き換える（規則を「なし」にして隠している欄の値は残す。出ている欄を空にしたときだけ消える）
+    m.history ||= {}; if (root.querySelector("[data-bal]")) { m.history.work_balance = {}; root.querySelectorAll("[data-bal]").forEach(el => { if (el.value !== "" && +el.value !== 0) m.history.work_balance[el.dataset.bal] = +el.value; }); }
+    m.prev_month = m.prev_month || {};
+    if (root.querySelector("tr[data-ld]")) { const oldByDate = {}; for (const e of m.prev_month.last_days || []) oldByDate[+e.date] = e; m.prev_month.last_days = [];
+      root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => g(f).split(/[・,、|\n]+/).filter(Boolean);
+        const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
+        const date = g("date"); if (!date) return; const e = { date: +date }, old = oldByDate[+date] || {};
+        const dw = w("day"), nw = w("night");
+        if (dw.length) { e.day = dw; e.day_oc = el("day_oc") ? list("day_oc") : (old.day_oc || []); } if (nw.length) { e.night = nw; e.night_oc = el("night_oc") ? list("night_oc") : (old.night_oc || []); } // OC の欄が無い（オンコールを使わない設定）ときは前の値を残す
+        m.prev_month.last_days.push(e); }); }
+    if (root.querySelector("[data-hist]")) { m.history.weekend_charge = {}; m.history.holiday_charge = {}; root.querySelectorAll("[data-hist]").forEach(el => { const [k, n] = el.dataset.hist.split(":"); if (el.value !== "") m.history[k][n] = +el.value; }); }
     root.querySelectorAll("[data-rmonth]").forEach(box => { const mu = ((T.RULE_BY_ID[box.dataset.rmonth] || {}).ui || {}).month; if (mu && mu.read) try { mu.read(m, box); } catch (e) { /* プラグインの欄の読み戻しの失敗は、その欄の分だけ前の値のまま */ } }); // 規則（プラグイン）の月ごとの欄
     A.save();
   }
@@ -345,5 +347,5 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; A.save(); renderFixed(); });
   }
 
-  Object.assign(A, { renderSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

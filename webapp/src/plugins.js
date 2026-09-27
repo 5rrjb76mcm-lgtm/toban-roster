@@ -59,6 +59,8 @@
       revert(snap, rec.recd); restoreTables(snap); rec.overrode = []; } // 途中で失敗したファイルが触った登録（規則・暦・様式・区分・拡張）は読み込む前の状態に戻す（半分だけ読めたプラグインを黙って使わない）
     return rec;
   }
+  // ファイルの一覧・取得・本文の読み取りに失敗した（本文を読めなかったので load を通らない）。読み込みの失敗として記録し、入力チェック（LINT_PLUGIN_ERROR）が計算・帳票を止める
+  function fail(kind, name, err) { const rec = { source: "folder", kind, name, ok: false, error: (err && err.message) || String(err), ids: [], overrode: [], recd: [] }; for (let i = loaded.length - 1; i >= 0; i--) if (loaded[i].kind === kind && loaded[i].name === name) loaded.splice(i, 1); loaded.push(rec); generation++; return rec; }
   const errors = () => loaded.filter(x => !x.ok);
   // プラグインのファイルごとの一覧（保存フォルダから読んだ分と組み立て時の分）。設定タブ「施設の構成を作る」の施設のプラグインに出す
   function inventory() {
@@ -87,5 +89,5 @@
   // 実行時に読んだプラグインの一覧（名前と中身の印。読めたものだけ、名前順）。版の署名と計算結果の記録に使う
   const stamp = () => loaded.filter(x => x.ok).map(x => `${x.name}#${x.hash}`).concat((T.PLUGINS || []).map(p => `build:${p.dir}#${p.hash || ""}`)).sort(); // 組み立て時に取り込んだ分も（build.py が中身の印を埋める）
   const stale = () => []; // 以前は「前のフォルダの規則が残っている」を知らせていた。いまは beginFolder が外すので残らない（入力チェックの LINT_PLUGIN_STALE は互換のため残す）
-  T.plugins = { KINDS, loaded, load, errors, overrides, inventory, ruleIds, beginFolder, stale, generation: () => generation, stamp, recording: null };
+  T.plugins = { KINDS, loaded, load, fail, errors, overrides, inventory, ruleIds, beginFolder, stale, generation: () => generation, stamp, recording: null };
 })(globalThis.T = globalThis.T || {});

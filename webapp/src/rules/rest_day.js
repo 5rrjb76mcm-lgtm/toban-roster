@@ -8,7 +8,7 @@ T.rules.register({
   solve(ctx) {
     const { P, lp, LP } = ctx, st = P.state("rest_day");
     for (const n of ctx.names) { if (!P.hasExternal(n)) continue; const t = [];
-      for (let d = 1; d <= P.N; d++) { if (ctx.has([d, "day"])) t.push(ctx.work([d, "day"], n)); if (P.nextIsHoliday(d)) t.push(ctx.work([d, "night"], n)); }
+      for (let d = 1; d <= P.N; d++) { if (P.isHoliday(d) && ctx.has([d, "day"])) t.push(ctx.work([d, "day"], n)); if (P.nextIsHoliday(d)) t.push(ctx.work([d, "night"], n)); } // 休日の日勤か休日前日の夜勤（検算の T.restDays と同じ）
       if (st === "hard") lp.add(LP.sum(t), ">=", 1);
       else { const v = lp.aux("rest"); lp.add(LP.sum([...t, v]), ">=", 1); lp.objAdd(P.softW("rest_day"), v); } } // 減点: 週休日が無い人 1 名あたり
   },
@@ -16,7 +16,7 @@ T.rules.register({
   penalty(ctx) {
     const { P } = ctx;
     for (const n of ctx.names) if (P.hasExternal(n)) { let c = 0;
-      for (let d = 1; d <= ctx.N; d++) { if (ctx.has([d, "day"]) && ctx.worked(n, [d, "day"])) c++; if (P.nextIsHoliday(d) && ctx.worked(n, [d, "night"])) c++; }
+      for (let d = 1; d <= ctx.N; d++) { if (P.isHoliday(d) && ctx.has([d, "day"]) && ctx.worked(n, [d, "day"])) c++; if (P.nextIsHoliday(d) && ctx.worked(n, [d, "night"])) c++; }
       if (!c) ctx.add("rest_day_missing", P.softW("rest_day"), 1); }
   },
   diagnoseHint: "      → 外勤のある{person}が休日の日勤・休日前日の夜勤に入れるよう不可日を見直す",
@@ -30,7 +30,7 @@ T.rules.register({
   // 入力チェック: 外勤があるのに休日の勤務枠が全部不可
   lint(ctx, prm) {
     const { P } = ctx; if (!P.restDayRequired) return;
-    for (const n of P.dutyNames) if (P.hasExternal(n)) { const c = P.slots.filter(s => ctx.canWork(n, s) && (s[1] === "day" || P.nextIsHoliday(s[0]))).length; if (!c) ctx.push("LINT_REST_DAY_IMPOSSIBLE", { who: n }); }
+    for (const n of P.dutyNames) if (P.hasExternal(n)) { const c = P.slots.filter(s => ctx.canWork(n, s) && ((s[1] === "day" && P.isHoliday(s[0])) || (s[1] === "night" && P.nextIsHoliday(s[0])))).length; if (!c) ctx.push("LINT_REST_DAY_IMPOSSIBLE", { who: n }); }
   },
   python: true,
 });

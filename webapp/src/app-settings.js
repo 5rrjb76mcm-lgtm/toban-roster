@@ -341,6 +341,9 @@
     const backup = JSON.parse(JSON.stringify({ rules: R, month: state.month, result: state.result, base: state.base, baseRules: state.baseRules })); // 改名は結果・統合の基準にも及ぶので、取り消すときは全部戻す
     const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
+    // プラグインが欠けている・読めない・変換に失敗している間は改名を確定しない（欠けたプラグインの独自データを追随させられず、復帰後にその人の条件が旧名に残る）
+    let broken = true; try { broken = T.lintPlugins(new T.Problem(R, state.month)).some(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { broken = true; }
+    if (broken && rows.some(r => r.old && r.old !== r.name)) { A.toast(T.t("施設のプラグインが欠けている・読めない間は氏名を変えられません（独自データの追随ができないため）。プラグインを揃えてから変えてください")); for (const r of rows) if (r.old && r.old !== r.name) r.name = r.old; }
     for (const r of rows) { if (r.old === r.name) continue;
       if (taken.has(r.name)) { if (r.old && !taken.has(r.old)) { A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); r.name = r.old; } else { let k = 2; while (taken.has(`${r.name} ${k}`)) k++; A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k })); r.name = `${r.name} ${k}`; } }
       taken.add(r.name); }

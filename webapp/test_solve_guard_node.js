@@ -29,9 +29,9 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
 (async () => {
   // 疑似のフォルダ（plugins/rules/new.js に既定 hard の規則）
   const folderWith = (text, reads, files = {}) => { const rulesDir = { async *entries() { yield ["new.js", { kind: "file", getFile: async () => ({ text: async () => await text }) }]; } }; // text は Promise でもよい（読取りを待たせる試験用）
-    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw new Error("nf"); } };
-    const monthDir = { getFileHandle: async (n, o) => { if (!(o && o.create) && !(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async b => { files[n] = typeof b === "string" ? b : await b.text(); }, close: async () => { } }) }; } };
-    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") { if (text === null) throw new Error("nf"); reads.n++; return plugDir; } if (o && o.create) return monthDir; throw new Error("nf"); }, getFileHandle: async () => { throw new Error("nf"); } }; }; // text が null ならプラグインの無いフォルダ
+    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } };
+    const monthDir = { getFileHandle: async (n, o) => { if (!(o && o.create) && !(n in files)) throw Object.assign(new Error("nf"), { name: "NotFoundError" }); return { getFile: async () => ({ text: async () => files[n] }), createWritable: async () => ({ write: async b => { files[n] = typeof b === "string" ? b : await b.text(); }, close: async () => { } }) }; } };
+    return { name: "new-folder", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") { if (text === null) throw Object.assign(new Error("nf"), { name: "NotFoundError" }); reads.n++; return plugDir; } if (o && o.create) return monthDir; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); }, getFileHandle: async () => { throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } }; }; // text が null ならプラグインの無いフォルダ
   { // 1) 必須の規則が無い＋別のプラグインの lint が例外
     const x = context(); x.rules.rule_states["local.required.missing"] = "hard";
     const rec = x.T.plugins.load("rules", "rules/bug.js", PLUG("local.bug.lint", "lint() { throw new Error('fixture lint crashed'); }")); assert.ok(rec.ok);
@@ -116,6 +116,15 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, 0, "重複名簿では計算しない"); assert.ok(/氏名が重な/.test(x.log()), x.log().slice(-200)); assert.deepStrictEqual(x.A.state.result, { asg: { keep: 1 } });
     const alerts = []; x.c.alert = m => alerts.push(String(m)); let dl = 0; x.A.download = () => { dl++; }; x.T.check = () => ({ V: [] }); x.A.state.result = { asg: { "1:night": { work: x.rules.name_order[0], oc: [] } }, status: "Optimal", plugins: [] };
     await x.A.downloadDocx(); assert.strictEqual(dl, 0, "帳票も出さない"); assert.ok(/氏名が重な/.test(alerts.pop())); }
+  { // 8d) 新しいプラグインのファイルの読取りに失敗したら、読み込みの失敗として記録し、計算は止まる（entries の失敗も同じ）
+    const x = context(); const okText = PLUG("local.ok.rule"); let calls = 0;
+    const rulesDir = { async *entries() { yield ["a.js", { kind: "file", getFile: async () => ({ text: async () => okText }) }]; yield ["b.js", { kind: "file", getFile: async () => { throw Object.assign(new Error("NotReadableError"), { name: "NotReadableError" }); } }]; } };
+    const plugDir = { getDirectoryHandle: async k => { if (k === "rules") return rulesDir; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } };
+    const dir = { name: "f", async *entries() { }, getDirectoryHandle: async (k, o) => { if (k === "plugins") return plugDir; if (o && o.create) return {}; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); }, getFileHandle: async () => { throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } };
+    x.A.dirHandle = dir; await x.A.refreshMonths(); assert.ok(x.T.RULE_BY_ID["local.ok.rule"], "読めたファイルは登録される"); assert.strictEqual(x.T.plugins.errors().length, 1, "読めなかったファイルは失敗として記録"); assert.ok(/b\.js/.test(x.T.plugins.errors()[0].name));
+    await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, 0, "読取り失敗がある間は計算しない"); assert.ok(/読めません|読み込めな|b\.js/.test(x.log()), x.log().slice(-200));
+    const badDir = { name: "g", async *entries() { }, getDirectoryHandle: async k => { if (k === "plugins") return { getDirectoryHandle: async kk => { if (kk === "rules") return { async *entries() { throw new Error("listing failed"); } }; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } }; throw Object.assign(new Error("nf"), { name: "NotFoundError" }); }, getFileHandle: async () => { throw Object.assign(new Error("nf"), { name: "NotFoundError" }); } };
+    x.A.dirHandle = badDir; await x.A.refreshMonths(); assert.ok(x.T.plugins.errors().some(e => /rules\//.test(e.name)), "一覧の失敗も記録"); await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, 0); }
   { // 9) 許容差: solver は 0 も含めて mip_rel_gap を HiGHS へ渡し、渡した値を結果に返す（結果画面の「許容差 0」が計算条件と一致する）
     const x = context(); const P = new x.T.Problem(x.rules, x.month); let captured = null; const fake = { solve: (text, opts) => { captured = opts; return { Status: "Infeasible" }; } };
     let r = await x.T.solve(P, fake, {}); assert.strictEqual(captured.mip_rel_gap, 0, "既定は 0 を明示"); assert.strictEqual(r.gap, 0);

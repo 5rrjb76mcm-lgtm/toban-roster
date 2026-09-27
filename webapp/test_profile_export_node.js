@@ -137,6 +137,16 @@ assert.ok(!("toban_profile" in A.state.rules));
     T.RULE_DEFS.push(def); T.RULE_BY_ID[def.id] = def; const j = JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.result, A.state.base]);
     try { withRows(mkRows(r, ["Fictional Staff Z", "Fictional Staff Y"]), toasts => { A.readSettings(); assert.ok(toasts.some(x => /読み戻しを取り消しました/.test(x)), toasts.join("|")); }); } finally { T.RULE_DEFS.pop(); delete T.RULE_BY_ID[def.id]; }
     assert.strictEqual(JSON.stringify([A.state.rules.doctors.map(d => d.name), A.state.month.unavailable_night, A.state.result, A.state.base]), j, "1 件目の改名も含めて全部戻る"); }
+  // プラグインが欠けている間は改名を確定しない（欠けたプラグインの独自データを追随させられない）
+  { const r = JSON.parse(before); T.fillDefaultRules(r); r.rule_states["local.review.missing"] = "hard"; const m = T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [5] } }, r); Object.assign(A.state, { rules: r, month: m, result: null, base: null });
+    withRows(mkRows(r, ["Fictional Staff Z"]), toasts => { A.readSettings(); assert.ok(toasts.some(x => /氏名を変えられません/.test(x)), toasts.join("|")); });
+    assert.strictEqual(A.state.rules.doctors[0].name, A_, "改名されない"); assert.deepStrictEqual(A.state.month.unavailable_night[A_], [5], "月データも不変"); assert.ok(!JSON.stringify(A.state.month).includes("Fictional Staff Z")); }
+  // 前月の取り込み: 読み取りの間に月が切り替わったら適用しない
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const nov = T.normalizeMonth({ year: 2026, month: 11 }, r), dec = T.normalizeMonth({ year: 2026, month: 12, history: { work_balance: { [A_]: 9 } } }, r); Object.assign(A.state, { rules: r, month: nov, result: null, base: null });
+    let release; const gate = new Promise(res => { release = res; }); A.dirHandle = { name: "x" }; A.ensureFolder = async () => true; A.refreshMonths = async () => { }; A.findMonthData = async () => { await gate; return { data: { month: T.normalizeMonth({ year: 2026, month: 10, history: { work_balance: { [A_]: 1 } } }, r), rules: r, result: null }, where: "x" }; };
+    A.readAll = () => { }; A.renderSettingsMonth = () => { }; A.renderDoctor = () => { }; A.renderFixed = () => { }; A.renderAll = () => { }; A.renderHeader = () => { }; A.save = () => { }; const toasts = []; A.toast = x => toasts.push(String(x));
+    const p = A.importPrevious(); await new Promise(res => setTimeout(res, 10)); A.state.month = dec; // 読み取り中に 12 月へ
+    release(); await p; assert.deepStrictEqual(A.state.month.history.work_balance, { [A_]: 9 }, "切替先の履歴を上書きしない"); assert.ok(toasts.some(x => /取り込みを中止/.test(x)), toasts.join("|")); A.dirHandle = null; }
   // ヘッダーの月選択から翌月を作る（空の月／引き継ぎ）と、前の月の取り消し履歴は消える
   for (const how of ["empty", "prev"]) { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null, meta: null });
     A.saveBeforeSwitch = async () => true; A.fsOK = () => false; A.dirHandle = null; A.storedHandle = null; A.choose = async () => how; A.showTab = () => { }; A.renderSettingsMonth = () => { }; A.renderAll = () => { }; A.renderHeader = () => { }; A.toast = () => { };

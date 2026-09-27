@@ -8,6 +8,7 @@
 //  3) プラグイン欠落時の計算・出力停止: プラグインの規則で計算・保存した月を、プラグインを外して開くと入力チェックが知らせ、計算せず、保存しても勤務表を出さない
 //  4) 共有用書き出し: 名簿を含めない書き出しは役割名＋番号・役割・目安だけになり、フォルダに書かれる
 //  5) 外部 JSON の読込: 読んだ直後は未保存、自動保存でフォルダに書かれ、開き直しても読んだ内容で再開する
+//  6) JSON のダウンロード: 押してもフォルダへの未保存は残り、自動保存で書かれる
 const fs = require("fs"), path = require("path"), http = require("http"), assert = require("assert");
 const HTML = path.resolve(process.argv[2] || path.join(__dirname, "toban.html"));
 let chromium; try { ({ chromium } = require(path.join(process.env.HOME, ".toban-test/node_modules/playwright"))); } catch (e) { console.log("--  実ブラウザの通し試験は省略（cd ~/.toban-test && npm i playwright で入れると走る）"); process.exit(0); }
@@ -144,6 +145,18 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.strictEqual(await page.locator('textarea[data-path="notes"]').inputValue(), "imported-new", "開き直しても読んだ内容");
     await ctx.close();
   });
+  await test("JSON のダウンロード: 自動保存の前に押してもフォルダへの未保存は残り、自動保存でフォルダに書かれ、開き直しても新しい内容", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx);
+    await start(page); await waitSaved(page); await setNotes(page, "old-on-folder"); await waitSaved(page);
+    await page.evaluate(() => { window.__downloads = []; T.app.download = name => { window.__downloads.push(name); }; });
+    await setNotes(page, "new-after-download"); await page.click('.tab[data-tab="settings"]');
+    await page.evaluate(() => { const b = document.querySelector("#btnSaveJson"); for (let d = b.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true; const pane = b.closest("[data-modepane]"); if (pane) document.querySelector(`[data-setmode="${pane.dataset.modepane}"]`).click(); }); // 管理者向けの折りたたみ・モードを開く
+    await page.click("#btnSaveJson");
+    assert.deepStrictEqual(await page.evaluate(() => window.__downloads), ["202611_data.json"], "ダウンロードは行われる"); assert.ok(/未保存/.test(await page.locator("#saveState").textContent()), "フォルダへは未保存のまま");
+    await waitSaved(page); assert.strictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.notes, "new-after-download", "自動保存でフォルダに書かれる");
+    ({ ctx, page } = await reopen(ctx, fs)); await start(page); await page.click('.tab[data-tab="input"]'); assert.strictEqual(await page.locator('textarea[data-path="notes"]').inputValue(), "new-after-download", "開き直しても新しい内容（旧内容に戻らない）");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 5 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 6 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

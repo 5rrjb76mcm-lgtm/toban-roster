@@ -1054,7 +1054,12 @@
     "（施設のプラグインが足りない・読めない、または名簿の氏名が重なっているため勤務表と説明資料は書き出しません。入力チェックを確認してください）": "(facility plug-ins are missing or unreadable, or the roster has duplicate names, so the roster and report are not written; see the input check)",
     "名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）": "Reading the roster back was cancelled (a plug-in failed to follow the rename of {who})",
     "この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）": "This change cannot be undone: the month's conditions were changed after names in the roster were changed, and restoring only the settings would break the name mapping. Please fix it by hand ({what})",
-    "。月別条件はその後に変更されているので戻していません": ". The month's conditions were changed afterwards and were left as they are"
+    "。月別条件はその後に変更されているので戻していません": ". The month's conditions were changed afterwards and were left as they are",
+    "施設のプラグインが欠けている・読めない間は氏名を変えられません（独自データの追随ができないため）。プラグインを揃えてから変えてください": "Names cannot be changed while facility plug-ins are missing or unreadable (their per-person data could not follow the rename). Restore the plug-ins first",
+    "フォルダの plugins/ を開けません: {err}": "The folder's plugins/ could not be opened: {err}",
+    "このフォルダの {tag} は別の施設（{id}）のデータです。": "The {tag} data in this folder belongs to another facility ({id}). ",
+    "JSON をダウンロードしました（フォルダへの保存とは別です。未保存の変更は自動保存でフォルダに書かれます）": "The JSON was downloaded (separate from saving to the folder; unsaved changes are written to the folder by autosave)",
+    "前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください": "Importing the previous month was cancelled (the month, settings or folder changed while reading). Press again"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

@@ -53,12 +53,15 @@
     } else notes.push(T.t("{y}年{m}月 は未計算のため、前月末の接続と実績の累計は取り込めません（履歴は前月までの値）", { y, m: mo }));
     return notes;
   }
-  async function importPrevious() {
+  const importPrevious = () => A.transition("data", importPreviousCore); // 共通の窓口（計算中は断る・保存を待つ）
+  async function importPreviousCore() {
     const y = +state.month.year, mo = +state.month.month; const py = mo === 1 ? y - 1 : y, pm = mo === 1 ? 12 : mo - 1;
     const t = `${py}${String(pm).padStart(2, "0")}`;
+    const month0 = state.month, rules0 = state.rules, gen0 = A.dirGen; // 読み取りの間に月・設定・接続先が切り替わっていたら適用しない（切替先の履歴を上書きしない）
     if (!A.dirHandle) { if (!(await A.ensureFolder())) return A.toast(T.t("前月のデータを読むにはフォルダの接続が必要です")); }
     await A.refreshMonths();
     const f = await A.findMonthData(t);
+    if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));
     if (!f.data) return alert(T.t("{y}年{m}月 の保存データが見つかりません（探した場所: {tried}）", { y: py, m: pm, tried: f.tried.join(T.listSep()) }));
     A.readAll();
     const notes = applyConnection(f.data, state.month);

@@ -25,12 +25,13 @@ T.rules.register({
     const { P } = ctx, note = () => P.msg(P.pmExtNight === "forbid" ? "PM_EXT_FORBIDDEN" : "PM_EXT_UNCONFIRMED");
     for (const n of ctx.names) for (let d = 1; d <= P.N; d++) { const nd = d + 1;
       if (nd <= P.N + 1) {
-        if (ctx.worked(n, [d, "night"]) && (P.busy(n, nd, "am", ["external"]) || P.busy(n, nd, "pm"))) ctx.viol("NIGHT_THEN_DUTY", { day: ctx.lab(d), who: n, note: nd > P.N ? P.msg("NIGHT_THEN_DUTY_NEXT_MONTH") : "" }, d, n);
-        if (ctx.onCall(n, [d, "night"]) && P.busy(n, nd, "am", ["external"])) ctx.viol("NIGHT_OC_THEN_EXTERNAL", { day: ctx.lab(d), who: n }, d, n); }
+        // 固定指定による許容は解く側と同じ範囲（その枠の勤務／その枠の固定だけ。同じ日の別の勤務帯の固定では許容しない）
+        if (ctx.worked(n, [d, "night"]) && (P.busy(n, nd, "am", ["external"]) || P.busy(n, nd, "pm"))) ctx.viol("NIGHT_THEN_DUTY", { day: ctx.lab(d), who: n, note: nd > P.N ? P.msg("NIGHT_THEN_DUTY_NEXT_MONTH") : "" }, d, n, P.isFixedWork([d, "night"], n));
+        if (ctx.onCall(n, [d, "night"]) && P.busy(n, nd, "am", ["external"])) ctx.viol("NIGHT_OC_THEN_EXTERNAL", { day: ctx.lab(d), who: n }, d, n, P.isFixedEng([d, "night"], n)); }
       if (P.busy(n, d, "pm", ["external"])) {
-        if (ctx.onCall(n, [d, "day"])) ctx.viol("PM_EXT_DAY_OC", { day: ctx.lab(d), who: n }, d, n);
-        if (ctx.onCall(n, [d, "night"]) && P.pmExtNightBanned(d, n)) ctx.viol("PM_EXT_NIGHT_OC", { day: ctx.lab(d), who: n, note: note() }, d, n);
-        if (ctx.worked(n, [d, "night"]) && P.pmExtNightBanned(d, n)) ctx.viol("PM_EXT_NIGHT", { day: ctx.lab(d), who: n, note: note() }, d, n); } }
+        if (ctx.onCall(n, [d, "day"])) ctx.viol("PM_EXT_DAY_OC", { day: ctx.lab(d), who: n }, d, n, P.isFixedEng([d, "day"], n));
+        if (ctx.onCall(n, [d, "night"]) && P.pmExtNightBanned(d, n)) ctx.viol("PM_EXT_NIGHT_OC", { day: ctx.lab(d), who: n, note: note() }, d, n, P.isFixedEng([d, "night"], n));
+        if (ctx.worked(n, [d, "night"]) && P.pmExtNightBanned(d, n)) ctx.viol("PM_EXT_NIGHT", { day: ctx.lab(d), who: n, note: note() }, d, n, P.isFixedWork([d, "night"], n)); } }
   },
   ui: {
     render(R, h) { return `<label>${h.esc(h.tx("午後外勤日の夜勤・夜間OC: "))}${h.sel([["confirm", h.tx("「間に合う」と確認した記録があるときだけ可")], ["forbid", h.tx("常に不可")], ["allow", h.tx("制限なし")]], R.pm_external_night || "confirm", 'id="setPmExt"')}</label>

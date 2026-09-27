@@ -58,7 +58,7 @@
       else A.toast(T.t("表題を「{label}」にしました（計算後の保存で反映）", { label: ev.target.value }));
     });
     $("#btnReportHtml").addEventListener("click", A.downloadReportHtml);
-    $("#btnSaveJson").addEventListener("click", () => { A.readAll(); const at = new Date().toISOString(); A.download(A.dataFileName(), new Blob([A.payloadJson(at)], { type: "application/json" })); A.markSaved("ダウンロード", at); }); // savedWhere は内部の値（表示は whereLabel が訳す）
+    $("#btnSaveJson").addEventListener("click", A.downloadMonthJson);
     // ファイルの読込は、読み終わって状態に当てるところまで窓口の中で行う（読取中に計算が始まっても、当てる時点で守られる）
     $("#fileLoadJson").addEventListener("change", ev => A.transition("data", async () => { const f = ev.target.files[0]; ev.target.value = ""; if (!f) return; if (!(await A.saveBeforeSwitch())) return; let o; try { o = JSON.parse(await f.text()); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); } A.applyLoaded(o, T.t("読み込みました"), { fromFolder: false }); }).then(r => { if (r === false) ev.target.value = ""; }));
     $("#fileFromPrev").addEventListener("change", ev => A.transition("data", async () => { const f = ev.target.files[0]; ev.target.value = ""; if (!f) return; if (!(await A.saveBeforeSwitch())) return; try { const o = JSON.parse(await f.text()); if (!o.month) throw new Error(T.t("勤務表データJSONではありません")); if (o.rules) state.rules = o.rules; state.meta = null; state.base = null; state.month = A.fromPrevious(o); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); renderAll(); showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month })); } catch (e) { alert(T.t("読み込み失敗: {err}", { err: e })); } }).then(r => { if (r === false) ev.target.value = ""; }));

@@ -95,6 +95,13 @@ test("按分の同率: 比重が全員 1 の 5 名で 62 枠（12 月）→ 12.4
   ({ R, m, D } = mk({ [D[4]]: -2 })); P = new T.Problem(R, m); assert.deepStrictEqual(D.map(n => P.targets[n]), [12, 12, 13, 12, 13], "履歴で不足している人が先、次に年数の短い人");
   ({ R, m, D } = mk(null)); R.doctors.forEach(d => { d.years = 10; }); P = new T.Problem(R, m); assert.deepStrictEqual(D.map(n => P.targets[n]), [13, 13, 12, 12, 12], "全部同じなら名簿の順");
 });
+test("週休日（外勤のある人）: 休日の日勤か休日前日の夜勤が 1 回以上。平日の日勤だけでは違反 1（減点なら 100）、土曜の日勤 1 回で 0", () => {
+  const { R, m, D } = base({ states: { rest_day: "hard" }, weights: { rest_day_missing: 100 }, month: { duty_days: { "Dr B": { 5: { am: "external" } } } } }); // Dr B は 5 日午前に外勤
+  const others = D.filter(n => n !== "Dr B"); const a = rotation(others); a["4:day"].work = "Dr B"; // 4 日（水）の日勤だけ
+  let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["REST_DAY_MISSING"]);
+  const { R: R2, m: m2 } = base({ states: { rest_day: "soft" }, weights: { rest_day_missing: 100 }, month: { duty_days: { "Dr B": { 5: { am: "external" } } } } }); assert.strictEqual(pen(new T.Problem(R2, m2), a).rest_day_missing, 100);
+  a["4:day"].work = others[3]; a["7:day"].work = "Dr B"; r = T.check(new T.Problem(R, m), a); assert.strictEqual(r.V.length, 0, "土曜（7 日）の日勤で成立"); assert.strictEqual(pen(new T.Problem(R2, m2), a).rest_day_missing || 0, 0);
+});
 test("夜勤の希望: 7 日と 8 日を希望し 8 日だけ入った → 叶わなかった 1 件 × 重み 30 = 30", () => {
   const { R, m, D } = base({ states: { wish_night: "soft" }, weights: { wish_night: 30 }, month: { wishes: { night_on: { "Dr B": [7, 8] } } } }); // 基準では 8 日の夜勤が Dr B、7 日は Dr G
   const it = pen(new T.Problem(R, m), rotation(D)); assert.strictEqual(it.wish_night, 30); assert.strictEqual(Object.keys(it).filter(k => it[k]).join(","), "wish_night");
