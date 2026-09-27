@@ -57,8 +57,9 @@
   async function importPreviousCore() {
     const y = +state.month.year, mo = +state.month.month; const py = mo === 1 ? y - 1 : y, pm = mo === 1 ? 12 : mo - 1;
     const t = `${py}${String(pm).padStart(2, "0")}`;
-    const month0 = state.month, rules0 = state.rules, gen0 = A.dirGen; // 読み取りの間に月・設定・接続先が切り替わっていたら適用しない（切替先の履歴を上書きしない）
-    if (!A.dirHandle) { if (!(await A.ensureFolder())) return A.toast(T.t("前月のデータを読むにはフォルダの接続が必要です")); }
+    const month0 = state.month, rules0 = state.rules; // 読み取りの間に月・設定・接続先が切り替わっていたら適用しない（切替先の履歴を上書きしない）
+    if (!A.dirHandle) { if (!(await A.ensureFolder())) return A.toast(T.t("前月のデータを読むにはフォルダの接続が必要です")); if (state.month !== month0 || state.rules !== rules0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); } // 接続で月データを読み込んで月が替わることがある
+    const gen0 = A.dirGen; // 自分の接続を済ませてから、その後の切替を見張る
     await A.refreshMonths();
     const f = await A.findMonthData(t);
     if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));

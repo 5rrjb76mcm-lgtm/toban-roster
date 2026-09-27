@@ -414,7 +414,6 @@
  "rule_states": {
   "period_charge": "off",
   "rest_day": "off",
-  "same_day_IA": "off",
   "weekend_balance": "off",
   "same_weekday_cap": "off",
   "friday_night_min": "off",

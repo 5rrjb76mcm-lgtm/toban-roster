@@ -26,7 +26,7 @@
   async function tryAutoMerge(f, ctx) {
     const base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
-    if (otherFacility(f)) return null; // 別の施設のデータとは自動で統合しない（年月が同じでも共通の元ではない。読み込むか持ち込むかを利用者が選ぶ）
+    if (otherFacility(f) || new Set(facilityIds(state.rules, state.month).concat(facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
     let pre; try { pre = T.mergeMonth(base, state.month, theirs); } catch (e) { return null; }
@@ -58,14 +58,17 @@
     return true;
   }
   // 相手（フォルダ）のデータが別の施設のものか（設定の profile.id か月の profile_id が違う）
-  const otherFacility = f => { const mine = (state.rules.profile || {}).id || state.month.profile_id || null, theirs = ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id || null; return !!(mine && theirs && mine !== theirs); };
+  // 手元（設定と月）と相手（設定と月）に記録された施設 id が 1 つに揃っていなければ「別の施設」（設定と月の id が食い違っている状態も含む。自動統合・無確認の上書きの対象にしない）
+  const facilityIds = (rules, month) => [((rules || {}).profile || {}).id, (month || {}).profile_id].filter(Boolean);
+  const otherFacility = f => new Set(facilityIds(state.rules, state.month).concat(facilityIds(f.data.rules, f.data.month))).size > 1;
   async function checkConflict() {
     const f = await findMonthData(A.tag());
     if (!f.data && f.corrupt) { A.toast(T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
-    if (fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
-    const m = await tryAutoMerge(f, T.t("保存しようとしたところ、"));
+    const other = otherFacility(f); // 施設の一致は保存時刻の一致より先に見る（別施設のファイルを複製した場合など、時刻が同じでも別のデータ）
+    if (!other && fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
+    const m = other ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"));
     if (m === true) return true; if (m === false) return false;
     // 共通の元がなく統合できないときだけ、どちらを採るか聞く
     const opts = [];
@@ -174,12 +177,13 @@
       if (state.meta) state.meta = null; // この月のファイルが接続先に無い: フォルダ名に関係なく未保存として扱い、自動保存で書く（別のフォルダや同じ名前の別のフォルダに保存済みでも、接続先に無ければ保存済みとは言わない）
       return; }
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedAt) || "";
-    const sameSaved = state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
+    const other = otherFacility(f); // 別の施設のフォルダ: 保存時刻が同じでも「同じ版」とはみなさない。未保存の変更が無ければそのフォルダのデータに切り替え、あれば確認する
+    const sameSaved = !other && state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
     if (sameSaved) return; // 自分が最後に保存したファイルそのもの
-    if (!mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
+    if (other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
       if (A.isDirty()) {
-        // 未保存の変更がある: 共通の元があれば自動で統合し、統合結果をフォルダに書き戻す
-        const m = await tryAutoMerge(f, T.t("開いたとき、"));
+        // 未保存の変更がある: 共通の元があれば自動で統合し、統合結果をフォルダに書き戻す（別の施設なら統合しない）
+        const m = other ? null : await tryAutoMerge(f, T.t("開いたとき、"));
         if (m === true) { A.save(); return; } // 統合結果は自動保存の予約で書く（ここが保存の待ち行列の中から呼ばれることがあり、同じ行列を待つと止まる）
         if (m === false) return;
         const atTxt = fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明");
