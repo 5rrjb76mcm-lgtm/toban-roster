@@ -175,13 +175,16 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const fixedSel = (d, holiday) => {
       const night = A.sel([["", "―"], ["night", shiftLabel(R, "night")], ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])], fixedNightVal(d), `data-cal="fixed" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night");
       if (!holiday) return night;
-      const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-d="${d}" title="${esc(T.t("日勤帯の固定"))}"`);
+      const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-d="${d}" data-shown="${esc(fixedDayVal(d))}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
     const fieldRows = d => ext.fields.map(f => `<div>${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : f.label)} ${A.sel([["", "―"], ...f.options.map(o => [String(o[0]), T.pickLabel ? T.pickLabel(o[1], String(o[0])) : String(o[1])])], String((((m.person_days || {})[f.id] || {})[n] || {})[d] ?? ""), `data-cal="pfield" data-id="${esc(f.id)}" data-d="${d}"`)}</div>`).join(""); // 施設のプラグインが足した日ごとの欄
     // 不可・避の選択肢: 土日祝は日勤帯を含む全種類、平日は夜勤だけ（平日の日中の不在は午前・午後の「不在」で申告し、カテ室配置の候補から外す）
     // 有給（休みの日数の規則を使う施設だけ）: その日は勤務に入らず、休みの日数にその分を足す
     const paidOpt = T.ruleState(R, "days_off_min") !== "off" || ext.paidLeave ? [["paid", T.t("有給")]] : [];
+    // 規則を「なし」にしていて選択肢に無い値（有給など）が入っているときは、その値を「（現在は使わない値）」として残す（画面が表現できない値を読み戻しで消さない。利用者が空欄を選んだときだけ消える）
+    const UN_LABEL = { paid: T.t("有給"), allday: T.t("不可：日夜両方"), day: T.t("不可：日勤帯"), night: T.t("不可：夜勤"), avoid_allday: T.t("避：日夜両方"), avoid_day: T.t("避：日勤帯"), avoid_night: T.t("避：夜勤") };
+    const unOptsWith = (opts, cur) => cur && !opts.some(o => o[0] === cur) ? opts.concat([[cur, (UN_LABEL[cur] || cur) + T.t("（現在は使わない値）")]]) : opts;
     const unOpts = dayOn => { const all = [["", "―"], ...paidOpt, ["allday", T.t("不可：日夜両方")], ["day", T.t("不可：日勤帯")], ["night", T.t("不可：夜勤")], ["avoid_allday", T.t("避：日夜両方")], ["avoid_day", T.t("避：日勤帯")], ["avoid_night", T.t("避：夜勤")]]; if (dayOn) return all; return [["", "―"], ...paidOpt, ["night", T.t("不可：夜勤")], ["avoid_night", T.t("避：夜勤")]]; };
     // その日に日勤の枠があるか（2 交代のように平日にも日勤がある施設では、平日も日勤の不可・固定を選べる）
     const shD = T.normalizeShiftsOf(R).find(x => x.id === "day") || { on: "off_days" };
@@ -193,7 +196,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const w = A.dowOf(y, mo, d), isSun = w === 6 || hol.has(d), isSat = w === 5 && !hol.has(d);
       cells.push(`<td class="cal ${isSun ? "sun" : isSat ? "sat" : ""}"><div class="dnum">${d}<small>${esc(dowJa(w))}${hol.has(d) ? esc(T.t("祝")) : ""}</small>${symAt(d) ? ` <span class="calres" title="${esc(T.t("計算結果"))}">${symAt(d)}</span>` : ""}</div>${dayHead(d)}
 ${ext.hideDuties ? "" : `<div>${esc(T.t("午前"))} ${kindSel(d, "am")}</div><div>${esc(T.t("午後"))} ${kindSel(d, "pm")}</div>`}
-${isDuty ? `<div>${A.sel(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${(m.wishes?.night_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${(m.wishes?.day_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
+${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${(m.wishes?.night_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${(m.wishes?.day_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
       if ((first + d) % 7 === 0 && d < N) cells.push("</tr><tr>");
     }
     // 翌月1日の欄（業務のみ。月末の夜勤・夜間OCの翌日制約に使う。曜日パターンからの推定が入っているので、翌月の業務が分かれば直す）
@@ -240,7 +243,10 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       const fx = m.fixed; const dropIn = tbl => { for (const d of Object.keys(tbl || {})) if (tbl[d] === n) delete tbl[d]; }; const dropArr = tbl => { for (const d of Object.keys(tbl || {})) { tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; } };
       const dropWork = tbl => { for (const d of Object.keys(tbl || {})) { const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; } }; // 勤務者の固定（文字列か配列）から自分を外す
       const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|")[1] === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
-      dropWork(fx.day); dropWork(fx.night); dropIn(fx.weekend_charge); dropArr(fx.day_oc ||= {}); dropArr(fx.night_oc ||= {});
+      dropWork(fx.day); dropWork(fx.night); dropArr(fx.day_oc ||= {}); dropArr(fx.night_oc ||= {});
+      { // 期間責任者の固定: この欄が「期間責任者」として出していた日だけ読み戻す（日勤と両方固定で日勤を出していた日は、この欄では表現していないので変えない）
+        const selOf = {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) selOf[+el.dataset.d] = el; });
+        for (const d of Object.keys(fx.weekend_charge || {})) if (fx.weekend_charge[d] === n) { const el = selOf[+d]; if (el && el.dataset.shown === "charge") delete fx.weekend_charge[d]; } }
       const conflicts = []; let P0 = null; try { P0 = new T.Problem(R, m); } catch (e) { }
       const addWork = (tbl, d, kind) => { const cur = [].concat(tbl[d] || []), cap = P0 ? P0.countOf([d, kind]) : 1; // 枠の人数まで固定できる（1 名の枠は従来どおり衝突）
         if (cur.length >= cap) { conflicts.push(T.t("{d}日 {slot}は {who} が固定済み", { d, slot: shiftLabel(R, kind), who: cur.join(T.nameSep()) })); return; }

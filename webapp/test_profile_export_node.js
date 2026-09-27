@@ -174,4 +174,10 @@ assert.ok(!("toban_profile" in A.state.rules));
     A.pushUndo("試験2"); A.state.rules.weights.wish_night = 999; await new Promise(res => setTimeout(res, 0)); A.state.month.wishes.night_on[A_] = [17]; // 後から入れた希望
     A.undo(); assert.notStrictEqual(A.state.rules.weights.wish_night, 999); assert.deepStrictEqual(A.state.month.wishes.night_on[A_], [17], "後から入れた希望は消えない");
     A.pushUndo("試験3"); A.clearUndo(); const before3 = JSON.stringify(A.state.rules); A.undo(); assert.strictEqual(JSON.stringify(A.state.rules), before3, "履歴を捨てたら戻らない"); Object.assign(A.state, { rules }); }
+  // 共有用の書き出し: 施設のプラグインが欠けている間は断る（欠けた規則が共有から除くはずの個人の記録を除けない）。名簿込みは断らない。登録すれば書き出せて、share が除く
+  { const r = JSON.parse(before); T.fillDefaultRules(r); r.rule_states["local.review.secret"] = "hard"; r.local_review = { secret: { [A_]: "個人の記録" } }; Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null });
+    assert.throws(() => A.profileForExport(false), /共有用の書き出しができません/, "欠けている間は共有用を断る"); assert.ok(A.profileForExport(true).rules.local_review.secret[A_], "名簿込みは断らない");
+    const def = { id: "local.review.secret", api: 1, states: ["hard", "off"], def: "hard", solve() { }, check() { }, penalty() { }, share(R) { delete R.local_review; } }; T.rules.register(def);
+    try { const ex2 = A.profileForExport(false); assert.ok(!ex2.rules.local_review, "登録すれば書き出せ、share が除く"); assert.ok(!JSON.stringify(ex2).includes("個人の記録")); } finally { T.rules.unregister(def.id); }
+    assert.ok(A.state.rules.local_review.secret[A_], "元の設定は変えない"); }
 })().then(() => { console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK"); }).catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

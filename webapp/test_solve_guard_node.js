@@ -138,5 +138,13 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     const p = x.A.reconnectFolderUI(); await new Promise(r => setTimeout(r, 50)); assert.strictEqual(x.A.switching, 1, "読取り中は切替の処理中");
     const n0 = x.stat.solverCalls; await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, n0, "切替中は計算しない");
     release(); await p; assert.strictEqual(x.A.switching, 0); assert.ok(x.T.RULE_BY_ID["local.late.rule"], "別のフォルダのプラグインが読まれた"); await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, n0 + 1, "終われば計算できる"); }
+  { // 11) 規則の id を aliases で移した施設のプラグイン: 旧 id が plugins_used に残っていても、正規化で現行の id に写り、欠落と誤らずに計算する
+    const x = context(); x.T.plugins.load("rules", "rules/renamed.js", PLUG("local.new.id", 'aliases: ["local.old.id"]')); x.T.fillDefaultRules(x.rules);
+    const m = JSON.parse(JSON.stringify(x.A.state.month)); m.plugins_used = ["local.old.id", "local.new.id", "local.gone.id"]; x.T.normalizeMonth(m, x.rules);
+    assert.strictEqual(JSON.stringify(m.plugins_used), JSON.stringify(["local.new.id", "local.gone.id"]), "旧 id は現行の id へ（重複は 1 つに、解決できない id は欠落の検出のため残す）");
+    const y = context(); y.T.plugins.load("rules", "rules/renamed.js", PLUG("local.new.id", 'aliases: ["local.old.id"]')); y.T.fillDefaultRules(y.rules);
+    const m2 = JSON.parse(JSON.stringify(y.A.state.month)); m2.plugins_used = ["local.old.id"]; y.A.state.month = y.T.normalizeMonth(m2, y.rules); await y.A.runSolve();
+    assert.strictEqual(y.stat.solverCalls, 1, "旧 id だけの月も欠落と扱わずに計算する: " + y.log().slice(0, 200)); assert.strictEqual(JSON.stringify(y.A.state.month.plugins_used), JSON.stringify(["local.new.id"]), "計算後の記録は現行の id");
+  }
   console.log("計算の入口の守り（規則欠落＋lint 例外・lint 例外・計算中のプラグイン読み直し・通常の採用・計算中／計算後の接続で読むプラグイン）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

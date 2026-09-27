@@ -195,5 +195,24 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     root = fakeRoot([tr]); A.readSettingsMonth(); assert.deepStrictEqual(A.state.month.prev_month.last_days, [{ date: 31, night: "Dr A", night_oc: ["Dr B"] }], "OC の欄が無ければ前の OC を残す");
     const hist = { match: s2 => /\[data-hist\]/.test(s2), dataset: { hist: "weekend_charge:Dr A" }, value: "" }; root = fakeRoot([hist]); A.readSettingsMonth(); assert.deepStrictEqual(A.state.month.history.weekend_charge, {}, "出ている欄を空にしたら消える"); assert.deepStrictEqual(A.state.month.history.work_balance, { "Dr A": 2 }, "出ていない方は残る");
     document.querySelector = q0; }
+  // JSON の読込: 読み取りを待つ間に加えた入力は、当てる直前の確認でフォルダに保存してから置き換える（無確認で失わない）
+  { for (const k of Object.keys(files)) delete files[k]; T.check = () => ({ V: [] }); T.makeDocx = async () => new Blob(["roster"]); A.reportHtml = () => "report"; A.showTab = () => { }; A.renderAll = () => { }; A.clearUndo = () => { }; A.save = () => { }; A.readAll = () => { };
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "saved" }, result: null, meta: null }); A.dirHandle = dir; A.markSaved();
+    let release; const gate = new Promise(r => { release = r; }); const f = { text: async () => { await gate; return JSON.stringify({ rules: JSON.parse(JSON.stringify(A.state.rules)), month: { year: 2026, month: 11, notes: "from-json" }, result: null }); } };
+    const loading = A.loadJsonFile(f); await new Promise(r => setTimeout(r, 10)); A.state.month.notes = "typed-while-reading"; release(); await loading;
+    assert.strictEqual(A.state.month.notes, "from-json", "読んだ内容が当たる"); assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "typed-while-reading", "読み取りの間の入力はフォルダに保存されてから置き換わる"); assert.strictEqual(A.isDirty(), true, "外部の JSON は未保存");
+    // 利用者が「やめる」を選べば当てない
+    for (const k of Object.keys(files)) delete files[k]; Object.assign(A.state, { month: { year: 2026, month: 11, notes: "keep" }, result: null, meta: null }); A.markSaved(); const w0 = dir.getFileHandle; dir.getFileHandle = async (n, o) => { if (n === "202611_data.json" && o && o.create) return { createWritable: async () => ({ write: async () => { throw new Error("disk"); }, close: async () => { } }) }; return w0(n, o); }; let asked = 0; A.choose = async () => { asked++; return false; };
+    const f2 = { text: async () => { A.state.month.notes = "typed-again"; return JSON.stringify({ rules: JSON.parse(JSON.stringify(A.state.rules)), month: { year: 2026, month: 11, notes: "from-json-2" }, result: null }); } }; await A.loadJsonFile(f2);
+    assert.strictEqual(asked, 1, "保存できなければ確認を出す"); assert.strictEqual(A.state.month.notes, "typed-again", "やめれば当てない"); dir.getFileHandle = w0; A.choose = async () => null; }
+  // 同じ版のまま保存先に勤務表・説明資料が無いとき（別のフォルダへ移した・消した）は、同じ内容・同じ版で書き直す。版は増えない。片方だけ無くても書き直す。揃っていれば書かない
+  { for (const k of Object.keys(files)) delete files[k]; T.check = () => ({ V: [] }); T.makeDocx = async () => new Blob(["roster"]); A.reportHtml = () => "report";
+    Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "r" }, result: { asg: { "1:night": { work: "Dr A", oc: [] } }, status: "Optimal", plugins: [] }, meta: null }); A.dirHandle = dir;
+    assert.strictEqual(await A.saveToFolder(), "saved"); assert.strictEqual(A.state.month.doc_versions.length, 1); assert.ok(files["202611_roster_v1_draft.docx"] && files["202611_report_v1_draft.html"]);
+    delete files["202611_roster_v1_draft.docx"]; delete files["202611_report_v1_draft.html"];
+    const prep = await A.prepareSave("2026-10-03T00:00:00.000Z"); assert.ok(prep.reuse && prep.reuse.ver === 1, "同じ版"); assert.strictEqual(prep.docs.length, 0, "版は足さない");
+    await A.writeSave(dir, prep); assert.strictEqual(files["202611_roster_v1_draft.docx"], "roster"); assert.strictEqual(files["202611_report_v1_draft.html"], "report", "無ければ同じ版で書き直す"); assert.ok(/書き直しました/.test(prep.note), prep.note); A.commitSave(prep); assert.strictEqual(A.state.month.doc_versions.length, 1, "版は増えない");
+    delete files["202611_report_v1_draft.html"]; assert.strictEqual(await A.saveToFolder(), "saved"); assert.ok(files["202611_report_v1_draft.html"], "説明資料だけ無くても書き直す"); assert.strictEqual(A.state.month.doc_versions.length, 1);
+    const n0 = writes.length; await A.saveToFolder(); assert.ok(!writes.slice(n0).some(n => /_roster_|_report_/.test(n)), "揃っていれば書かない"); }
   console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口（待機中の計算開始も断る）・保存の 3 段階（帳票だけの失敗でも月データは保存）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

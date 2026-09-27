@@ -106,4 +106,11 @@ test("夜勤の希望: 7 日と 8 日を希望し 8 日だけ入った → 叶�
   const { R, m, D } = base({ states: { wish_night: "soft" }, weights: { wish_night: 30 }, month: { wishes: { night_on: { "Dr B": [7, 8] } } } }); // 基準では 8 日の夜勤が Dr B、7 日は Dr G
   const it = pen(new T.Problem(R, m), rotation(D)); assert.strictEqual(it.wish_night, 30); assert.strictEqual(Object.keys(it).filter(k => it[k]).join(","), "wish_night");
 });
+test("当月目標の自動調整: 日勤 2 名・夜勤 1 名の月は必要枠 90（30 日 ×（2＋1））。目安の合計が 90 なら調整不要（枠の数 60 で数えない）", () => {
+  const { R, m } = base({ count: { day: 2 } }); const P = new T.Problem(R, m); // 目安は比重で按分: 90 ÷ 5 = 18 ずつ
+  assert.strictEqual(P.slots.length, 60); assert.deepStrictEqual(R.doctors.map(d => P.quota(d.name)), [18, 18, 18, 18, 18]);
+  const at = T.autoTargets(R, m); assert.strictEqual(at.slots, 90); assert.strictEqual(at.quotaSum, 90); assert.deepStrictEqual(at.targets, {}, "調整なし"); assert.ok(at.lines.some(l => /調整不要/.test(l)), at.lines.join(" / "));
+  const { R: R2, m: m2 } = base({ count: { day: 2 } }); R2.profile.quota_mode = "absolute"; R2.doctors.forEach(d => { d.quota = 17; }); // 目安を 17 ずつ（合計 85）にすると、足りない 5 枠分を ±1 の範囲で 1 ずつ増やす
+  const at2 = T.autoTargets(R2, m2); assert.strictEqual(at2.slots, 90); assert.strictEqual(at2.quotaSum, 85); assert.deepStrictEqual(Object.values(at2.targets), [18, 18, 18, 18, 18]);
+});
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

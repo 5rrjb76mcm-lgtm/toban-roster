@@ -14,7 +14,7 @@ T.rules.register({
   },
   check(ctx, prm) {
     const { P } = ctx;
-    for (const n of P.names) { if (P.isExempt(n)) continue;
+    for (const n of ctx.names) { if (P.isExempt(n)) continue; // 解く側と同じ対象（当番候補だけ。候補から外した人に目安を当てない）
       const tot = P.slots.filter(s => ctx.worked(n, s)).length, q = P.quota(n);
       const fc = P.fixedWorkCount(n), ub = Math.max(q + prm.tol, fc); // 固定指定で目安+1を超える分は許容（固定指定により許容として表示）
       if (tot < q - prm.tol || tot > ub) ctx.viol("QUOTA_OUT_OF_RANGE", { who: n, total: tot, quota: q, tol: prm.tol }, null, n);

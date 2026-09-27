@@ -539,7 +539,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
         tol = P.tol if "quota" not in relax else 99
         M.Add(total[n] >= q - tol)
         M.Add(total[n] <= max(q + tol, P.fixed_work_count(n)))  # 固定指定で目安+1を超える場合はその数まで許す
-        dev = M.NewIntVar(0, P.N + 2, f"dev_{n}")
+        dev = M.NewIntVar(0, len(P.slots) + int(P.targets[n]), f"dev_{n}")  # ずれの上限: 全枠に入っても枠の数、目標側は目標（JS 版 quota_target と同じ）
         M.Add(dev >= total[n] - P.targets[n])
         M.Add(dev >= P.targets[n] - total[n])
         obj.append(W["target_deviation"] * dev)
@@ -551,7 +551,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 if s in P.all_slots_set:
                     obj.append(W.get("avoid_day", 30) * Ev(s, n))
             floor = (avoid_ref or {}).get(n, P.targets[n])
-            down = M.NewIntVar(0, P.N + 2, f"avdn_{n}")
+            down = M.NewIntVar(0, len(P.slots) + int(floor), f"avdn_{n}")
             M.Add(down >= floor - total[n])
             obj.append(W.get("avoid_no_reduction", 1000) * down)
 

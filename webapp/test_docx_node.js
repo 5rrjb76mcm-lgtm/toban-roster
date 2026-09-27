@@ -33,4 +33,16 @@ assert(T.docx.list().some(t=>t.id==='test_plain'), '登録した様式が一覧�
 assert.throws(() => T.docxXml(P, asg, '確認版', {today:'2026-01-01T00:00:00Z', template:'no_such'}), /no_such/, '無い様式は黙って既定に落とさず止まる（施設のプラグインの欠落に気付けるように）');
 console.log('docx: 様式の切り替えと用紙の指定 OK（'+ids.join(', ')+'）');
 
+// 月の表の「休みの日数」は本体の数え方に従う: 明けを休みに数えない設定（ake_is_off:false）では、夜勤の翌日の勤務なしの日を休みに数えない
+{ const offCol = xml => { const i = xml.indexOf('勤務回数と休みの日数'); const tail = xml.slice(i); const rows = []; const re = /<w:tr[\s\S]*?<\/w:tr>/g; let mm; while ((mm = re.exec(tail))) { const cells = [...mm[0].matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map(x => x[1]); if (cells.length === 3 && /^\d+$/.test(cells[2])) rows.push([cells[0], +cells[1], +cells[2]]); } return rows; };
+  const mk = ake => { const r = JSON.parse(JSON.stringify(rules)); r.days_off = Object.assign({}, r.days_off, { ake_is_off: ake }); return new T.Problem(r, month); };
+  const rowsT = offCol(T.docxXml(mk(true), asg, '確認版', { today: '2026-01-01T00:00:00Z', template: 'month_table' })), rowsF = offCol(T.docxXml(mk(false), asg, '確認版', { today: '2026-01-01T00:00:00Z', template: 'month_table' }));
+  assert(rowsT.length === P.nameOrder.length && rowsF.length === rowsT.length, '人数分の行: ' + rowsT.length);
+  const Pt = mk(true), Pf = mk(false), At = new T.Asg(Pt, asg), Af = new T.Asg(Pf, asg);
+  const noWork = (Pp, Aa, n) => { let c = 0; for (let d = 1; d <= Pp.N; d++) if (!Pp.slots.some(s => s[0] === d && Aa.worked(n, s))) c++; return c; }; // 勤務の無い日の数（勤務表の従来の数え方）
+  const expT = Object.fromEntries(P.nameOrder.map(n => [n, T.rules.checkCtx(Pt, At, 'check', () => { }).offDays(n).length])), expF = Object.fromEntries(P.nameOrder.map(n => [n, T.rules.checkCtx(Pf, Af, 'check', () => { }).offDays(n).length]));
+  for (const [n, w, off] of rowsT) assert.strictEqual(off, expT[n], `${n}: 明けを休みに数える設定の休みの日数`); for (const [n, w, off] of rowsF) assert.strictEqual(off, expF[n], `${n}: 明けを休みに数えない設定の休みの日数`);
+  const sumT = rowsT.reduce((a, r) => a + r[2], 0), sumF = rowsF.reduce((a, r) => a + r[2], 0), sumNo = P.nameOrder.reduce((a, n) => a + noWork(Pt, At, n), 0);
+  assert(sumF < sumT, `明けを除く方が少ない: ${sumF} < ${sumT}`); assert.strictEqual(sumT, sumNo, '明けを休みに数える設定では勤務の無い日の数と一致');
+  console.log('docx: 休みの日数は本体の数え方（明けを数える ' + sumT + ' / 数えない ' + sumF + '）OK'); }
 (async()=>{ const blob=await T.makeDocx(P, asg, '確認版'); const buf=Buffer.from(await blob.arrayBuffer()); fs.writeFileSync(process.argv[2], buf); console.log('written', buf.length, 'bytes'); })();

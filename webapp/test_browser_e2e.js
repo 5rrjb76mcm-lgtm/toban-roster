@@ -157,6 +157,29 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     ({ ctx, page } = await reopen(ctx, fs)); await start(page); await page.click('.tab[data-tab="input"]'); assert.strictEqual(await page.locator('textarea[data-path="notes"]').inputValue(), "new-after-download", "開き直しても新しい内容（旧内容に戻らない）");
     await ctx.close();
   });
+  await test("医師別カレンダー: 規則を「なし」にしていて選択肢に無い値（有給）は「（現在は使わない値）」として残り、他の欄の変更で消えない。空欄を選んだときだけ消える", async () => {
+    const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; A.state.rules.rule_states.days_off_min = "off"; A.state.month.unavailable_other = [{ name: n, day: 5, part: "allday", paid: true }]; A.state.ui.doctor = 0; A.renderDoctor(); return n; });
+    const sel = page.locator('#doctorPane [data-cal="unavail"][data-d="5"]'); assert.strictEqual(await sel.inputValue(), "paid", "選択肢に無い値でも表示される"); assert.ok(/現在は使わない値/.test(await sel.locator("option:checked").textContent()), "使わない値と分かる");
+    await page.check('#doctorPane [data-cal="wish"][data-d="6"]'); // 別の欄を変えると読み戻しが走る
+    assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.unavailable_other), [{ name: who, day: 5, part: "allday", paid: true }], "有給が残る"); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.wishes.night_on[T.app.names()[0]]), [6]);
+    await page.selectOption('#doctorPane [data-cal="unavail"][data-d="5"]', ""); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.unavailable_other), [], "空欄を選んだときだけ消える");
+    await ctx.close();
+  });
+  await test("医師別カレンダー: 日勤と期間責任者の両方を固定した日は、他の欄を変えても期間責任者の固定が消えない。欄で期間責任者を外したときだけ消える", async () => {
+    const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, charge = (T.normalizeRolesOf(R).find(r => (r.refs || []).includes("charge")) || {}).id; const n = A.names().find(x => (R.doctors.find(d => d.name === x) || {}).team === charge); A.state.ui.doctor = A.names().indexOf(n);
+      const fx = A.state.month.fixed; fx.day ||= {}; fx.weekend_charge ||= {}; fx.day[7] = n; fx.weekend_charge[7] = n; fx.weekend_charge[8] = n; A.renderDoctor(); return n; }); // 2026-11-07（土）: 日勤と期間責任者の両方、8 日（日）: 期間責任者だけ
+    assert.ok(who, "期間責任者の役割の人がいる"); const sel7 = page.locator('#doctorPane [data-cal="fixed"][data-shown][data-d="7"]'), sel8 = page.locator('#doctorPane [data-cal="fixed"][data-shown][data-d="8"]');
+    assert.strictEqual(await sel7.inputValue(), "day", "両方固定の日は日勤を出す"); assert.strictEqual(await sel8.inputValue(), "charge");
+    await page.check('#doctorPane [data-cal="wish"][data-d="10"]'); // 別の欄を変えると読み戻しが走る
+    let fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.day[7], who, "日勤の固定が残る"); assert.strictEqual(fx.weekend_charge[7], who, "期間責任者の固定も残る"); assert.strictEqual(fx.weekend_charge[8], who);
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="8"]', ""); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.weekend_charge[8], undefined, "欄で外した日だけ消える"); assert.strictEqual(fx.weekend_charge[7], who); assert.strictEqual(fx.day[7], who);
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="7"]', "charge"); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.day[7], undefined, "日勤から期間責任者へ変えれば日勤の固定は消える"); assert.strictEqual(fx.weekend_charge[7], who);
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 6 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 8 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

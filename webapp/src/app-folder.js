@@ -339,17 +339,21 @@
       const label = S.month.doc_label || "確認版", vsig = versionSig(label, S);
       const versS = S.month.doc_versions || [], last = versS[versS.length - 1]; // 写しには足さない（書けたときに writeSave が足す）
       if (!last || last.sig !== vsig) {
-        const ver = (last ? last.ver : 0) + 1, docxName = A.FILES.roster(S.tag, ver, label), htmlName = A.FILES.report(S.tag, ver, label);
+        const ver = (last ? last.ver : 0) + 1;
         try { // 様式のプラグインが無いなどで作れなくても、月データの保存は続ける
-          const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
-          const html = new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" });
-          prep.docs.push({ name: docxName, blob: docx }, { name: htmlName, blob: html });
-          prep.version = { ver, at, label, sig: vsig, docx: docxName, html: htmlName }; // 版の記録は、書けたときだけ writeSave が写しに足す
+          prep.docs = await makeDocs(S, P, ver, label);
+          prep.version = { ver, at, label, sig: vsig, docx: prep.docs[0].name, html: prep.docs[1].name }; // 版の記録は、書けたときだけ writeSave が写しに足す
           prep.note = T.t("（勤務表 v{v} を追加）", { v: ver });
         } catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
-      } else prep.note = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver });
+      } else { prep.note = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver }); prep.reuse = { ver: last.ver, label, P }; } // 同じ版。保存先に無ければ writeSave が同じ内容・版で書き直す
     }
     return prep;
+  }
+  // 勤務表・説明資料を写しから作る（版の番号と表題を付けて）
+  async function makeDocs(S, P, ver, label) {
+    const docx = await T.makeDocx(P, S.result.asg, `${label} v${ver}`, { baseAsg: S.result.mark_changes ? S.result.base_asg : null });
+    const html = new Blob([A.reportHtml(P, `${label} v${ver}`, S)], { type: "text/html" });
+    return [{ name: A.FILES.roster(S.tag, ver, label), blob: docx }, { name: A.FILES.report(S.tag, ver, label), blob: html }];
   }
   // 2) フォルダへ書く。写しの年月のフォルダに、直前の月データを 1 世代退避してから、勤務表・説明資料、次に月データを書く。
   // 勤務表・説明資料だけが書けなかったときは版の記録を足さずに月データを保存する（月データが書けなければ例外＝保存失敗）
@@ -359,6 +363,12 @@
     if (prep.docs.length) {
       try { for (const f of prep.docs) await writeFile(dir, f.name, f.blob); prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); }
       catch (e) { prep.docsWritten = false; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
+    } else if (prep.reuse) { // 同じ版でも、保存先（別のフォルダに移した・消した）に勤務表か説明資料が無ければ、同じ内容・同じ版で書き直す
+      const { ver, label, P } = prep.reuse, docNames = [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)];
+      const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { return false; } };
+      if (!(await exists(docNames[0])) || !(await exists(docNames[1]))) {
+        try { for (const f of await makeDocs(prep.S, P, ver, label)) await writeFile(dir, f.name, f.blob); prep.note = T.t("（勤務表 v{v} がこのフォルダに無かったので書き直しました）", { v: ver }); }
+        catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
     }
     prep.S.refresh(); // 版の記録（書けたときだけ）を反映した署名と中身
     await writeFile(dir, A.FILES.data(prep.S.tag), new Blob([prep.S.payload], { type: "application/json" }));
@@ -382,6 +392,21 @@
     A.readAll(); const at = new Date().toISOString(); A.download(A.dataFileName(), new Blob([A.payloadJson(at)], { type: "application/json" }));
     if (!A.dirHandle) A.markSaved("ダウンロード", at); else A.toast(T.t("JSON をダウンロードしました（フォルダへの保存とは別です。未保存の変更は自動保存でフォルダに書かれます）"));
   }
+  // 「JSONを読込」: 読み取り・検証の後、当てる直前にもう一度保存の確認をする（読み取りを待つ間に加えた入力を、無確認で置き換えない）
+  async function loadJsonFile(f) {
+    if (!f) return; if (!(await saveBeforeSwitch())) return;
+    let o; try { o = JSON.parse(await f.text()); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); }
+    if (!(await saveBeforeSwitch())) return; // 読み取りの間の入力
+    applyLoaded(o, T.t("読み込みました"), { fromFolder: false });
+  }
+  // 「前月のデータから作成」: 同じく当てる直前に保存の確認
+  async function createFromPrevFile(f) {
+    if (!f) return; if (!(await saveBeforeSwitch())) return;
+    let o; try { o = JSON.parse(await f.text()); if (!o.month) throw new Error(T.t("勤務表データJSONではありません")); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); }
+    if (!(await saveBeforeSwitch())) return;
+    if (o.rules) state.rules = o.rules; state.meta = null; state.base = null; state.month = A.fromPrevious(o); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input");
+    A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month }));
+  }
   function applyLoaded(o, msg, opts = {}) {
     const fromDir = opts.fromFolder !== false; let month, rules = null, result = null;
     if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return alert(T.t("勤務表データではありません（year / month がありません）"));
@@ -392,5 +417,5 @@
     if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
   }
 
-  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
+  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

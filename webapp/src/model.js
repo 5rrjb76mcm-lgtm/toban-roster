@@ -795,6 +795,7 @@
     m.exceptions ||= {}; m.targets ||= {}; m.holidays ||= []; m.closure_days ||= []; m.unavailable_other ||= []; m.confirmed_pm_external_night ||= [];
     m.prev_month ||= { last_days: [], last_weekend_charge: null, prev_weekend_charge: null };
     if (Array.isArray(m.avoid) && !m.avoid.length) delete m.avoid;
+    if (Array.isArray(m.plugins_used) && m.plugins_used.length) { const alias = {}; for (const def of RULE_DEFS) for (const a of def.aliases || []) alias[a] = def.id; m.plugins_used = [...new Set(m.plugins_used.map(id => alias[id] || id))]; } // 規則の id を aliases で移行したら、計算に使った規則の記録も現行の id へ（解決できない id は欠落の検出のため残す）
     for (const def of RULE_DEFS) if (typeof def.normalizeMonth === "function") runHook(def, "normalizeMonth", m, rules); // プラグインの月の値の補完・移行（plugin-example/README.md 6）。複製で試し、成功したときだけ採用
     return m;
   }
@@ -826,7 +827,7 @@
     const P = new Problem(rules, m);
     const bal = (month.history && month.history.work_balance) || {};
     const docs = P.dutyNames.filter(n => P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) }));
-    const S = P.slots.length, Q = docs.reduce((a, d) => a + d.q, 0);
+    const S = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0), Q = docs.reduce((a, d) => a + d.q, 0); // 必要な延べ人数（按分と同じ基準: 枠ごとの人数。幅があるときは理想値）
     const targets = {}; docs.forEach(d => targets[d.n] = d.q);
     const lines = [T.t("必要枠 {slots}、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
     let diff = S - Q;

@@ -1054,5 +1054,22 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     T.setLang("ja");
     assert(/Rules that must be met/.test(e) && /target ±1/.test(e), "英語でも出る: " + e.slice(0, 120));
   });
+  await test("目安±幅の検算は当番候補だけ: 当直しない人（never）に目安があっても違反にしない。解く側と同じ対象", async () => {
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 6).map(d => Object.assign({}, d, { quota: 12 })); two.doctors[5].duty = "never"; two.doctors[5].quota = 8; two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.quota_range = "hard"; two.quota_tolerance = 1; two.profile.quota_mode = "absolute";
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23] }, two), P = new T.Problem(two, m); assert(!P.dutyNames.includes(two.doctors[5].name), "当番候補でない");
+    const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける: " + r.status); const rep = T.check(P, r.asg);
+    assert.strictEqual(rep.V.length, 0, "候補外の人の目安を違反にしない: " + rep.V.map(v => v.code + ":" + v.who).join(",")); assert(!rep.W.some(w => /QUOTA/.test(w.code)), "許容にも出ない");
+    assert.strictEqual(Object.values(r.asg).filter(x => x.work === two.doctors[5].name).length, 0);
+  });
+  await test("当月目標のずれの上限: 目標が暦日数＋2 を超えても（同日 2 勤務を許す設定）解けて、目的関数＝減点", async () => {
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.quota_target = "soft"; two.weights.target_deviation = 15; const D = two.doctors.map(d => d.name);
+    // D[0] は全日不可（勤務 0 回）で目標 35: ずれ 35 は暦日数＋2＝32 を超える。残り 4 名で 60 枠（同日の日勤と夜勤も可）
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], targets: { [D[0]]: 35, [D[1]]: 15, [D[2]]: 15, [D[3]]: 15, [D[4]]: 15 }, unavailable_other: Array.from({ length: 30 }, (_, i) => ({ name: D[0], day: i + 1, part: "allday" })) }, two);
+    const P = new T.Problem(two, m); assert.strictEqual(P.targets[D[0]], 35);
+    const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける: " + r.status); const pen = T.penalty(P, r.asg).total; assert(Math.abs(r.objective - pen) < 1e-6, `目的関数 ${r.objective} ＝ 減点 ${pen}`); assert(Math.abs(pen - 35 * 15) < 1e-6, "ずれ 35 × 15: " + pen);
+    assert.strictEqual(T.check(P, r.asg).V.length, 0);
+  });
   console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}`);
 })();

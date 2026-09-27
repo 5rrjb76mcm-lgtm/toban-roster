@@ -1059,7 +1059,10 @@
     "フォルダの plugins/ を開けません: {err}": "The folder's plugins/ could not be opened: {err}",
     "このフォルダの {tag} は別の施設（{id}）のデータです。": "The {tag} data in this folder belongs to another facility ({id}). ",
     "JSON をダウンロードしました（フォルダへの保存とは別です。未保存の変更は自動保存でフォルダに書かれます）": "The JSON was downloaded (separate from saving to the folder; unsaved changes are written to the folder by autosave)",
-    "前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください": "Importing the previous month was cancelled (the month, settings or folder changed while reading). Press again"
+    "前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください": "Importing the previous month was cancelled (the month, settings or folder changed while reading). Press again",
+    "施設のプラグインが欠けている・読めない間は共有用の書き出しができません（プラグインが共有から除くはずの個人の記録を除けないため）。プラグインを揃えてから書き出してください": "The sharing export is unavailable while facility plug-ins are missing or unreadable (the per-person records a plug-in would strip cannot be stripped). Restore the plug-ins first",
+    "（現在は使わない値）": " (value not in use now)",
+    "（勤務表 v{v} がこのフォルダに無かったので書き直しました）": "(roster v{v} was missing from this folder, so it was written again)"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

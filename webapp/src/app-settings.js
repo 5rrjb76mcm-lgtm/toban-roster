@@ -343,8 +343,7 @@
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
     // プラグインが欠けている・読めない・変換に失敗している間は改名を確定しない（欠けたプラグインの独自データを追随させられず、復帰後にその人の条件が旧名に残る）。
     // 計算用の欠落判定（「なし」の規則は除く）とは別に、設定が参照する施設のプラグインの規則（id が local. で始まる）は「なし」でも登録が無ければ欠けているとみなす（独自データはその規則が持つ）
-    let broken = true; try { broken = T.lintPlugins(new T.Problem(R, state.month)).some(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { broken = true; }
-    if (!broken) broken = Object.keys(R.rule_states || {}).some(id => /^local\./.test(id) && !T.RULE_BY_ID[id]) || (state.month.plugins_used || []).some(id => !T.RULE_BY_ID[id]);
+    const broken = pluginsIncomplete(R, state.month);
     if (broken && rows.some(r => r.old && r.old !== r.name)) { A.toast(T.t("施設のプラグインが欠けている・読めない間は氏名を変えられません（独自データの追随ができないため）。プラグインを揃えてから変えてください")); for (const r of rows) if (r.old && r.old !== r.name) r.name = r.old; }
     for (const r of rows) { if (r.old === r.name) continue;
       if (taken.has(r.name)) { if (r.old && !taken.has(r.old)) { A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); r.name = r.old; } else { let k = 2; while (taken.has(`${r.name} ${k}`)) k++; A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k })); r.name = `${r.name} ${k}`; } }
@@ -408,6 +407,12 @@
     if (state.base) { const mvb = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } }; mvb(state.base.duty_days); mvb(state.base.regular_duties); mvb(state.base.unavailable_night); mvb(state.base.targets); }
     replaceInto(state.month, m2); replaceInto(state.rules, R2); return true; // 採用（参照は保つ。呼ぶ側が R.doctors を読み直しの結果で置き換える）
   }
+  // 施設のプラグインが揃っていないか（改名と共有用の書き出しを断る判定）: 計算用の欠落・読込失敗・変換失敗に加え、設定が参照する local. の規則は「なし」でも登録が無ければ欠けているとみなす（独自データはその規則が持つ）
+  function pluginsIncomplete(R, m) {
+    let broken = true; try { broken = T.lintPlugins(new T.Problem(R, m)).some(x => ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK"].includes(x.code)); } catch (e) { broken = true; }
+    if (!broken) broken = Object.keys(R.rule_states || {}).some(id => /^local\./.test(id) && !T.RULE_BY_ID[id]) || ((m || {}).plugins_used || []).some(id => !T.RULE_BY_ID[id]);
+    return broken;
+  }
   // ---------- 施設プロファイルの書き出し・読み込み ----------
   // 書き出し: 規則そのもの（施設の構成・規則の状態・重み・値）。月データは含めない。
   // withRoster でなければ共有用: 名簿は役割と目安（回数・比重）だけを残して氏名を「役割名＋番号」に置き換え、経験年数・資格・個人別の条件・プラグインが足した欄は落とす。
@@ -419,6 +424,7 @@
     delete R.toban_profile;
     const leftover = [];
     if (!withRoster) {
+      if (pluginsIncomplete(state.rules, state.month)) throw new Error(T.t("施設のプラグインが欠けている・読めない間は共有用の書き出しができません（プラグインが共有から除くはずの個人の記録を除けないため）。プラグインを揃えてから書き出してください")); // 名簿込み（施設内の引き継ぎ用）は対象外
       const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
       const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; const nn = `${base}${cnt[base]}`; if (d.name) map.set(d.name, nn);
         const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });

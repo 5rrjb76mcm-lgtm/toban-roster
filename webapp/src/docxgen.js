@@ -142,9 +142,11 @@
     const sum = [[t("氏名"), 1800], [t("勤務回数"), 1200], [t("休みの日数"), 1200]];
     const sw = sum.map(s => s[1]);
     const sumRows = [c.row(sum.map((s, i) => c.cell(s[0], sw[i], c.FILL_WD, { jc: "center", bold: true })), 258)];
+    const cc = T.rules && T.rules.checkCtx ? T.rules.checkCtx(P, A, "check", () => { }) : null; // 休みの日数は本体の数え方（明けを休みに数えない設定なら明けを除く）
     for (const n of order) {
       let work = 0, off = 0;
       for (let d = 1; d <= P.N; d++) { const w = shifts.some(sh => A.worked(n, [d, sh.id])); if (w) work++; else off++; }
+      if (cc) { try { off = cc.offDays(n).length; } catch (e) { } }
       sumRows.push(c.row([c.cell(n, sw[0], c.FILL_WD), c.cell(String(work), sw[1], c.FILL_WD, { jc: "center" }), c.cell(String(off), sw[2], c.FILL_WD, { jc: "center" })], 266));
     }
     const title = T.t("{y}年{m}月 {kind} {stamp}　{label}", { y: P.year, m: P.month, kind: t("勤務表"), stamp: c.dateStamp(), label: t(c.label) });
