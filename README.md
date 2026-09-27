@@ -33,11 +33,19 @@ webapp/
   README.md                開発者向けの詳細
 ```
 
-## 使い方（利用者）
+## はじめての方へ（5 分で試す）
 
-1. GitHub の Releases から `toban.html` をダウンロードする（1 ファイル。約 5 MB）。ダウンロードのページに SHA-256 が書いてあるので、必要なら照合する。
-2. Edge か Chrome で開く。外部との通信はなく、計算も保存もその PC の中で行う。
-3. 画面の「ヘルプ」に使い方とライセンスがある。保存先のフォルダを選ぶと、月ごとのデータがそのフォルダに保存される。
+1. [Releases](https://github.com/5rrjb76mcm-lgtm/toban-roster/releases/latest) から `toban.html` をダウンロードする（1 ファイル。約 5 MB。ページに SHA-256 が書いてあるので、必要なら照合する）。
+2. Edge か Chrome で開く。外部との通信はなく、計算も保存もその PC の中で行う。最初の画面で「フォルダを開いて開始」（月ごとのデータを保存するフォルダ。例: `勤務表`）を選ぶ。試すだけなら「フォルダなしで続ける」でもよい。
+3. 同梱の見本（架空の名簿・2026 年 11 月）がそのまま入っているので、「2 計算」タブの「計算する」を押す。数秒で「3-1 結果」に当番表と検算が出る。先頭の状態の行で、保存済みか・いまの入力で計算した結果か・検算の結果・最適性の判定が分かる。
+4. 自分の施設にするには「設定」タブ →「施設の構成を作る」で、近い施設プロファイル（週 5 日勤＋夜勤、一般当直、2 交代、病棟看護師 2 交代）を読み込み、名簿・規則・重みを直す。「1 月別条件」で不可日・希望・固定を入れ、もう一度「計算する」。入力チェックが矛盾を人と日で指摘し、解なしのときは衝突している規則を診断する。
+5. 保存はフォルダに自動で行われ、計算後の保存で当番表 docx と説明資料 HTML が版付きで書き出される。詳しくはアプリ内の「ヘルプ」。
+
+| 月別条件の入力（見本） | 結果の検算と集計 |
+| --- | --- |
+| ![月別条件の入力](docs/images/input-ja.png) | ![結果](docs/images/result-ja.png) |
+
+**Quick start (English):** download `toban.html` from [Releases](https://github.com/5rrjb76mcm-lgtm/toban-roster/releases/latest), open it in Edge or Chrome, pick a folder for monthly data (or continue without one to try it), press "Solve" on tab 2 with the bundled fictional sample, and read the result on tab 3-1. Switch the language at the top right; the in-app help covers the rest.
 
 ## 使い方（開発）
 

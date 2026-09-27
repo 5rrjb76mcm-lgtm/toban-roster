@@ -94,10 +94,10 @@
   const REF_JA = { charge: "期間責任者", other: "対の役割", junior: "補助の役割", reserve: "予備の役割" };
   function term(s, rules) {
     let roles = null;
-    return String(s).replace(/\{(charge|other|junior|reserve)\}/g, (_, k) => {
+    return String(s).replace(/\{(charge|other|junior|reserve)\}(担当)?/g, (_, k, tantou) => { // 「{charge}担当」で役割名が「主担当」のように「担当」で終わるときは重ねない（「主担当担当」にしない）
       if (!roles) { try { roles = normalizeRoles(rules); } catch (e) { roles = []; } }
-      const r = roles.find(o => o.refs.includes(k));
-      return r ? r.label : (T.t ? T.t(REF_JA[k]) : REF_JA[k]);
+      const r = roles.find(o => o.refs.includes(k)), label = r ? r.label : (T.t ? T.t(REF_JA[k]) : REF_JA[k]);
+      return tantou && /担当$/.test(label) ? label : label + (tantou || "");
     });
   }
 
