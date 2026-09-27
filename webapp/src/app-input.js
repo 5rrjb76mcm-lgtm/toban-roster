@@ -264,6 +264,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       if (root.querySelector('[data-cal="pfield"]')) { m.person_days ||= {}; const got = {}; // 施設のプラグインが足した日ごとの欄（この人の分を作り直す）
         root.querySelectorAll('[data-cal="pfield"]').forEach(el => { const id = el.dataset.id; got[id] ||= {}; if (el.value !== "") got[id][+el.dataset.d] = el.value; });
         for (const [id, byDay] of Object.entries(got)) { m.person_days[id] ||= {}; if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n]; } }
+      root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) el.dataset.shown = el.value; }); // 読み戻した値を次の比較基準に（この画面で付けた期間責任者の固定も、次に外せば消える）
       if (conflicts.length) { A.toast(T.t("固定できません: {list}", { list: conflicts.join(T.listSep()) })); setTimeout(renderDoctor, 0); }
     }
     const pats = []; root.querySelectorAll("#patTbl tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`).value; const it = { kind: g("kind"), dow: g("dow"), part: g("part") }; const nth = A.parseDays(g("nth")); if (nth.length) it.nth = nth; const cb = tr.querySelector('[data-f="carry"]'); if (cb && cb.checked) it.carry = true; pats.push(it); });

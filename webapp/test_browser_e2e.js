@@ -168,7 +168,7 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await ctx.close();
   });
   await test("医師別カレンダー: 日勤と期間責任者の両方を固定した日は、他の欄を変えても期間責任者の固定が消えない。欄で期間責任者を外したときだけ消える", async () => {
-    const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
     await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
     const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, charge = (T.normalizeRolesOf(R).find(r => (r.refs || []).includes("charge")) || {}).id; const n = A.names().find(x => (R.doctors.find(d => d.name === x) || {}).team === charge); A.state.ui.doctor = A.names().indexOf(n);
       const fx = A.state.month.fixed; fx.day ||= {}; fx.weekend_charge ||= {}; fx.day[7] = n; fx.weekend_charge[7] = n; fx.weekend_charge[8] = n; A.renderDoctor(); return n; }); // 2026-11-07（土）: 日勤と期間責任者の両方、8 日（日）: 期間責任者だけ
@@ -178,6 +178,10 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     let fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.day[7], who, "日勤の固定が残る"); assert.strictEqual(fx.weekend_charge[7], who, "期間責任者の固定も残る"); assert.strictEqual(fx.weekend_charge[8], who);
     await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="8"]', ""); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.weekend_charge[8], undefined, "欄で外した日だけ消える"); assert.strictEqual(fx.weekend_charge[7], who); assert.strictEqual(fx.day[7], who);
     await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="7"]', "charge"); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.day[7], undefined, "日勤から期間責任者へ変えれば日勤の固定は消える"); assert.strictEqual(fx.weekend_charge[7], who);
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="7"]', ""); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.weekend_charge[7], undefined, "日勤→期間責任者→未指定: 同じ画面で付けた固定も外せる"); assert.strictEqual(fx.day[7], undefined);
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="14"]', "charge"); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.weekend_charge[14], who, "未指定→期間責任者"); // 11 月 14 日（土）
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-shown][data-d="14"]', ""); fx = await page.evaluate(() => T.app.state.month.fixed); assert.strictEqual(fx.weekend_charge[14], undefined, "未指定→期間責任者→未指定: 再描画を挟まなくても消える");
+    await waitSaved(page); const savedFx = JSON.parse(fs.text("A/202611/202611_data.json")).month.fixed; assert.strictEqual((savedFx.weekend_charge || {})[14], undefined, "保存した JSON にも残らない"); assert.strictEqual((savedFx.weekend_charge || {})[7], undefined);
     await ctx.close();
   });
   closing = true; await browser.close(); srv.close();

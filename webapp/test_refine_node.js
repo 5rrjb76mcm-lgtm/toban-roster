@@ -1071,5 +1071,15 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける: " + r.status); const pen = T.penalty(P, r.asg).total; assert(Math.abs(r.objective - pen) < 1e-6, `目的関数 ${r.objective} ＝ 減点 ${pen}`); assert(Math.abs(pen - 35 * 15) < 1e-6, "ずれ 35 × 15: " + pen);
     assert.strictEqual(T.check(P, r.asg).V.length, 0);
   });
+  await test("避けたい日の不足の補助変数: 参照 30 回・実勤務 0 回でも解けて（上限 20 で回数の下限を作らない）、目的関数＝減点。二段階計算も検算を通る最良の割当を選ぶ", async () => {
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 2); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.quota_target = "soft"; two.rule_states.avoid_days = "soft"; Object.assign(two.weights, { avoid_day: 5000, avoid_no_reduction: 1000, target_deviation: 15 }); const D = two.doctors.map(d => d.name);
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], targets: { [D[0]]: 30, [D[1]]: 30 }, avoid: Array.from({ length: 30 }, (_, i) => ({ name: D[1], day: i + 1, part: "allday" })) }, two); // D[1] は全日を避けたい
+    const P = new T.Problem(two, m); const all = {}; for (let d = 1; d <= 30; d++) { all[`${d}:day`] = { work: D[0], oc: [] }; all[`${d}:night`] = { work: D[0], oc: [] }; } // D[0] が 60 枠すべて、D[1] は 0 回
+    const pen = T.penalty(P, all, { avoidRef: { [D[0]]: 30, [D[1]]: 30 } }).total; assert.strictEqual(T.check(P, all).V.length, 0, "検算は通る");
+    const pin = T.solve(P, highs, { timeLimit: 60, pin: all, avoidRef: { [D[0]]: 30, [D[1]]: 30 } }); assert(pin.asg, "参照 30 回・実勤務 0 回を固定しても解ける: " + pin.status); assert(Math.abs(pin.objective - pen) < 1e-6, `目的関数 ${pin.objective} ＝ 減点 ${pen}`);
+    const r2 = await T.solveWithAvoidRef(P, highs, { timeLimit: 60 }); assert(r2.asg, "二段階計算: " + r2.status); const p2 = T.penalty(P, r2.asg, { avoidRef: r2.avoidRef }).total; assert(Math.abs(r2.objective - p2) < 1e-6, `二段階の目的関数 ${r2.objective} ＝ 減点 ${p2}`);
+    assert(p2 <= pen + 1e-6, `二段階計算は検算を通る割当（${pen}）より悪くならない: ${p2}`); assert.strictEqual(Object.values(r2.asg).filter(x => x.work === D[1]).length, 0, "避けたい人は 0 回（不足の上限で残さない）");
+  });
   console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}`);
 })();
