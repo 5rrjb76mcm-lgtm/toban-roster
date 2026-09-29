@@ -29,10 +29,30 @@
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
-    // 最後に同期してから手元で改名していたら、相手の月と共通の元にも同じ改名を当ててから比べる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
-    const ren = T.effectiveRenames(state.renames, (state.rules.doctors || []).map(d => d.name));
-    if (ren.length) { base = JSON.parse(JSON.stringify(base)); for (const [o, n] of ren) { T.renameMonthName(theirs, o, n); T.renameMonthName(base, o, n); } }
-    let pre; try { pre = T.mergeMonth(base, state.month, theirs); } catch (e) { return null; }
+    // 1) 設定（名簿・規則・重み）の採用先を先に決める（氏名をどちらの名簿に揃えるかが、これで決まる）
+    // 共通の元と比べる: 相手だけ変えたなら相手の、自分だけ変えたなら自分の、両方なら聞く
+    let rulesPick = "theirs";
+    if (f.data.rules) { const noBase = !state.baseRules; // 旧版の保存状態には共通の元の設定が無い: 比較元不明なので、設定が違えば聞く
+      const mineCh = noBase ? A.rulesSig(state.rules) !== A.rulesSig(f.data.rules) : A.rulesSig(state.rules) !== A.rulesSig(state.baseRules), theirsCh = noBase ? mineCh : A.rulesSig(f.data.rules) !== A.rulesSig(state.baseRules);
+      if (!theirsCh) rulesPick = "mine";
+      else if (mineCh) { const w = await A.choose(T.t("設定（名簿・規則・重み）が、このブラウザと別のPCの両方で変わっています。どちらの設定を使いますか。月の入力は自動で統合します。"),
+        [{ label: T.t("相手の設定を使う"), sub: T.t("このブラウザで変えた設定は消えます"), value: "theirs", primary: true }, { label: T.t("自分の設定を使う"), sub: T.t("相手が変えた設定は消えます"), value: "mine" }, { label: T.t("何もしない（後で判断）"), value: null, cancel: true }]);
+        if (!w) return false; rulesPick = w; } }
+    if (!f.data.rules) rulesPick = "mine";
+    // 2) 氏名を、採用する名簿に揃えてから比べる。最後に同期してから手元で改名していたら、
+    //    自分の設定を使うとき: 相手の版と共通の元に同じ改名を当てる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
+    //    相手の設定を使うとき: 手元の月を改名の前の氏名に戻す（相手の名簿の本人に入力が付く）
+    //    本体の項目だけでなく、プラグインの独自データも rename フックで追随させる。フックが失敗したら統合を止める（実物の設定・月には触れない）
+    const clone = o => JSON.parse(JSON.stringify(o)), ren = T.effectiveRenames(state.renames, (state.rules.doctors || []).map(d => d.name));
+    let mine = state.month;
+    if (ren.length) { try {
+      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; for (const [o, n] of ren) { T.renameEverywhere(tr, theirs, o, n); T.renameEverywhere(br, base, o, n); } }
+      else { mine = clone(state.month); const mr = clone(state.rules); for (const [o, n] of ren.slice().reverse()) T.renameEverywhere(mr, mine, n, o); }
+    } catch (e) { A.toast(T.t("別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください", { err: e && e.message || e })); return false; } }
+    // 採用する名簿にいない氏名が、統合で新しく月データに入るなら自動では統合しない（両方が同じ人を別の氏名に変えたときなど、氏名の対応を推測しない。読み込むか上書きするかを利用者が選ぶ）
+    const roster = new Set(((rulesPick === "theirs" ? f.data.rules : state.rules).doctors || []).map(d => d.name)), known = new Set(Object.keys(T.monthNameRefs(mine))), strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n));
+    let pre; try { pre = T.mergeMonth(base, mine, theirs); } catch (e) { return null; }
+    if (strangers(pre.merged).length) return null;
     let prefer = "theirs";
     if (pre.conflicts.length) {
       const fmtV = v => { if (v === undefined || v === null) return T.t("（なし）"); if (typeof v === "string" && v.includes("+")) return v.split("+").map(fmtV).join("＋"); // 同じ日に複数の条件（不可と避など）
@@ -42,20 +62,16 @@
       const w = await A.choose(T.t("{ctx}別のPC（または別のウィンドウ）でも {tag} が変更されていました（保存 {at}）。自分の変更 {mine} 件と相手の変更 {theirs} 件を自動で統合しますが、同じ項目を両方が変えた衝突が {n} 件あります。衝突した項目はどちらを採りますか。\n{list}", { ctx: T.t(ctx), tag: A.tag(), at: new Date(f.data.saved_at).toLocaleString(T.dateLocale()), mine: pre.mineChanges, theirs: pre.theirChanges, n: pre.conflicts.length, list }), [{ label: T.t("衝突は相手の値を採る（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。衝突以外の項目は両方の変更がそのまま残ります"), value: "theirs", primary: true }, { label: T.t("衝突は自分の値を採る"), sub: T.t("例: いま本人から直接聞いた不可日を入れたばかりで、相手の値のほうが古いと分かっているとき"), value: "mine" }, { label: T.t("やめる（統合しない）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true }]);
       if (!w) return false; prefer = w;
     }
-    // 設定（名簿・規則・重み）も共通の元と比べる: 相手だけ変えたなら相手の、自分だけ変えたなら自分の、両方なら聞く
-    let rulesPick = "theirs";
-    if (f.data.rules) { const noBase = !state.baseRules; // 旧版の保存状態には共通の元の設定が無い: 比較元不明なので、設定が違えば聞く
-      const mineCh = noBase ? A.rulesSig(state.rules) !== A.rulesSig(f.data.rules) : A.rulesSig(state.rules) !== A.rulesSig(state.baseRules), theirsCh = noBase ? mineCh : A.rulesSig(f.data.rules) !== A.rulesSig(state.baseRules);
-      if (!theirsCh) rulesPick = "mine";
-      else if (mineCh) { const w = await A.choose(T.t("設定（名簿・規則・重み）が、このブラウザと別のPCの両方で変わっています。どちらの設定を使いますか。月の入力は自動で統合します。"),
-        [{ label: T.t("相手の設定を使う"), sub: T.t("このブラウザで変えた設定は消えます"), value: "theirs", primary: true }, { label: T.t("自分の設定を使う"), sub: T.t("相手が変えた設定は消えます"), value: "mine" }, { label: T.t("何もしない（後で判断）"), value: null, cancel: true }]);
-        if (!w) return false; rulesPick = w; } }
     if (stale && stale()) return false;
-    const r = T.mergeMonth(base, state.month, theirs, prefer);
+    const r = T.mergeMonth(base, mine, theirs, prefer);
+    if (strangers(r.merged).length) return null;
     const theirResult = f.data.result, mineResult = state.result;
     state.month = r.merged; state.ui.doctor = 0;
     state.result = (theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""))) ? theirResult : mineResult;
-    if (f.data.rules && rulesPick === "theirs") state.rules = f.data.rules;
+    if (rulesPick === "theirs") { // 相手の名簿を採る: 手元の結果が残るなら、その中の氏名も改名の前に戻す。改名の記録は消す
+      if (ren.length && state.result === mineResult && mineResult) { const back = new Map(ren.map(([o, n]) => [n, o])), rn = x => back.get(x) || x, fix = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = Array.isArray(v.work) ? v.work.map(rn) : rn(v.work); if (v && v.oc) v.oc = v.oc.map(rn); } };
+        state.result = clone(mineResult); fix(state.result.asg); fix(state.result.base_asg); if (state.result.avoid_ref) state.result.avoid_ref = Object.fromEntries(Object.entries(state.result.avoid_ref).map(([k, v]) => [rn(k), v])); }
+      state.rules = f.data.rules; state.renames = []; }
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
     A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = JSON.parse(JSON.stringify(theirs)); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules));
     A.ensureMonth(state.month); A.persist(); A.renderAll();

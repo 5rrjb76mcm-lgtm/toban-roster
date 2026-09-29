@@ -622,7 +622,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
         obj.append(W["oc_consecutive"] * v)
 
     def next_work(n, k):  # 翌月 1 日の固定が実勤務か（OC・主担当担当の固定は含めない）
-        return P.next_fixed.get("charge") != n and n in P.next_fixed.get(k, []) and n not in P.next_fixed.get(k + "_oc", [])
+        return P.next_fixed.get("charge") != n and P.next_fixed.get(k) == n and n not in (P.next_fixed.get(k + "_oc") or [])  # 勤務者は氏名（無ければ None）、OC は氏名の配列
 
     def last_term(n, k):  # 翌月 1 日が実勤務の固定なら、月末の夜は OC のときだけ数える
         return Ov((N_, "night"), n) if next_work(n, k) else Ev((N_, "night"), n)

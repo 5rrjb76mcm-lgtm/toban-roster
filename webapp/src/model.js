@@ -683,7 +683,15 @@
     const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); }
     const cur = new Set(names || []); return [...map].filter(([k, v]) => k !== v && cur.has(v) && !cur.has(k));
   }
-  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames;
+  // 設定と月（どちらも複製を渡す）の中の氏名を置き換える: 名簿・表示順、名簿の欄（columns の rename）、規則の rename フック、本体の月の項目。
+  // 統合の前に、相手の版・共通の元・手元の月を、採用する名簿の氏名に揃えるのに使う（手元の改名と同じ追随を、プラグインの独自データにも当てる）。フックが失敗したら例外を投げる（呼ぶ側は統合を止める）
+  function renameEverywhere(R, m, oldN, newN) {
+    if (R) { for (const d of R.doctors || []) if (d.name === oldN) d.name = newN; if (Array.isArray(R.name_order)) R.name_order = R.name_order.map(x => x === oldN ? newN : x);
+      for (const c of (T.rules && T.rules.columnsAll ? T.rules.columnsAll(R) : [])) if (typeof c.rename === "function") c.rename(R, oldN, newN); }
+    for (const d of RULE_DEFS) if (typeof d.rename === "function") d.rename(R || {}, m || {}, oldN, newN);
+    if (m) renameMonthName(m, oldN, newN);
+  }
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameEverywhere = renameEverywhere;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ

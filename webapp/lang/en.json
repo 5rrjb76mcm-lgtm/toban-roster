@@ -1076,7 +1076,8 @@
     "暦 {N} 日。休みはちょうど {min} 日": "{N} days in the month; exactly {min} days off",
     "（勤務の枠に入らず、夜勤の翌日でもない日を休みとして数える。日中の業務は見ない）": " (a day with no shift that is not the day after a night shift counts as a day off; daytime duties are not considered)",
     "。2 連休は続いた休みを 1 回と数える": ". A run of days off counts as one two-day break",
-    "。有給の日数は必要な休みに足す": ". Paid leave days are added to the required days off"
+    "。有給の日数は必要な休みに足す": ". Paid leave days are added to the required days off",
+    "別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください": "Merging with the other PC's changes was stopped: a plug-in's per-person data could not be adjusted to the rename ({err}). Please tell the plug-in's author"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

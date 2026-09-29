@@ -57,6 +57,16 @@ const pyScore = file => { const m = py(['score', '--json', file, '--time', Strin
     ok(mm && +mm[1] === 1 && /OCなしの固定なのに/.test(out2), `「OC なし」の固定に反する割当を Python で検算: 違反 ${mm ? mm[1] : '?'} 件（許容に移さない）`);
     const vj = T.check(new T.Problem(rules, m2), res.asg); ok(vj.VC.filter(v => v.code === 'FIXED_OC_NONE').length === 1 && vj.V.length === 1, `同じ割当を JS で検算: 違反 ${vj.V.length} 件`);
     ok(/INFEASIBLE/.test(py2(['score', '--json', jsFile, '--time', String(sec)])), 'Python で全枠を固定して解くと解なし'); }
+  // 6) 翌月 1 日の固定（勤務だけ・OC だけ。日勤・夜勤）: Python が例外で止まらず、JS と同じ判定（解の有無と減点の合計）になる。OC を含む連続だけを減点する
+  { const N = P.N, a = res.asg, wN = [].concat(a[`${N}:night`].work)[0], ocN = (a[`${N}:night`].oc || [])[0], busy = new Set([wN, ...(a[`${N}:night`].oc || []), ...[].concat((a[`${N}:day`] || {}).work || []), ...((a[`${N}:day`] || {}).oc || [])]);
+    const free = P.dutyNames.find(n => !busy.has(n) && !P.isRole(n, 'reserve')), freeOc = P.dutyNames.find(n => !busy.has(n) && P.isStandby(n));
+    const cases = [['夜勤だけ固定（月末に入っていない人）', { night: { [N + 1]: free } }, {}], ['夜間 OC だけ固定（月末に入っていない人）', { night_oc: { [N + 1]: [freeOc] } }, {}], ['夜間 OC だけ固定（月末の夜勤の人: 勤務→OC）', { night_oc: { [N + 1]: [wN] } }, {}],
+      ...(ocN ? [['夜勤だけ固定（月末の夜間 OC の人: OC→勤務）', { night: { [N + 1]: ocN } }, {}]] : []), ['日勤だけ固定（翌月 1 日が休日）', { day: { [N + 1]: free } }, { next_month_first_day_is_holiday: true }], ['日勤 OC だけ固定（翌月 1 日が休日）', { day_oc: { [N + 1]: [freeOc] } }, { next_month_first_day_is_holiday: true }]];
+    for (const [label, fx, extra] of cases) { const m2 = Object.assign(JSON.parse(JSON.stringify(month)), extra); m2.fixed = m2.fixed || {}; for (const [k, v] of Object.entries(fx)) m2.fixed[k] = Object.assign({}, m2.fixed[k], v);
+      const mFile = path.join(os.tmpdir(), '202611.json'); fs.writeFileSync(mFile, JSON.stringify(m2)); let out; try { out = execFileSync(PY, [TOBAN, 'score', '--json', jsFile, '--time', String(sec), mFile, '--rules', rulesPath], { encoding: 'utf8', cwd: path.dirname(TOBAN), stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+      const mm = out.match(/採点: 状態 (\w+)、減点の合計 ([-\d.eE+]+|None)/); let js; try { js = T.solve(new T.Problem(rules, m2), highs, { timeLimit: sec, pin: a }); } catch (e) { js = { status: 'Error: ' + e.message }; }
+      const pyOk = mm && mm[1] === 'OPTIMAL', jsOk = js.status === 'Optimal';
+      ok(!/Traceback/.test(out) && mm && pyOk === jsOk && (!pyOk || Math.abs(+mm[2] - js.objective) < 1e-6), `翌月 1 日の${label}: JS ${js.status}${jsOk ? ' ' + js.objective : ''} / Python ${mm ? mm[1] + (pyOk ? ' ' + mm[2] : '') : '例外: ' + out.trim().split('\n').pop()}`); } }
   console.log(fail ? '突き合わせ: 不一致あり' : '突き合わせ: すべて一致');
   process.exit(fail);
 })().catch(e => { console.error(e); process.exit(1); });

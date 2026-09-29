@@ -86,7 +86,8 @@
       const cc = T.rules.checkCtx(P, A, "check", () => { }); // 休みの日・2 連休は検算と同じ数え方（明けの扱い・連休の数え方・有給を足した必要日数）
       const rows = order.map(n => {
         const off = cc.offDays(n), pr = cc.pairs(n, off), need = P.offTarget(n);
-        const ngO = P.state("days_off_min") !== "off" && (P.offExact ? off.length !== need : off.length < need), ngP = P.state("days_off_pair") !== "off" && pr < P.pairMin;
+        const applies = P.dutyNames.includes(n) && !P.isExempt(n); // 規則を当てはめる人だけに不足・超過の印を付ける（予備の役割・固定したときだけの人・候補でない人は数だけ）
+        const ngO = applies && P.state("days_off_min") !== "off" && (P.offExact ? off.length !== need : off.length < need), ngP = applies && P.state("days_off_pair") !== "off" && pr < P.pairMin;
         return [esc(n), ngO ? `<b class="ng">${off.length}</b>` : off.length, ngP ? `<b class="ng">${pr}</b>` : pr];
       });
       const note = T.t(P.offExact ? "暦 {N} 日。休みはちょうど {min} 日" : "暦 {N} 日。最低の休み {min} 日", { N: P.N, min: P.minDaysOff })

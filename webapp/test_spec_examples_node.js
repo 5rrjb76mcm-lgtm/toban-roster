@@ -174,4 +174,13 @@ test("説明資料の休みと 2 連休: 検算と同じ数え方。明けを休
   const R2 = clone(R); R2.days_off = { min: 8, ake_is_off: true, pair_count: "pairs", pair_min: 2 }; const P2 = new T.Problem(R2, m), s62 = T.buildReport(P2, a).sections.find(s => /月の休みの日数と 2 連休/.test(s.html)).html, row2 = s62.slice(s62.indexOf("月の休みの日数と 2 連休")).match(new RegExp("<td>" + D[0] + "</td><td>(.*?)</td><td>(.*?)</td>"));
   assert.strictEqual(row2[1].replace(/<[^>]+>/g, ""), "29", "明けを休みに数える設定"); assert.strictEqual(row2[2].replace(/<[^>]+>/g, ""), "28", "続く 2 日の組の数");
 });
+test("説明資料の休みの印は、規則を当てはめる人だけ: 「固定したときだけ」の人と予備の役割の人は、休みがちょうどの日数と違っても印を付けない（数は出す）。当てはめる人の超過には印が付く", () => {
+  const { R, m, D } = base({ states: { days_off_min: "hard", same_day_double: "off" }, rules: { days_off: { min: 15, mode: "exact", ake_is_off: true } } });
+  R.profile.roles = [{ id: "S", label: "職員", refs: ["charge", "other", "junior"] }, { id: "C", label: "予備", refs: ["reserve"] }]; R.doctors[0].duty = "fixed_only"; R.doctors[1].team = "C"; R.doctors[1].duty = "no_unless_needed";
+  const P = new T.Problem(R, m), w = D.slice(2), a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: w[(d - 1) % 3], oc: [] }; a[`${d}:night`] = { work: w[(d - 1) % 3], oc: [] }; } // 3 人が 3 日に 1 度、日勤と夜勤の両方（勤務 10 日・休み 20 日）
+  assert.ok(P.isExempt(D[0]) && P.isExempt(D[1]), "適用除外の 2 人"); const r = T.check(P, a); assert.ok(!r.VC.some(v => [D[0], D[1]].includes(v.who || (v.args || {}).who)), "検算は除外の人を違反にしない");
+  const html = T.buildReport(P, a).sections.find(s => /月の休みの日数と 2 連休/.test(s.html)).html, tail = html.slice(html.indexOf("月の休みの日数と 2 連休")), row = n => tail.match(new RegExp("<td>" + n + "</td><td>(.*?)</td>"))[1];
+  for (const n of [D[0], D[1]]) { assert.strictEqual(row(n).replace(/<[^>]+>/g, ""), "30", n + ": 数は出す"); assert.ok(!/class="ng"/.test(row(n)), n + ": 印は付けない"); }
+  assert.strictEqual(row(D[2]).replace(/<[^>]+>/g, ""), "20"); assert.ok(/class="ng"/.test(row(D[2])), "当てはめる人の超過（20 ≠ 15）には印");
+});
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

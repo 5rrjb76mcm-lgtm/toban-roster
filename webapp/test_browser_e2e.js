@@ -336,6 +336,18 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     ({ ctx, page } = await reopen(ctx, fs)); await start(page); g = await got(); assert.deepStrictEqual(g.oc, want, "開き直しても同じ"); assert.strictEqual(g.n, before.n);
     await ctx.close();
   });
+  await test("改名の後の統合で「相手の設定を使う」: 名簿も月データも相手の氏名（改名の前）に揃い、本人の不可が外れない。保存した JSON まで確認", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const info = await page.evaluate(() => { const A = T.app, n = A.dutyNames()[0]; A.state.month.unavailable_night[n] = [5]; A.save(); return { who: n, i: A.state.rules.doctors.findIndex(d => d.name === n) }; }); await page.waitForSelector("#saveState.dirty"); await waitSaved(page);
+    const th = JSON.parse(fs.text("A/202611/202611_data.json")); assert.deepStrictEqual(th.month.unavailable_night[info.who], [5]); th.rules.weights.target_deviation = 77; th.saved_at = "2099-01-01T00:00:00.000Z"; fs.write("A/202611/202611_data.json", Buffer.from(JSON.stringify(th))); // 相手は重みだけ変えて保存
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); const inp = page.locator(`#doctorTable tr[data-i="${info.i}"] input[data-f="name"]`); await inp.fill("Review Dr Z"); await inp.dispatchEvent("change");
+    assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.unavailable_night["Review Dr Z"]), [5], "手元は新しい氏名");
+    const btn = page.locator("#modalBtns button", { hasText: "相手の設定を使う" }); await btn.waitFor({ state: "visible", timeout: 20000 }); await btn.click(); await waitSaved(page);
+    const j = JSON.parse(fs.text("A/202611/202611_data.json")); assert.ok(j.rules.doctors.some(d => d.name === info.who) && !j.rules.doctors.some(d => d.name === "Review Dr Z"), "名簿は相手の氏名"); assert.strictEqual(j.rules.weights.target_deviation, 77, "相手の設定");
+    assert.deepStrictEqual(j.month.unavailable_night[info.who], [5], "不可は名簿の本人に付く"); assert.ok(!JSON.stringify(j.month).includes("Review Dr Z"), "新しい氏名は月データに残らない");
+    assert.deepStrictEqual(await page.evaluate(n => T.app.state.month.unavailable_night[n], info.who), [5], "画面の状態も同じ");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 19 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 20 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });
