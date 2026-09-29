@@ -318,6 +318,13 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
       assert.strictEqual(answers.length, 0, "設定の確認の後、読み込むか上書きするかの確認に戻る"); assert.strictEqual(JSON.stringify([A.state.rules, A.state.month]), snap, "手元は変わらない"); assert.deepStrictEqual(A.state.month.unavailable_night[newN], [5, 6]); assert.ok(A.state.renames.length, "改名の記録も残る");
       assert.strictEqual(jj.rules.doctors[0].name, theirN, "フォルダは相手の保存のまま"); assert.deepStrictEqual(jj.month.unavailable_night[theirN], [5]); assert.ok(!JSON.stringify(jj.month).includes(oldN) && !JSON.stringify(jj.month).includes(newN));
       A.choose = async () => { throw new Error("確認は出ない"); }; }
+    // 当月の目標 0 回も氏名の参照: 両方が別の氏名に改名し、手元で足したのが目標 0 回だけでも、本人が分からなくなる入力として自動の統合を止める（確認でやめれば手元・フォルダ・改名の記録とも不変）
+    { assert.deepStrictEqual(T.monthNameRefs({ targets: { Outside: 0 } }), { Outside: ["targets"] }, "0 回の目標も参照として数える"); assert.deepStrictEqual(T.monthNameRefs({ targets: { Outside: "" , Other: null } }), {}, "空は数えない");
+      const answers = ["theirs", null]; A.choose = async () => answers.shift(); const theirN = "Review Dr Y"; let snap;
+      const jj = await run(m => { }, (r, m) => T.renameEverywhere(r, m, oldN, theirN), st => { delete st.month.day_notes; st.month.targets[newN] = 0; snap = JSON.stringify([st.rules, st.month, st.renames]); }, "skipped", m => { delete m.targets[oldN]; });
+      assert.strictEqual(answers.length, 0, "設定の確認の後、読み込むか上書きするかの確認に戻る"); assert.strictEqual(JSON.stringify([A.state.rules, A.state.month, A.state.renames]), snap, "手元も改名の記録も変わらない"); assert.strictEqual(A.state.month.targets[newN], 0);
+      assert.strictEqual(jj.rules.doctors[0].name, theirN, "フォルダは相手の保存のまま"); assert.ok(!JSON.stringify(jj.month.targets).includes(oldN) && !JSON.stringify(jj.month.targets).includes(newN));
+      A.choose = async () => { throw new Error("確認は出ない"); }; }
     // 計算結果の氏名: 新しい方の結果を採り、氏名は採用する名簿に揃える（名簿の採用先 × 結果の出どころの 4 通り。単独の勤務・複数名の勤務・OC・変更前の割当・避けたい日の基準回数）。揃えられない結果は採らない
     { const other = R0.doctors[1].name, mkRes = at => ({ asg: { "1:night": { work: oldN, oc: [other] }, "2:day": { work: [other, oldN], oc: [oldN] } }, base_asg: { "1:night": { work: oldN, oc: [] } }, avoid_ref: { [oldN]: 3, [other]: 2 }, status: "Optimal", at, plugins: [] });
       const namesOf = res => { const o = new Set(); for (const a of [res.asg, res.base_asg]) for (const v of Object.values(a || {})) { for (const n of [].concat(v.work || [])) o.add(n); for (const n of v.oc || []) o.add(n); } for (const n of Object.keys(res.avoid_ref || {})) o.add(n); return [...o].sort(); };

@@ -183,4 +183,10 @@ test("説明資料の休みの印は、規則を当てはめる人だけ: 「固
   for (const n of [D[0], D[1]]) { assert.strictEqual(row(n).replace(/<[^>]+>/g, ""), "30", n + ": 数は出す"); assert.ok(!/class="ng"/.test(row(n)), n + ": 印は付けない"); }
   assert.strictEqual(row(D[2]).replace(/<[^>]+>/g, ""), "20"); assert.ok(/class="ng"/.test(row(D[2])), "当てはめる人の超過（20 ≠ 15）には印");
 });
+test("名簿にない人の当月の目標 0 回: 0 回も入力として数え、入力チェックが名簿にない氏名を知らせる（0 を「無い」と数えない）", () => {
+  const { R, m } = base({ month: { targets: { "Outside Person": 0 } } });
+  assert.deepStrictEqual(T.monthNameRefs(m)["Outside Person"], ["targets"]);
+  const L = T.lint(new T.Problem(R, m)); assert.ok(L.some(x => x.code === "LINT_MONTH_UNKNOWN_NAMES" && JSON.stringify(x).includes("Outside Person")), "知らせる: " + L.map(x => x.code).join(","));
+  const { R: R2, m: m2 } = base({ month: { targets: { "Dr B": 0 } } }); assert.strictEqual(new T.Problem(R2, m2).targets["Dr B"], 0, "名簿の人の 0 回は目標として効く"); assert.ok(!T.lint(new T.Problem(R2, m2)).some(x => x.code === "LINT_MONTH_UNKNOWN_NAMES"));
+});
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

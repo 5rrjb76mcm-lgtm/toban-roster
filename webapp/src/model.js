@@ -612,7 +612,9 @@
   function monthNameRefs(m) {
     const out = {}, add = (n, kind) => { if (!n) return; (out[n] ||= []); if (!out[n].includes(kind)) out[n].push(kind); };
     const keysOf = (o, kind) => { for (const [n, v] of Object.entries(o || {})) if (v && (!Array.isArray(v) || v.length) && (typeof v !== "object" || Array.isArray(v) || Object.keys(v).length)) add(n, kind); };
-    keysOf(m.duty_days, "duty_days"); keysOf(m.regular_duties, "regular_duties"); keysOf(m.unavailable_night, "unavailable"); keysOf(m.targets, "targets"); keysOf((m.wishes || {}).night_on, "wishes"); keysOf((m.wishes || {}).day_on, "wishes");
+    keysOf(m.duty_days, "duty_days"); keysOf(m.regular_duties, "regular_duties"); keysOf(m.unavailable_night, "unavailable"); keysOf((m.wishes || {}).night_on, "wishes");
+    for (const [n, v] of Object.entries(m.targets || {})) if (v !== null && v !== undefined && v !== "" && Number.isFinite(+v)) add(n, "targets"); // 当月の目標は 0 回も有効な入力（0 を「無い」と数えない）
+    keysOf((m.wishes || {}).day_on, "wishes");
     for (const u of m.unavailable_other || []) add(u.name, "unavailable");
     for (const n of (m.wishes || {}).weekend_dayshift || []) add(n, "wishes");
     for (const u of m.avoid || []) add(u.name, "avoid");
