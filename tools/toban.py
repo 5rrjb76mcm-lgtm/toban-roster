@@ -603,10 +603,30 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
 
     # OC を含む隣接枠の連続（OC→OC、OC→勤務、勤務→OC）は減点で許容（weights.oc_consecutive。2026-09-17 に必須条件から変更）。
     # 実勤務どうしの連続は上の連日禁止で必須のまま。同じ日の中（日勤帯→夜間）と主担当医師の同じ土日・祝日は減点しない
+    # 対象は少なくとも片方が OC の連続。両方が実勤務の組（勤務→勤務）は連日の規則が扱うので数えない（JS 版 oc_consecutive と同じ）
     def pen_cons(s1, s2, n):
         v = M.NewBoolVar(f"occ_{s1[0]}_{s1[1]}_{s2[0]}_{s2[1]}_{n}")
-        M.Add(Ev(s1, n) + Ev(s2, n) - 1 <= v)
+        w1, w2 = Wv(s1, n), Wv(s2, n)
+        both = 0
+        if isinstance(w1, int) and isinstance(w2, int):
+            both = 1 if (w1 and w2) else 0
+        elif isinstance(w1, int):
+            both = w2 if w1 else 0
+        elif isinstance(w2, int):
+            both = w1 if w2 else 0
+        else:
+            both = M.NewBoolVar(f"occw_{s1[0]}_{s1[1]}_{s2[0]}_{s2[1]}_{n}")
+            M.Add(both <= w1)
+            M.Add(both <= w2)
+        M.Add(Ev(s1, n) + Ev(s2, n) - 1 - both <= v)
         obj.append(W["oc_consecutive"] * v)
+
+    def next_work(n, k):  # 翌月 1 日の固定が実勤務か（OC・主担当担当の固定は含めない）
+        return P.next_fixed.get("charge") != n and n in P.next_fixed.get(k, []) and n not in P.next_fixed.get(k + "_oc", [])
+
+    def last_term(n, k):  # 翌月 1 日が実勤務の固定なら、月末の夜は OC のときだけ数える
+        return Ov((N_, "night"), n) if next_work(n, k) else Ev((N_, "night"), n)
+    N_ = P.N
     for s1, s2 in zip(P.all_slots, P.all_slots[1:]):
         if s2[0] < 1 or s1[0] == s2[0]:
             continue
@@ -702,9 +722,9 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                         if not P.next_fixed["charge"]:  # 主担当担当の固定があればそれを優先（下で1本だけ張る）
                             M.Add(cday[N, n] == 1)
                     else:
-                        obj.append(W["oc_consecutive"] * Ev((N, "night"), n))  # OC を含む連続は減点（実勤務どうしは上の workday で必須）
+                        obj.append(W["oc_consecutive"] * last_term(n, first_k))  # OC を含む連続は減点（実勤務どうしは上の workday で必須）
                 if P.team[n] != "I" and first_k == "day" and P.next_fixed_engaged(n, "night") and (N, "night") in P.all_slots_set:
-                    obj.append(W["oc_consecutive"] * Ev((N, "night"), n))
+                    obj.append(W["oc_consecutive"] * last_term(n, "night"))
             if cross and P.next_fixed["charge"] and (N, P.next_fixed["charge"]) in cday:
                 M.Add(cday[N, P.next_fixed["charge"]] == 1)
 
@@ -1491,7 +1511,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     for n in P.duty_names:
         cc = []
         for s1, s2 in zip(P.all_slots, P.all_slots[1:]):
-            if s2[0] < 1 or s1[0] == s2[0] or not (A.eng(n, s1) and A.eng(n, s2)):
+            if s2[0] < 1 or s1[0] == s2[0] or not (A.eng(n, s1) and A.eng(n, s2)) or (A.worked(n, s1) and A.worked(n, s2)):
                 continue
             p1, p2 = P.period_of_slot.get(s1), P.period_of_slot.get(s2)
             if T[n] == "I" and p1 is not None and p1 == p2:
@@ -1499,7 +1519,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
             cc.append(f"{P.label(s1[0])}{'日勤帯' if s1[1] == 'day' else '夜間'}→{P.label(s2[0])}{'日勤帯' if s2[1] == 'day' else '夜間'}")
         if T[n] != "I":
             for d in range(lo, P.N):
-                if (d + 1, "day") in A.a and A.eng(n, (d, "night")) and A.eng(n, (d + 1, "night")):
+                if (d + 1, "day") in A.a and A.eng(n, (d, "night")) and A.eng(n, (d + 1, "night")) and not (A.worked(n, (d, "night")) and A.worked(n, (d + 1, "night"))):
                     cc.append(f"{P.label(d)}夜間→{P.label(d + 1)}夜間")
         if cc:
             lines.append(f"{n}: {'、'.join(cc)}")

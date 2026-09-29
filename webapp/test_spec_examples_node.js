@@ -152,4 +152,26 @@ test("予備の役割: 登用を許した月でも月 1 回まで。0 回・1 �
   const mf = Object.assign(clone(m), { allow_chief_duty: true }); mf.fixed.night[4] = D[0]; mf.fixed.night[10] = D[0]; const rf = T.check(new T.Problem(R, mf), mk(2)); assert.ok(codes(rf).includes("RESERVE_OVER"), "固定していても違反"); assert.ok(!wcodes(rf).includes("RESERVE_OVER"));
   assert.deepStrictEqual(codes(T.check(Poff, mk(1))).filter(c => /^RESERVE/.test(c)), ["RESERVE_ASSIGNED"], "許していない月は 1 回でも違反"); assert.deepStrictEqual(codes(T.check(Poff, mk(2))).filter(c => /^RESERVE/.test(c)), ["RESERVE_ASSIGNED"], "許していない月は登用の違反 1 件にまとめる");
 });
+test("OC を含む隣接枠の連続: 勤務→勤務は 0（連日の規則が扱う）。OC→勤務・勤務→OC・OC→OC は各 1 件 × 重み 6。翌月 1 日の固定が実勤務なら、月末の夜は OC のときだけ数える", () => {
+  const mk = month => base({ states: { oc_consecutive: "soft", same_day_double: "off" }, weights: { oc_consecutive: 6 }, month });
+  const { R, m, D } = mk(), P = new T.Problem(R, m), a0 = rotation(D); assert.ok(!pen(P, a0).oc_consecutive, "基準の割当は連続なし"); // 基準: 5 日夜勤 D[2]、6 日日勤 D[0]・夜勤 D[3]
+  const w5n = a0["5:night"].work, w6d = a0["6:day"].work, other = D.find(n => ![w5n, w6d, a0["6:night"].work, a0["4:night"].work].includes(n));
+  { const a = clone(a0); a["6:day"].work = w5n; assert.ok(!pen(P, a).oc_consecutive, "勤務→勤務は数えない: " + pen(P, a).oc_consecutive); }
+  { const a = clone(a0); a["5:night"].oc = [w6d]; assert.strictEqual(pen(P, a).oc_consecutive, 6, "OC→勤務"); }
+  { const a = clone(a0); a["6:day"].oc = [w5n]; assert.strictEqual(pen(P, a).oc_consecutive, 6, "勤務→OC"); }
+  { const a = clone(a0); a["5:night"].oc = [other]; a["6:day"].oc = [other]; assert.strictEqual(pen(P, a).oc_consecutive, 6, "OC→OC は 1 件"); }
+  const w30 = a0["30:night"].work, oth = D.find(n => n !== w30 && n !== a0["30:day"].work && n !== a0["29:night"].work);
+  { const x = mk({ fixed: { night: { 31: w30 } } }), Px = new T.Problem(x.R, x.m); assert.ok(!pen(Px, a0).oc_consecutive, "月末の夜勤→翌月 1 日の夜勤（固定）は勤務→勤務: " + pen(Px, a0).oc_consecutive); }
+  { const x = mk({ fixed: { night: { 31: oth } } }), Px = new T.Problem(x.R, x.m), a = clone(a0); a["30:night"].oc = [oth]; assert.strictEqual(pen(Px, a).oc_consecutive, 6, "月末の夜の OC→翌月 1 日の夜勤（固定）"); }
+  { const x = mk({ fixed: { night_oc: { 31: [w30] } } }), Px = new T.Problem(x.R, x.m); assert.strictEqual(pen(Px, a0).oc_consecutive, 6, "月末の夜勤→翌月 1 日の OC（固定）"); }
+});
+test("説明資料の休みと 2 連休: 検算と同じ数え方。明けを休みに数えず、続いた休みを 1 回と数える設定で、1 日の夜勤だけの人は休み 28 日・2 連休 1 回（最低 2 回に足りない印が付く）", () => {
+  const { R, m, D } = base({ states: { days_off_min: "soft", days_off_pair: "soft", same_day_double: "off" }, rules: { days_off: { min: 8, ake_is_off: false, pair_count: "runs", pair_min: 2 } } });
+  const P = new T.Problem(R, m), others = D.slice(1), a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: others[(d - 1) % 4], oc: [] }; a[`${d}:night`] = { work: d === 1 ? D[0] : others[(d + 1) % 4], oc: [] }; }
+  const cc = T.rules.checkCtx(P, new T.Asg(P, a), "check", () => { }); assert.strictEqual(cc.offDays(D[0]).length, 28, "休みは 3〜30 日"); assert.strictEqual(cc.pairs(D[0]), 1, "続いた休みは 1 回");
+  const s6 = T.buildReport(P, a).sections.find(s => /月の休みの日数と 2 連休/.test(s.html)).html, row = s6.slice(s6.indexOf("月の休みの日数と 2 連休")).match(new RegExp("<td>" + D[0] + "</td><td>(.*?)</td><td>(.*?)</td>"));
+  assert.ok(row, "表に行がある"); assert.strictEqual(row[1].replace(/<[^>]+>/g, ""), "28", "説明資料の休み"); assert.strictEqual(row[2].replace(/<[^>]+>/g, ""), "1", "説明資料の 2 連休"); assert.ok(/class="ng"/.test(row[2]), "2 連休の不足の印"); assert.ok(!/class="ng"/.test(row[1]));
+  const R2 = clone(R); R2.days_off = { min: 8, ake_is_off: true, pair_count: "pairs", pair_min: 2 }; const P2 = new T.Problem(R2, m), s62 = T.buildReport(P2, a).sections.find(s => /月の休みの日数と 2 連休/.test(s.html)).html, row2 = s62.slice(s62.indexOf("月の休みの日数と 2 連休")).match(new RegExp("<td>" + D[0] + "</td><td>(.*?)</td><td>(.*?)</td>"));
+  assert.strictEqual(row2[1].replace(/<[^>]+>/g, ""), "29", "明けを休みに数える設定"); assert.strictEqual(row2[2].replace(/<[^>]+>/g, ""), "28", "続く 2 日の組の数");
+});
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

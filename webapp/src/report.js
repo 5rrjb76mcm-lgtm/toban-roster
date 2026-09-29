@@ -83,16 +83,16 @@
     let s6 = table(["{person}", "週休日発生数", "対象勤務日", "外勤あり"].map(tx), order.map(n => [esc(n), met[n].rest.length, esc(met[n].rest.join(T.listSep()) || "―"), P.hasExternal(n) ? "○" : ""]));
     // 月の休みの日数と 2 連休（規則 days_off_min / days_off_pair を使う施設だけ）
     if (P.state("days_off_min") !== "off" || P.state("days_off_pair") !== "off") {
-      const worked = (n, d) => ["day", "night"].some(k => A.worked(n, [d, k]));
+      const cc = T.rules.checkCtx(P, A, "check", () => { }); // 休みの日・2 連休は検算と同じ数え方（明けの扱い・連休の数え方・有給を足した必要日数）
       const rows = order.map(n => {
-        const off = []; for (let d = 1; d <= P.N; d++) if (!worked(n, d)) off.push(d);
-        const st = new Set(off); let pr = 0; for (let d = 1; d + 1 <= P.N; d++) if (st.has(d) && st.has(d + 1)) pr++;
-        const ngO = P.state("days_off_min") !== "off" && off.length < P.minDaysOff, ngP = P.state("days_off_pair") !== "off" && pr < P.pairMin;
+        const off = cc.offDays(n), pr = cc.pairs(n, off), need = P.offTarget(n);
+        const ngO = P.state("days_off_min") !== "off" && (P.offExact ? off.length !== need : off.length < need), ngP = P.state("days_off_pair") !== "off" && pr < P.pairMin;
         return [esc(n), ngO ? `<b class="ng">${off.length}</b>` : off.length, ngP ? `<b class="ng">${pr}</b>` : pr];
       });
-      const note = T.t("暦 {N} 日。最低の休み {min} 日", { N: P.N, min: P.minDaysOff })
+      const note = T.t(P.offExact ? "暦 {N} 日。休みはちょうど {min} 日" : "暦 {N} 日。最低の休み {min} 日", { N: P.N, min: P.minDaysOff })
         + (P.state("days_off_pair") !== "off" ? T.t("、2 連休は最低 {pair} 回", { pair: P.pairMin }) : "")
-        + T.t("（勤務の枠に入らない日を休みとして数える。日中の業務は見ない）");
+        + T.t(P.akeIsOff ? "（勤務の枠に入らない日を休みとして数える。日中の業務は見ない）" : "（勤務の枠に入らず、夜勤の翌日でもない日を休みとして数える。日中の業務は見ない）")
+        + (P.pairRuns ? T.t("。2 連休は続いた休みを 1 回と数える") : "") + (Object.keys(P.paidDays || {}).length ? T.t("。有給の日数は必要な休みに足す") : "");
       s6 += `<h4>${esc(tx("月の休みの日数と 2 連休"))}</h4><p class="note">${esc(note)}</p>` +
         table(["{person}", "休みの日数", "2 連休の回数"].map(tx), rows, "num");
     }

@@ -130,9 +130,11 @@
 　<label>${esc(tx("施設の休日（毎年同じ月日。月/日をカンマ区切り）"))} <input id="setCalClosure" value="${esc(closureText)}" placeholder="12/29, 12/30, 12/31, 1/2, 1/3" style="width:22em"></label></p>
 <p class="note">${esc(tx("月を作るときに、ここで決めた祝日と施設の休日が月の設定の「祝日・施設の休日」に入ります（月ごとに手で直せます）。祝日のない地域や、土日だけを休日にする施設は「祝日なし」を選びます。国の祝日を足すには src/calendars/ にファイルを 1 つ足します。"))}</p>`); }
     { const pos = ((R.profile || {}).positions || {}).work || {};
-      const cnt = k => { const c = pos.count; if (c == null) return 1; if (typeof c === "number") return c; if (typeof c === "object" && c[k] !== undefined) return c[k]; return 1; };
-      const cntMin = k => { const c = pos.min; if (c == null) return null; if (typeof c === "number") return c; if (typeof c === "object" && c[k] !== undefined) return c[k]; return null; };
-      const cntIdeal = k => { const c = pos.ideal; if (c == null) return null; if (typeof c === "number") return c; if (typeof c === "object" && c[k] !== undefined) return c[k]; return null; };
+      const rawOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null; // 数、または日の種別ごと { weekday, off_days }
+      const cnt = k => rawOf(pos.count, k) ?? 1, cntMin = k => rawOf(pos.min, k), cntIdeal = k => rawOf(pos.ideal, k);
+      // 人数の欄: 数なら入力欄。日の種別ごとの人数（平日と休日で違う）はこの画面では編集できないので、値をそのまま見せて保持する（読み戻しで 1 名に書き換えない）
+      const byDayTxt = v => T.t("平日 {w}・休日 {h}", { w: v.weekday ?? "―", h: v.off_days ?? "―" });
+      const cntCell = (attr, k, v, extra, off) => v && typeof v === "object" ? `<span data-countkeep="${attr}:${esc(k)}" title="${esc(tx("日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します"))}">${esc(byDayTxt(v))}</span>` : `<input type="number" ${extra} data-${attr}="${esc(k)}" value="${v ?? ""}"${off ? " disabled" : ""}>`;
       const shifts = T.normalizeShiftsOf(R);
       const ON = { day: [["none", tx("計算しない")], ["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]],
         night: [["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]] };
@@ -145,9 +147,9 @@
         shifts.map(x => `<tr data-shift="${esc(x.id)}"><td>${esc(PART[x.id] || x.id)}</td>` +
           `<td><input data-slabel value="${esc(x.label)}" style="width:8em"></td>` +
           `<td>${A.sel(ON[x.id] || ON.night, x.on, "data-son")}</td>` +
-          `<td><input type="number" min="0" max="40" data-countmin="${esc(x.id)}" value="${cntMin(x.id) ?? ""}" placeholder="${esc(tx("固定"))}" style="width:4.5em"${x.on === "none" ? " disabled" : ""}></td>` +
-          `<td><input type="number" min="0" max="40" data-countideal="${esc(x.id)}" value="${cntIdeal(x.id) ?? ""}" placeholder="―" style="width:4.5em"${x.on === "none" ? " disabled" : ""}></td>` +
-          `<td><input type="number" min="1" max="40" data-count="${esc(x.id)}" value="${cnt(x.id)}" style="width:4em"${x.on === "none" ? " disabled" : ""}></td></tr>`).join("") + `</table>
+          `<td>${cntCell("countmin", x.id, cntMin(x.id), `min="0" max="40" placeholder="${esc(tx("固定"))}" style="width:4.5em"`, x.on === "none")}</td>` +
+          `<td>${cntCell("countideal", x.id, cntIdeal(x.id), `min="0" max="40" placeholder="―" style="width:4.5em"`, x.on === "none")}</td>` +
+          `<td>${cntCell("count", x.id, cnt(x.id), `min="1" max="40" style="width:4em"`, x.on === "none")}</td></tr>`).join("") + `</table>
 <p class="note">${esc(tx("人数を決まった数にするなら上限だけを書きます。幅を持たせるなら下限も書き、なるべく近づけたい人数があれば理想に書きます（理想からずれた人数は減点。重みは日々の設定の「1枠の人数を理想値に近づける」）。下限と上限は必ず守ります。"))}</p>
 <p class="note">${esc(tx("1 日を日中と夜の 2 つに分け、それぞれに名前を付けて、計算で当番を決める日を選びます。日中を「計算しない」にすると夜だけの当直になります。夜は必ず計算で決めます。日中の予定（午前・午後の外来・外勤など）は計算の対象ではなく、人ごとの予定の入力に使います。3 つ以上の区分（3 交代など）はこの版では使えません。"))}</p>
 <p><label>${esc(tx("勤務回数の目安の決め方"))}: ${A.sel([["absolute", tx("絶対値（名簿に月◯回を書く）")], ["share", tx("相対（名簿に比重を書き、その月の枠数を按分する）")]], (R.profile || {}).quota_mode === "share" ? "share" : "absolute", 'id="setQuotaMode"')}</label></p>
@@ -265,6 +267,7 @@
       const split = v => [...new Set(String(v || "").split(/[・,、\n]+/).map(x => x.trim()).filter(Boolean))];
       if (ft) { const v = split(ft.value); const old = [].concat(R.profile.fixed_tags || []); R.profile.fixed_tags = v.map(l => old.find(o => typeof o === "object" && o.label === l) || l); if (!v.length) delete R.profile.fixed_tags; }
       if (df) { const v = split(df.value); const old = [].concat(R.profile.day_flags || []); R.profile.day_flags = v.map(l => old.find(o => typeof o === "object" && (o.label === l || o.id === l)) || l); if (!v.length) delete R.profile.day_flags; } }
+    const roleRen = {}; // この回に変えた役割の識別子（旧 → 新）。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
     { const roles = [], oldRoles = T.normalizeRolesOf(R);
       document.querySelectorAll("#roleTbl tr[data-ri]").forEach(tr => {
         const g = k => tr.querySelector(`[data-${k}]`);
@@ -274,7 +277,7 @@
         const r = { id, label: g("rlabel").value.trim() || id, refs: g("rref").value ? [g("rref").value] : [] };
         if (g("rstandby").checked) r.standby = true;
         const prev = oldRoles[+tr.dataset.ri];
-        if (prev && prev.id !== id) renameRole(prev.id, id); // 識別子を変えたら名簿・オンコール構成・固定「OCなし」も追随させる
+        if (prev && prev.id !== id) { renameRole(prev.id, id); roleRen[prev.id] = id; } // 識別子を変えたら名簿・オンコール構成・固定「OCなし」も追随させる。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
         roles.push(r);
       });
       if (roles.length) R.profile.roles = roles;
@@ -288,11 +291,15 @@
           shifts.push(sh);
         });
         if (shifts.length) R.profile.shifts = shifts; }
-      const count = {}; let multi = false;
-      document.querySelectorAll("#shiftTbl [data-count]").forEach(x => { const v = Math.max(1, Math.min(40, +x.value || 1)); count[x.dataset.count] = v; if (v > 1) multi = true; });
-      const mins = {}; document.querySelectorAll("#shiftTbl [data-countmin]").forEach(x => { if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(count[x.dataset.countmin] || 1, +x.value || 0)); });
-      const ideals = {}; document.querySelectorAll("#shiftTbl [data-countideal]").forEach(x => { if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(count[x.dataset.countideal] || 1, +x.value || 0)); });
-      const hadIdeal = !!((((R.profile || {}).positions || {}).work || {}).ideal);
+      // 1 枠の人数: 入力欄に出した数だけを読む。日の種別ごとの人数（欄に出せず、値だけ見せているもの）は前の値をそのまま残す
+      const posOld = (((R.profile || {}).positions || {}).work) || {}, isObj = v => !!v && typeof v === "object", rawOld = (c, k) => c == null ? undefined : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : undefined)) : undefined;
+      const kept = {}; document.querySelectorAll("#shiftTbl [data-countkeep]").forEach(x => { const [attr, k] = x.dataset.countkeep.split(":"), field = { count: "count", countmin: "min", countideal: "ideal" }[attr], v = rawOld(posOld[field], k); if (isObj(v)) (kept[field] ||= {})[k] = JSON.parse(JSON.stringify(v)); });
+      const maxOf = v => isObj(v) ? Math.max(+v.weekday || 0, +v.off_days || 0, 1) : (v || 1);
+      const count = Object.assign({}, kept.count); let multi = Object.values(count).some(v => maxOf(v) > 1);
+      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { const v = Math.max(1, Math.min(40, +x.value || 1)); count[x.dataset.count] = v; if (v > 1) multi = true; });
+      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
+      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
+      const hadIdeal = !!posOld.ideal;
       if (Object.keys(count).length) (R.profile.positions ||= {}).work = Object.assign({ count }, Object.keys(mins).length ? { min: mins } : {}, Object.keys(ideals).length ? { ideal: ideals } : {});
       { const qm = document.querySelector("#setQuotaMode"); if (qm) { if (qm.value === "share") R.profile.quota_mode = "share"; else delete R.profile.quota_mode; } } // 目安の決め方
       R._idealAdded = !hadIdeal && Object.keys(ideals).length > 0; // 理想値を新しく書いたら、それに近づける規則を使う（規則の状態を読んだ後で入れる）
@@ -329,7 +336,8 @@
       }
       if (Object.keys(d).length) R.docx = d; else delete R.docx;
     }
-    if (el("#ocReqTbl")) { const oc = {}; document.querySelectorAll("#ocReqTbl tr[data-t]").forEach(tr => { const row = {}; tr.querySelectorAll("[data-oc]").forEach(x => { row[x.dataset.oc] = +x.value || 0; }); oc[tr.dataset.t] = row; }); R.oncall_requirement = oc; }
+    { const rn = k => roleRen[k] || k; // 役割の識別子を変えた回は、画面の行・列の旧い識別子を新しい識別子に読み替える（直した表を旧い識別子で上書きしない）
+      if (el("#ocReqTbl")) { const oc = {}; document.querySelectorAll("#ocReqTbl tr[data-t]").forEach(tr => { const row = {}; tr.querySelectorAll("[data-oc]").forEach(x => { x.dataset.oc = rn(x.dataset.oc); row[x.dataset.oc] = +x.value || 0; }); tr.dataset.t = rn(tr.dataset.t); oc[tr.dataset.t] = row; }); R.oncall_requirement = oc; } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
   }
   function readSettings() {
     const R = state.rules; const oldNames = R.doctors.map(d => d.name);
@@ -338,7 +346,7 @@
     // 名簿の読み戻しの順: (1) 行の氏名を確定する（氏名は個人の識別子なので一意にする。変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）
     // (2) 改名の追随（名簿の欄の rename と規則の rename）を複製で試し、失敗する改名は取り消す (3) 行を読む（土台は現在の職員。名前は確定した新しい名前）
     // (4) 読んだ後の設定・月に改名を適用する（プラグインの追随が、画面に残っていた古い値を読んだ後に効くように。失敗したら読み戻し全体を取り消す）
-    const backup = JSON.parse(JSON.stringify({ rules: R, month: state.month, result: state.result, base: state.base, baseRules: state.baseRules })); // 改名は結果・統合の基準にも及ぶので、取り消すときは全部戻す
+    const backup = JSON.parse(JSON.stringify({ rules: R, month: state.month, result: state.result, base: state.base, baseRules: state.baseRules, renames: state.renames || [] })); // 改名は結果・統合の基準にも及ぶので、取り消すときは全部戻す
     const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
     // プラグインが欠けている・読めない・変換に失敗している間は改名を確定しない（欠けたプラグインの独自データを追随させられず、復帰後にその人の条件が旧名に残る）。
@@ -362,7 +370,7 @@
     R.doctors = docs; A.refreshNameOrder(R);
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
     for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
-      replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
+      replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; state.renames = backup.renames; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
       A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return; }
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
     readHardRules(R);
@@ -389,22 +397,12 @@
   const renameTrial = (oldN, newN) => !!renameTrialOn(state.rules, state.month, oldN, newN);
   function renameDoctor(oldN, newN) {
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
-    const m = m2; const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
-    const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
-    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance);
-    for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
-    if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, who] = key.split("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印
-    (m.unavailable_other || []).forEach(u => { if (u.name === oldN) u.name = newN; }); (m.confirmed_pm_external_night || []).forEach(u => { if (u.name === oldN) u.name = newN; });
-    if (m.wishes) m.wishes.weekend_dayshift = (m.wishes.weekend_dayshift || []).map(x => x === oldN ? newN : x);
-    for (const k of ["night", "day"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = ren1(m.fixed[k][d]); // 1 名でも複数名でも
-    for (const d of Object.keys(m.fixed?.weekend_charge || {})) if (m.fixed.weekend_charge[d] === oldN) m.fixed.weekend_charge[d] = newN;
-    for (const k of ["day_oc", "night_oc"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = [].concat(m.fixed[k][d] || []).map(x => x === oldN ? newN : x);
-    (m.avoid || []).forEach(u => { if (u.name === oldN) u.name = newN; });
-    const pm = m.prev_month || {}; for (const e of pm.last_days || []) { for (const k of ["day", "night"]) if (e[k] !== undefined) e[k] = ren1(e[k]); for (const k of ["day_oc", "night_oc"]) if (e[k]) e[k] = e[k].map(x => x === oldN ? newN : x); }
-    for (const k of ["last_weekend_charge", "prev_weekend_charge"]) if (pm[k] === oldN) pm[k] = newN;
+    T.renameMonthName(m2, oldN, newN);
+    const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w);
     const renAsg = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = ren1(v.work); if (v && v.oc) v.oc = v.oc.map(x => x === oldN ? newN : x); } };
     if (state.result) { renAsg(state.result.asg); renAsg(state.result.base_asg); if (state.result.avoid_ref && state.result.avoid_ref[oldN] !== undefined) { state.result.avoid_ref[newN] = state.result.avoid_ref[oldN]; delete state.result.avoid_ref[oldN]; } }
-    if (state.base) { const mvb = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } }; mvb(state.base.duty_days); mvb(state.base.regular_duties); mvb(state.base.unavailable_night); mvb(state.base.targets); }
+    // 共通の元（最後に同期した内容）は書き換えない。改名の対応を覚えておき、次の統合で相手の月と共通の元に同じ変換を当ててから比べる（相手が旧名のまま持っている入力を「旧名への追加」と誤って統合しない）。保存・読込で同期したら消す
+    (state.renames ||= []).push([oldN, newN]);
     replaceInto(state.month, m2); replaceInto(state.rules, R2); return true; // 採用（参照は保つ。呼ぶ側が R.doctors を読み直しの結果で置き換える）
   }
   // 施設のプラグインが揃っていないか（改名と共有用の書き出しを断る判定）: 計算用の欠落・読込失敗・変換失敗に加え、設定が参照する local. の規則は「なし」でも登録が無ければ欠けているとみなす（独自データはその規則が持つ）
@@ -492,6 +490,7 @@
     const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
     const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name)) !== JSON.stringify((state.rules.doctors || []).map(d => d.name));
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
+    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name); if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) (state.renames ||= []).push([n, old[i]]); }); } // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
     state.rules = o.rules;
     if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();

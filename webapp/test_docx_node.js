@@ -59,4 +59,23 @@ console.log('docx: 様式の切り替えと用紙の指定 OK（'+ids.join(', ')
   const swap = JSON.parse(JSON.stringify(a)); swap['5:day'].work = [swap['5:day'].work[0], D.find(n => !swap['5:day'].work.includes(n) && n !== a['5:night'].work)]; const r1 = reds(a, swap); assert(r1 >= 1 && r1 <= 2, '1 人だけ交代した枠だけ赤字: ' + r1);
   const base0 = chg(a, same); assert.strictEqual(chg(a, order), base0, '説明資料も並び順だけでは変更にしない'); assert(chg(a, swap) > base0, '説明資料も交代した枠は変更');
   console.log('docx: 複数名の枠の変更の赤字（複製 0・並び順 0・交代 ' + r1 + '）OK'); }
+// 月の表の勤務回数は枠の数（同じ日の日勤と夜勤は 2 回）。検算の集計（metrics.total）と一致
+{ const two = JSON.parse(fs.readFileSync('data/profiles/two-shift.json', 'utf8')); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+  for (const def of T.RULE_DEFS) if ((def.states || []).includes('off')) two.rule_states[def.id] = 'off';
+  const D = two.doctors.map(d => d.name), others = D.slice(1), m2 = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed: { day: { 1: D[0] }, night: { 1: D[0] } } }, two), P2 = new T.Problem(two, m2);
+  const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: d === 1 ? D[0] : others[(d - 1) % 4], oc: [] }; a[`${d}:night`] = { work: d === 1 ? D[0] : others[(d + 1) % 4], oc: [] }; }
+  const xml = T.docxXml(P2, a, '確認版', { today: '2026-01-01T00:00:00Z', template: 'month_table' }), tail = xml.slice(xml.indexOf('勤務回数と休みの日数')), rows = {}; const re = /<w:tr[\s\S]*?<\/w:tr>/g; let mm;
+  while ((mm = re.exec(tail))) { const cells = [...mm[0].matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map(x => x[1]); if (cells.length === 3 && /^\d+$/.test(cells[1])) rows[cells[0]] = +cells[1]; }
+  const met = T.metrics(P2, new T.Asg(P2, a)); assert.strictEqual(rows[D[0]], 2, '同じ日の 2 枠は 2 回'); for (const n of D) assert.strictEqual(rows[n], met[n].total, n + ': 勤務回数は検算の集計と同じ');
+  console.log('docx: 月の表の勤務回数は枠の数（同日 2 枠は 2 回）OK'); }
+// 週ごとの様式の赤字: 平日の日勤 OC の交代も赤字にする（日勤の枠がある日すべて）。休日の日勤 OC の交代・変更なしの対照
+{ const R3 = JSON.parse(JSON.stringify(rules)); R3.profile = Object.assign({}, R3.profile, { shifts: [{ id: 'day', label: '日勤', on: 'all' }, { id: 'night', label: '夜勤', on: 'all' }] }); T.fillDefaultRules(R3);
+  const P3 = new T.Problem(R3, T.normalizeMonth(JSON.parse(JSON.stringify(month)), R3)), I = P3.dutyNames.filter(n => P3.isStandby(n)); assert(P3.slotExists(2, 'day'), '平日にも日勤の枠');
+  const a = {}; for (let d = 1; d <= P3.N; d++) for (const k of ['day', 'night']) a[`${d}:${k}`] = { work: P3.dutyNames[(d * 2 + (k === 'day' ? 0 : 1)) % P3.dutyNames.length], oc: [I[(d + (k === 'day' ? 0 : 2)) % I.length]] };
+  const reds = (asg2, base2) => (T.docxXml(P3, asg2, '確認版', { today: '2026-01-01T00:00:00Z', template: 'week_block', baseAsg: base2 }).match(/w:val="C00000"/g) || []).length;
+  const c0 = JSON.parse(JSON.stringify(a)); assert.strictEqual(reds(a, c0), 0, '変更なしは赤字 0');
+  const wk = JSON.parse(JSON.stringify(a)); wk['2:day'].oc = [I.find(n => n !== a['2:day'].oc[0])]; assert(reds(a, wk) >= 1, '平日（11/2 月）の日勤 OC の交代は赤字: ' + reds(a, wk));
+  const hd = JSON.parse(JSON.stringify(a)); hd['7:day'].oc = [I.find(n => n !== a['7:day'].oc[0])]; assert(reds(a, hd) >= 1, '休日（11/7 土）の日勤 OC の交代は赤字');
+  assert.strictEqual(reds(a, wk), (T.docxXml(P3, a, '確認版', { today: '2026-01-01T00:00:00Z', template: 'month_table', baseAsg: wk }).match(/w:val="C00000"/g) || []).length, '月の表と同じ数');
+  console.log('docx: 週ごとの様式の日勤 OC の赤字（平日・休日）OK'); }
 (async()=>{ const blob=await T.makeDocx(P, asg, '確認版'); const buf=Buffer.from(await blob.arrayBuffer()); fs.writeFileSync(process.argv[2], buf); console.log('written', buf.length, 'bytes'); })();

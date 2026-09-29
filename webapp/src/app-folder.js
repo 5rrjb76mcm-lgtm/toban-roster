@@ -24,15 +24,19 @@
   // 衝突（同じ項目を両方が変えた）がなければ確認なしで統合し、衝突があるときだけどちらを採るかを聞く。
   // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=統合できない（共通の元がない）
   async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
-    const base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
+    let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
+    // 最後に同期してから手元で改名していたら、相手の月と共通の元にも同じ改名を当ててから比べる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
+    const ren = T.effectiveRenames(state.renames, (state.rules.doctors || []).map(d => d.name));
+    if (ren.length) { base = JSON.parse(JSON.stringify(base)); for (const [o, n] of ren) { T.renameMonthName(theirs, o, n); T.renameMonthName(base, o, n); } }
     let pre; try { pre = T.mergeMonth(base, state.month, theirs); } catch (e) { return null; }
     let prefer = "theirs";
     if (pre.conflicts.length) {
-      const fmtV = v => { if (v === undefined || v === null) return T.t("（なし）"); const paid = /_paid$/.test(String(v)), b = String(v).replace(/_paid$/, "");
+      const fmtV = v => { if (v === undefined || v === null) return T.t("（なし）"); if (typeof v === "string" && v.includes("+")) return v.split("+").map(fmtV).join("＋"); // 同じ日に複数の条件（不可と避など）
+        const paid = /_paid$/.test(String(v)), b = String(v).replace(/_paid$/, "");
         const t = ({ night: T.t("不可：夜勤"), allday: T.t("不可：日夜両方"), day: T.t("不可：日勤帯"), avoid_night: T.t("避：夜勤"), avoid_day: T.t("避：日勤帯"), avoid_allday: T.t("避：日夜両方") })[b] || (typeof v === "object" ? JSON.stringify(v) : String(v)); return paid ? t + T.t("（有給）") : t; };
       const list = pre.conflicts.slice(0, 12).map(c => T.t("・{item}: 自分「{mine}」／相手「{theirs}」", { item: c.label, mine: fmtV(c.mine), theirs: fmtV(c.theirs) })).join("\n") + (pre.conflicts.length > 12 ? T.t("\n…ほか {n} 件", { n: pre.conflicts.length - 12 }) : "");
       const w = await A.choose(T.t("{ctx}別のPC（または別のウィンドウ）でも {tag} が変更されていました（保存 {at}）。自分の変更 {mine} 件と相手の変更 {theirs} 件を自動で統合しますが、同じ項目を両方が変えた衝突が {n} 件あります。衝突した項目はどちらを採りますか。\n{list}", { ctx: T.t(ctx), tag: A.tag(), at: new Date(f.data.saved_at).toLocaleString(T.dateLocale()), mine: pre.mineChanges, theirs: pre.theirChanges, n: pre.conflicts.length, list }), [{ label: T.t("衝突は相手の値を採る（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。衝突以外の項目は両方の変更がそのまま残ります"), value: "theirs", primary: true }, { label: T.t("衝突は自分の値を採る"), sub: T.t("例: いま本人から直接聞いた不可日を入れたばかりで、相手の値のほうが古いと分かっているとき"), value: "mine" }, { label: T.t("やめる（統合しない）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true }]);
@@ -425,6 +429,7 @@
     A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month }));
   }
   function applyLoaded(o, msg, opts = {}) {
+    state.renames = []; // 丸ごと読み込むので、手元の改名の記録は消す
     const fromDir = opts.fromFolder !== false; let month, rules = null, result = null;
     if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return alert(T.t("勤務表データではありません（year / month がありません）"));
     if (rules && !Array.isArray(rules.doctors)) return alert(T.t("勤務表データの設定（rules）に{person}一覧がありません"));

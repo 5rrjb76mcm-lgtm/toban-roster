@@ -661,6 +661,29 @@
       for (const k of Object.keys(R)) if (k !== "doctors" && J(R[k]) !== J(R2[k])) R[k] = prune(R[k], R2[k]); }
     return c;
   }
+  // 月データの中の氏名を置き換える（手元の月・統合のときの相手の月と共通の元に同じ変換を当てる）
+  function renameMonthName(m, oldN, newN) {
+    const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
+    const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
+    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance);
+    for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
+    if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, who] = key.split("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印
+    (m.unavailable_other || []).forEach(u => { if (u.name === oldN) u.name = newN; }); (m.confirmed_pm_external_night || []).forEach(u => { if (u.name === oldN) u.name = newN; });
+    if (m.wishes && m.wishes.weekend_dayshift) m.wishes.weekend_dayshift = (m.wishes.weekend_dayshift || []).map(x => x === oldN ? newN : x);
+    for (const k of ["night", "day"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = ren1(m.fixed[k][d]); // 1 名でも複数名でも
+    for (const d of Object.keys(m.fixed?.weekend_charge || {})) if (m.fixed.weekend_charge[d] === oldN) m.fixed.weekend_charge[d] = newN;
+    for (const k of ["day_oc", "night_oc"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = [].concat(m.fixed[k][d] || []).map(x => x === oldN ? newN : x);
+    (m.avoid || []).forEach(u => { if (u.name === oldN) u.name = newN; });
+    const pm = m.prev_month || {}; for (const e of pm.last_days || []) { for (const k of ["day", "night"]) if (e[k] !== undefined) e[k] = ren1(e[k]); for (const k of ["day_oc", "night_oc"]) if (e[k]) e[k] = e[k].map(x => x === oldN ? newN : x); }
+    for (const k of ["last_weekend_charge", "prev_weekend_charge"]) if (pm[k] === oldN) pm[k] = newN;
+    return m;
+  }
+  // 改名の記録（[旧, 新] の列。最後に同期してからの分）から、いま効いている対応を出す: 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消え、新しい氏名が名簿にいて旧い氏名がいないものだけを残す
+  function effectiveRenames(list, names) {
+    const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); }
+    const cur = new Set(names || []); return [...map].filter(([k, v]) => k !== v && cur.has(v) && !cur.has(k));
+  }
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ

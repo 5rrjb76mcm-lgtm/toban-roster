@@ -20,12 +20,19 @@
     for (const d of m.cath_off_days || []) { f[`cathoffA:${d}`] = "1"; f[`cathoffI:${d}`] = "1"; }
     for (const [n, v] of Object.entries(m.targets || {})) put(`target:${n}`, v);
     for (const [n, dd] of Object.entries(m.duty_days || {})) for (const [d, e] of Object.entries(dd || {})) for (const part of ["am", "pm"]) put(`duty:${n}:${+d}:${part}`, (e || {})[part]);
-    // 不可・避は医師×日で1つの項目（カレンダーの1つの選択肢に対応）。値: night/allday/day/avoid_night/avoid_day/avoid_allday
-    // 同じ日に複数あるときの優先: 日夜両方 > 日勤帯 > 夜勤 > 避（不可が避に勝つ。lint が重複を知らせる）
-    const putCal = (n, d, v) => { const k = `cal:${n}:${+d}`; const rank = x => (({ allday: 4, day: 3, night: 2 })[String(x).replace(/_paid$/, "")] || 1) + (/_paid$/.test(String(x)) ? 0.5 : 0); /* 同じ区分なら有給の方を残す */ if (f[k] === undefined || rank(v) > rank(JSON.parse(f[k]))) put(k, v); };
+    // 不可・避は医師×日で1つの項目。値: night/allday/day/avoid_night/avoid_day/avoid_allday（有給は _paid を付ける）。
+    // 同じ日に別の時間帯の条件が両方あるとき（日勤帯の不可と夜勤の避など）は、"day+avoid_night" のように並べた値にして、どちらも落とさない。
+    // 不可に含まれる条件は 1 つにまとめる: 日夜両方の不可があれば日勤帯・夜勤の不可と避はそれに含まれる。不可の時間帯と同じ時間帯の避は不可が勝つ（lint が重複を知らせる）。同じ区分なら有給の方を残す
+    const cal = new Map(), putCal = (n, d, v) => { const k = `cal:${n}:${+d}`; if (!cal.has(k)) cal.set(k, new Set()); cal.get(k).add(v); };
     for (const [n, ds] of Object.entries(m.unavailable_night || {})) for (const d of ds || []) putCal(n, d, "night");
     for (const u of m.unavailable_other || []) putCal(u.name, u.day, u.part + (u.paid ? "_paid" : "")); // 有給は不可の区分と一体の値（相手が消し、自分が有給にしたら衝突になる）
     for (const u of m.avoid || []) putCal(u.name, u.day ?? u.date, "avoid_" + (u.part || "allday"));
+    for (const [k, vs] of cal) { const un = p => vs.has(p + "_paid") ? p + "_paid" : vs.has(p) ? p : null, out = [];
+      if (un("allday")) out.push(un("allday")); else { if (un("day")) out.push(un("day")); if (un("night")) out.push(un("night")); }
+      const covered = p => !!un("allday") || (p !== "allday" && !!un(p));
+      if (vs.has("avoid_allday") && !covered("allday")) out.push("avoid_allday"); else for (const p of ["day", "night"]) if (vs.has("avoid_" + p) && !vs.has("avoid_allday") && !covered(p)) out.push("avoid_" + p);
+      for (const v of vs) if (!/^(avoid_)?(allday|day|night)(_paid)?$/.test(v) && !out.includes(v)) out.push(v); // 知らない値も落とさない
+      if (out.length) put(k, out.join("+")); }
     for (const n of (m.wishes || {}).weekend_dayshift || []) f[`wkwish:${n}`] = "1";
     for (const [n, ds] of Object.entries((m.wishes || {}).night_on || {})) for (const d of ds || []) f[`wish:${n}:${d}`] = "1";
     for (const [n, ds] of Object.entries((m.wishes || {}).day_on || {})) for (const d of ds || []) f[`wishd:${n}:${d}`] = "1";
@@ -70,7 +77,7 @@
       else if (p[0] === "cathoffI") m.cath_off_days_I.push(+p[1]);
       else if (p[0] === "target") m.targets[p[1]] = v;
       else if (p[0] === "duty") ((m.duty_days[p[1]] ||= {})[+p[2]] ||= {})[p[3]] = v;
-      else if (p[0] === "cal") { const paid = /_paid$/.test(String(v)), pv = String(v).replace(/_paid$/, "");
+      else if (p[0] === "cal") for (const one of String(v).split("+")) { const paid = /_paid$/.test(one), pv = one.replace(/_paid$/, ""); // 並べた値は 1 つずつ戻す
         if (pv === "night") (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
       else if (p[0] === "wkwish") m.wishes.weekend_dayshift.push(p[1]);
       else if (p[0] === "wish") (m.wishes.night_on[p[1]] ||= []).push(+p[2]);

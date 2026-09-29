@@ -1102,5 +1102,15 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
       assert(T.check(P, mk(2)).VC.some(v => v.code === "RESERVE_OVER"), "2 回は検算が違反にする"); assert(!T.solve(P, highs, { timeLimit: 60, pin: mk(2) }).asg, "2 回の全枠固定は解なし");
       assert.strictEqual(T.check(P, mk(1)).V.length, 0); const pin1 = T.solve(P, highs, { timeLimit: 60, pin: mk(1) }); assert(pin1.asg, "1 回は解ける: " + pin1.status); assert(Math.abs(pin1.objective - T.penalty(P, mk(1)).total) < 1e-6 && Math.abs(pin1.objective - 1000) < 1e-6, "目的関数＝減点＝1000: " + pin1.objective); }
   });
+  await test("OC を含む隣接枠の連続は、少なくとも片方が OC の組だけ: 勤務→勤務・OC→勤務・勤務→OC・OC→OC・翌月 1 日の固定の各割当を全枠固定して、目的関数＝減点", async () => {
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.oc_consecutive = "soft"; two.weights.oc_consecutive = 6; const D = two.doctors.map(d => d.name);
+    const rot = () => { const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: D[(d - 1) % 5], oc: [] }; a[`${d}:night`] = { work: D[(d + 2) % 5], oc: [] }; } return a; }, a0 = rot(), w5n = a0["5:night"].work, w6d = a0["6:day"].work;
+    const other = D.find(n => ![w5n, w6d, a0["6:night"].work, a0["4:night"].work].includes(n)), w30 = a0["30:night"].work;
+    const run = (fixed, edit, want, label) => { const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed: fixed || {} }, two), P = new T.Problem(two, m), a = rot(); edit(a); const pen = T.penalty(P, a).total, pin = T.solve(P, highs, { timeLimit: 60, pin: a });
+      assert(pin.asg, label + ": 解ける " + pin.status); assert(Math.abs(pin.objective - pen) < 1e-6, `${label}: 目的関数 ${pin.objective} ＝ 減点 ${pen}`); assert.strictEqual(pen, want, label + ": 減点 " + pen); };
+    run(null, a => { }, 0, "基準"); run(null, a => { a["6:day"].work = w5n; }, 0, "勤務→勤務"); run(null, a => { a["6:day"].work = w5n; a["7:day"].work = a["6:night"].work; }, 0, "勤務→勤務が 2 組"); // OC を置く割当（OC→勤務など）は、オンコールを使わないこの構成では固定できないので、減点の数え方は正解例で、解く側との一致は同梱の割当の突き合わせで見る
+    run({ night: { 31: w30 } }, a => { }, 0, "月末の夜勤→翌月 1 日の夜勤（固定）"); run({ night_oc: { 31: [w30] } }, a => { }, 6, "月末の夜勤→翌月 1 日の OC（固定）");
+  });
   console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}`);
 })();

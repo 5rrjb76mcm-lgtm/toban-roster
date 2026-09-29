@@ -63,7 +63,7 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   const start = async (page, label = "フォルダを開いて開始") => { await page.getByRole("button", { name: label }).click();
     for (let i = 0; i < 100; i++) { if (await page.locator("#startGate").isHidden()) return; const b = page.locator("#modalBtns button", { hasText: "フォルダのデータを読み込む" }); if (await b.count() && await b.first().isVisible()) await b.first().click(); await page.waitForTimeout(150); }
     throw new Error("開始画面が消えない"); };
-  const waitSaved = page => page.waitForSelector("#saveState.saved", { timeout: 20000 });
+  const waitSaved = page => page.waitForSelector("#saveState.saved", { timeout: 20000 }).catch(async e => { const info = await page.evaluate(() => ({ state: document.querySelector("#saveState").textContent, toasts: (window.__toasts || []).slice(-3), modal: (document.querySelector("#modalMsg") || {}).textContent || "" })).catch(() => ({})); throw new Error("保存済みにならない: " + JSON.stringify(info) + " / " + e.message.split("\n")[0]); });
   const setNotes = async (page, text) => { await page.click('.tab[data-tab="input"]'); const ta = page.locator('textarea[data-path="notes"]'); await ta.fill(text); await ta.dispatchEvent("change"); };
   const solve = async page => { await page.click('.tab[data-tab="calc"]'); await page.click("#btnSolve"); await page.waitForFunction(() => /必須条件の違反|計算しません|解なし|見つかりません/.test(document.querySelector("#calcLog").textContent), null, { timeout: 120000 }); return page.locator("#calcLog").textContent(); };
 
@@ -308,6 +308,34 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.strictEqual(await page.locator("#langSel").inputValue(), "fr", "ヘッダーの選択も施設の言語");
     await ctx.close();
   });
+  await test("日の種別ごとの人数: 平日 2 名・休日 3 名の設定は、設定タブでほかの項目（職員の年数）を変えても 1 名に書き換わらない。保存・開き直しの後も同じ。数で持つ勤務帯の人数は欄で変えられる", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    const want = { day: { weekday: 2, off_days: 3 }, night: 1 };
+    assert.ok(await page.evaluate(w => { const A = T.app, p = (T.PROFILES || []).find(x => (x.profile || {}).id === "two-shift"); if (!p) return false; const R = JSON.parse(JSON.stringify(p)); R.profile.positions = { work: { count: w } }; delete R.profile.id; T.fillDefaultRules(R); A.state.rules = R; A.state.month = A.blankMonth(2026, 11); delete A.state.month.profile_id; A.state.result = null; A.ensureMonth(A.state.month); A.save(); A.renderAll(); return true; }, want), "同梱の 2 交代のプロファイル");
+    const counts = () => page.evaluate(() => { const A = T.app, P = new T.Problem(A.state.rules, A.state.month); return { wd: P.countOf([2, "day"]), off: P.countOf([7, "day"]), night: P.countOf([2, "night"]), raw: A.state.rules.profile.positions.work.count }; });
+    assert.deepStrictEqual(await counts(), { wd: 2, off: 3, night: 1, raw: want });
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); const yrs = page.locator('#doctorTable tr[data-i="0"] input[data-f="years"]'); await yrs.fill("7"); await yrs.dispatchEvent("change");
+    assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors[0].years), 7, "年数は変わる"); assert.deepStrictEqual(await counts(), { wd: 2, off: 3, night: 1, raw: want }, "人数は変わらない");
+    await page.waitForSelector("#saveState.dirty"); await waitSaved(page); assert.deepStrictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).rules.profile.positions.work.count, want, "保存した JSON も同じ");
+    ({ ctx, page } = await reopen(ctx, fs)); await start(page); assert.deepStrictEqual(await counts(), { wd: 2, off: 3, night: 1, raw: want }, "開き直しても同じ");
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="build"]'); assert.ok(/2.*3/.test(await page.locator('#shiftTbl [data-countkeep="count:day"]').textContent()), "値は見せる");
+    const nightIn = page.locator('#shiftTbl input[data-count="night"]'); await nightIn.fill("2"); await nightIn.dispatchEvent("change"); assert.deepStrictEqual((await counts()).raw, { day: { weekday: 2, off_days: 3 }, night: 2 }, "数で持つ勤務帯は欄で変えられ、日の種別ごとの人数は残る");
+    await ctx.close();
+  });
+  await test("役割の識別子の変更: 名簿・オンコールの必要人数の表（行と列）・固定「OC なし」が新しい識別子に揃い、人数は変わらない。保存・開き直しの後も同じ。表示名だけの変更では識別子は変わらない", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    const before = await page.evaluate(() => { const A = T.app, R = A.state.rules; R.oncall_requirement.I = { I: 0, Y: 2 }; (A.state.month.fixed.night_oc_none ||= {})[4] = ["I"]; A.save(); A.renderAll(); return { oc: JSON.parse(JSON.stringify(R.oncall_requirement)), n: R.doctors.filter(d => d.team === "I").length }; });
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="build"]');
+    const idx = await page.evaluate(() => [...document.querySelectorAll("#profileBuilder input[data-rid]")].findIndex(x => x.value === "I")); assert.ok(idx >= 0); const lab = page.locator("#profileBuilder input[data-rlabel]").nth(idx);
+    const lab0 = await lab.inputValue(); await lab.fill(lab0 + "（改）"); await lab.dispatchEvent("change"); assert.deepStrictEqual(await page.evaluate(() => T.app.state.rules.oncall_requirement), before.oc, "表示名だけの変更では表は変わらない"); assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.filter(d => d.team === "I").length), before.n);
+    const rid = page.locator("#profileBuilder input[data-rid]").nth(await page.evaluate(() => [...document.querySelectorAll("#profileBuilder input[data-rid]")].findIndex(x => x.value === "I"))); await rid.fill("Primary"); await rid.dispatchEvent("change");
+    const ren = o => Object.fromEntries(Object.entries(o).map(([r, v]) => [r === "I" ? "Primary" : r, Object.fromEntries(Object.entries(v).map(([c, x]) => [c === "I" ? "Primary" : c, x]))])), want = ren(before.oc);
+    const got = () => page.evaluate(() => { const A = T.app, R = A.state.rules; return { oc: R.oncall_requirement, n: R.doctors.filter(d => d.team === "Primary").length, old: R.doctors.filter(d => d.team === "I").length, none: A.state.month.fixed.night_oc_none[4], ids: T.normalizeRolesOf(R).map(r => r.id) }; });
+    let g = await got(); assert.deepStrictEqual(g.oc, want, "必要人数の表は行・列とも新しい識別子、人数は同じ: " + JSON.stringify(g.oc) + " / " + JSON.stringify(want)); assert.strictEqual(g.n, before.n); assert.strictEqual(g.old, 0); assert.deepStrictEqual(g.none, ["Primary"]); assert.ok(g.ids.includes("Primary") && !g.ids.includes("I"));
+    await page.waitForSelector("#saveState.dirty"); await waitSaved(page); const j = JSON.parse(fs.text("A/202611/202611_data.json")); assert.deepStrictEqual(j.rules.oncall_requirement, want, "保存した JSON も同じ"); assert.deepStrictEqual(j.month.fixed.night_oc_none["4"], ["Primary"]);
+    ({ ctx, page } = await reopen(ctx, fs)); await start(page); g = await got(); assert.deepStrictEqual(g.oc, want, "開き直しても同じ"); assert.strictEqual(g.n, before.n);
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 17 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 19 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

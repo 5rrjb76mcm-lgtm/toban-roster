@@ -289,5 +289,21 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     // 対照: 読めるが JSON でないときは「壊れている」
     for (const k of Object.keys(files)) delete files[k]; files["202611_data.json"] = "{ not json"; dir.getFileHandle = f0; toasts.length = 0; A.state.month.notes = "mine-2"; assert.strictEqual(await A.autosaveJson(), "skipped"); assert.ok(toasts.some(x => /壊れていて/.test(x)), toasts.join("|"));
     dir.getFileHandle = f0; A.toast = t0; }
+  // 改名の後の統合: 手元で改名し、相手は旧名のままメモだけ変えた。自動保存の統合で、本人の不可が旧名へ戻らない（名簿・不可とも新しい氏名。旧名は残らない）。相手が同じ人に足した不可も新しい氏名に入る
+  { vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", "app-settings.js"), "utf8"), { filename: "app-settings.js" });
+    const t0 = A.toast; A.toast = () => { }; A.renderHeader = () => { }; A.renderAll = () => { }; A.showTab = () => { }; A.save = () => { }; A.readAll = () => { }; A.choose = async () => { throw new Error("確認は出ない"); }; const P0 = T.Problem; T.Problem = RealProblem;
+    const R0 = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); R0.doctors = R0.doctors.slice(0, 3); R0.name_order = R0.doctors.map(d => d.name); T.fillDefaultRules(R0); const oldN = R0.doctors[0].name, newN = "Review Dr Z";
+    const run = async theirEdit => { for (const k of Object.keys(files)) delete files[k]; const rules = JSON.parse(JSON.stringify(R0)), month = T.normalizeMonth({ year: 2026, month: 11, notes: "base", unavailable_night: { [oldN]: [5] }, targets: { [oldN]: 9 }, duty_days: { [oldN]: { 3: { am: "outpatient" } } } }, rules);
+      Object.assign(A.state, { rules, month, result: null, meta: null, base: null, renames: [] }); A.dirHandle = dir; A.monthDirs = ["202611"]; assert.strictEqual(await A.autosaveJson() === "saved" || (A.markSaved(), true), true); A.state.month.notes = "base"; A.markSaved(undefined, "2026-10-01T00:00:00Z");
+      files["202611_data.json"] = JSON.stringify({ rules: JSON.parse(JSON.stringify(rules)), month: JSON.parse(JSON.stringify(month)), result: null, saved_at: "2026-10-01T00:00:00Z" });
+      assert.strictEqual(A.renameDoctor(oldN, newN), true); A.state.rules.doctors[0].name = newN; A.state.rules.name_order = A.state.rules.name_order.map(x => x === oldN ? newN : x); assert.deepStrictEqual(A.state.month.unavailable_night[newN], [5], "手元は新しい氏名に揃う"); assert.deepStrictEqual(A.state.base.unavailable_night[oldN], [5], "共通の元は書き換えない");
+      const th = JSON.parse(files["202611_data.json"]); theirEdit(th.month); th.saved_at = "2026-10-02T00:00:00Z"; files["202611_data.json"] = JSON.stringify(th);
+      assert.strictEqual(await A.autosaveJson(), "saved"); return JSON.parse(files["202611_data.json"]); };
+    let j = await run(m => { m.notes = "their memo"; }); assert.strictEqual(j.month.notes, "their memo"); assert.strictEqual(j.rules.doctors[0].name, newN); assert.deepStrictEqual(j.month.unavailable_night[newN], [5], "不可は新しい氏名のまま"); assert.ok(!JSON.stringify(j.month).includes(oldN), "旧名は月データに残らない");
+    assert.strictEqual(j.month.targets[newN], 9); assert.deepStrictEqual(j.month.duty_days[newN][3], { am: "outpatient" }); assert.ok(!j.month.duty_days[oldN]); assert.deepStrictEqual(A.state.renames, [], "保存したら改名の記録は消える"); assert.strictEqual(A.isDirty(), false);
+    j = await run(m => { m.unavailable_night[oldN] = [5, 9]; }); assert.deepStrictEqual(j.month.unavailable_night[newN], [5, 9], "相手が同じ人（旧名）に足した不可も新しい氏名に入る"); assert.ok(!JSON.stringify(j.month).includes(oldN));
+    // 改名の記録: 続けて変えた分はつなぎ、元に戻した分は消える
+    assert.deepStrictEqual(T.effectiveRenames([["A", "B"], ["B", "C"]], ["C"]), [["A", "C"]]); assert.deepStrictEqual(T.effectiveRenames([["A", "B"], ["B", "A"]], ["A"]), []); assert.deepStrictEqual(T.effectiveRenames([["A", "B"]], ["A", "B"]), [], "旧い氏名の人が名簿にいれば当てない");
+    T.Problem = P0; A.toast = t0; A.choose = async () => null; }
   console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口（待機中の計算開始も断る）・保存の 3 段階（帳票だけの失敗でも月データは保存）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

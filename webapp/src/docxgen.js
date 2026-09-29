@@ -101,7 +101,7 @@
             else if (r === 4) { const una = /* 不可の日＝夜勤不可（日夜両方を含む） */ P.dutyNames.filter(n => (P.unavailNight[n] || new Set()).has(d) || (P.unavailOther[n] || []).some(([dd, pp]) => dd === d && pp === "allday")).map(n => c.abbr[n]); text = una.length <= 3 ? una.join("・") : una.join(""); }
           }
           let color = null;
-          if (d != null && c.opts.baseAsg) { if (r === 1 && P.slotExists(d, "day") && c.changed([d, "day"], "work")) color = "C00000"; else if (r === 2 && c.changed([d, "night"], "work")) color = "C00000"; else if (r === 3 && ((P.isHoliday(d) && c.changed([d, "day"], "oc")) || c.changed([d, "night"], "oc"))) color = "C00000"; }
+          if (d != null && c.opts.baseAsg) { if (r === 1 && P.slotExists(d, "day") && c.changed([d, "day"], "work")) color = "C00000"; else if (r === 2 && c.changed([d, "night"], "work")) color = "C00000"; else if (r === 3 && ((P.slotExists(d, "day") && c.changed([d, "day"], "oc")) || c.changed([d, "night"], "oc"))) color = "C00000"; } // 日勤 OC は本文と同じ範囲（日勤の枠がある日。平日の日勤がある施設でも赤字にする）
           cells.push(c.cell(text, widths[col + 1], c.fillOf(d), { jc: r === 0 ? "center" : "left", color }));
         }
         rows.push(c.row(cells, r === 0 ? 258 : (r <= 4 ? 266 : 239)));
@@ -146,7 +146,7 @@
     const cc = T.rules && T.rules.checkCtx ? T.rules.checkCtx(P, A, "check", () => { }) : null; // 休みの日数は本体の数え方（明けを休みに数えない設定なら明けを除く）
     for (const n of order) {
       let work = 0, off = 0;
-      for (let d = 1; d <= P.N; d++) { const w = shifts.some(sh => A.worked(n, [d, sh.id])); if (w) work++; else off++; }
+      for (let d = 1; d <= P.N; d++) { const k = shifts.filter(sh => A.worked(n, [d, sh.id])).length; work += k; if (!k) off++; } // 勤務回数は枠の数（同じ日の日勤と夜勤は 2 回。説明資料の回数と同じ）
       if (cc) { try { off = cc.offDays(n).length; } catch (e) { } }
       sumRows.push(c.row([c.cell(n, sw[0], c.FILL_WD), c.cell(String(work), sw[1], c.FILL_WD, { jc: "center" }), c.cell(String(off), sw[2], c.FILL_WD, { jc: "center" })], 266));
     }

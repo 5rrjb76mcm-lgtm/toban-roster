@@ -1070,7 +1070,13 @@
     "別の切り替え（月・データ・フォルダ・表示言語）の処理中です。終わってからもう一度操作してください": "Another switch (month, data, folder or language) is in progress. Try again when it has finished",
     "月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください": "Switching months was cancelled (the month or the save folder changed while reading). Choose the month again",
     "フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください": "Could not check {file} in the folder ({err}). Saving was stopped so that the other side's content is not overwritten. Your input is kept in the browser. Save again",
-    "フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません": "Could not check {file} in the folder ({err}). Continuing with the state in the browser, but nothing is saved until it can be checked"
+    "フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません": "Could not check {file} in the folder ({err}). Continuing with the state in the browser, but nothing is saved until it can be checked",
+    "平日 {w}・休日 {h}": "Weekdays {w} / days off {h}",
+    "日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します": "The head count differs by kind of day. To change it, edit the settings JSON (for administrators)",
+    "暦 {N} 日。休みはちょうど {min} 日": "{N} days in the month; exactly {min} days off",
+    "（勤務の枠に入らず、夜勤の翌日でもない日を休みとして数える。日中の業務は見ない）": " (a day with no shift that is not the day after a night shift counts as a day off; daytime duties are not considered)",
+    "。2 連休は続いた休みを 1 回と数える": ". A run of days off counts as one two-day break",
+    "。有給の日数は必要な休みに足す": ". Paid leave days are added to the required days off"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",
