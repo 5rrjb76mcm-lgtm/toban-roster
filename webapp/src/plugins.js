@@ -17,7 +17,7 @@
   // 登録の写し。規則の登録は同じオブジェクトを書き換える（Object.assign）ので、浅い写しを取って戻す。ほかは定義オブジェクトそのものを覚えて登録し直す
   const snapRule = d => Object.assign({}, d);
   const restoreRule = (d, copy) => { for (const k of Object.keys(d)) if (!(k in copy)) delete d[k]; Object.assign(d, copy); if (d.messages && T.MSG) Object.assign(T.MSG, d.messages); };
-  const snapshot = () => ({ rules: new Map(T.rules.defs.map(d => [d.id, snapRule(d)])), calendars: new Map(T.calendars.defs.map(c => [c.id, c])), docx: new Map(T.docx ? T.docx.list().map(t => [t.id, T.docx.get(t.id)]) : []),
+  const snapshot = () => ({ rules: new Map(T.rules.defs.map(d => [d.id, snapRule(d)])), calendars: new Map(T.calendars.defs.map(c => [c.id, { def: c, under: c.under }])), docx: new Map(T.docx ? T.docx.list().map(t => [t.id, T.docx.get(t.id)]) : []),
     dayflags: new Map(T.dayFlags ? T.dayFlags.defs.map(x => [x.id, x]) : []), calext: new Map(T.calendarExt ? T.calendarExt.defs.map(x => [x.id, x]) : []),
     msg: Object.assign({}, T.MSG || {}), langs: T.langsSnapshot ? T.langsSnapshot() : null, profiles: (T.PROFILES || []).slice() }); // 文面・言語・プロファイルも（規則の messages は T.MSG に混ざる）
   // 写しに含めた文面・言語・プロファイルを丸ごと戻す（読み込み失敗とフォルダ切替。中身を差し替える＝参照は保つ）
@@ -31,7 +31,7 @@
     const seen = new Set();
     for (const x of recs) { const k = `${x.kind}:${x.id}`; if (seen.has(k)) continue; seen.add(k);
       if (x.kind === "rules") { const d = T.rules.byId[x.id]; if (!d) continue; if (snap.rules.has(x.id)) restoreRule(d, snap.rules.get(x.id)); else T.rules.unregister(x.id); }
-      else if (x.kind === "calendars") { if (snap.calendars.has(x.id)) T.calendars.register(snap.calendars.get(x.id)); else T.calendars.unregister(x.id); }
+      else if (x.kind === "calendars") { if (snap.calendars.has(x.id)) { const c = snap.calendars.get(x.id); T.calendars.restore(c.def, c.under); } else T.calendars.unregister(x.id); } // 登録し直しではなく復元（下の定義の連鎖も写しのとおりに）
       else if (x.kind === "docx" && T.docx) { if (snap.docx.has(x.id)) { const t = snap.docx.get(x.id); T.docx.register(t.id, t.render, t); } else T.docx.unregister(x.id); }
       else if (x.kind === "dayflags" && T.dayFlags) { if (snap.dayflags.has(x.id)) T.dayFlags.register(snap.dayflags.get(x.id)); else T.dayFlags.unregister(x.id); }
       else if (x.kind === "calext" && T.calendarExt) { if (snap.calext.has(x.id)) T.calendarExt.register(snap.calext.get(x.id)); else T.calendarExt.unregister(x.id); } }

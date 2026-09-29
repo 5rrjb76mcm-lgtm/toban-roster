@@ -52,8 +52,8 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       list: p => { const out = new Map(); for (const k of files.keys()) if (parent(k) === p) out.set(k.split("/").pop(), "file"); for (const k of dirs) if (parent(k) === p && k !== p) out.set(k.split("/").pop(), "directory"); return [...out].map(([name, kind]) => ({ name, kind })).sort((a, b) => a.name.localeCompare(b.name)); },
       text: p => { const b = fs.read(p); return b === null ? null : b.toString("utf8"); }, names: p => fs.list(p).map(e => e.name) };
     return fs; };
-  // fs.gates[path] に Promise を置くと、その読取りを保留する（読取り中の操作の試験用）
-  const bind = async (ctx, fs) => { await ctx.exposeBinding("__e2efs", (_, op, a) => { switch (op) { case "read": { const b = fs.read(a.path); if (fs.gates && fs.gates[a.path]) { fs.waiting = (fs.waiting || 0) + 1; return fs.gates[a.path].then(() => b === null ? null : b.toString("base64")); } return b === null ? null : b.toString("base64"); } case "write": fs.write(a.path, Buffer.from(a.b64 || "", "base64")); return true; case "kind": return fs.kind(a.path); case "mkdir": fs.mkdir(a.path); return true; case "remove": fs.remove(a.path); return true; case "list": return fs.list(a.path); default: throw new Error("unknown op " + op); } }); };
+  // fs.gates[path] に Promise を置くと、その場所の最初の読取りだけを保留する（読取り中の操作の試験用）。保留した読取りは、読んだ時点の内容を返す
+  const bind = async (ctx, fs) => { await ctx.exposeBinding("__e2efs", (_, op, a) => { switch (op) { case "read": { const b = fs.read(a.path); if (fs.gates && fs.gates[a.path]) { const g = fs.gates[a.path]; delete fs.gates[a.path]; fs.waiting = (fs.waiting || 0) + 1; return g.then(() => b === null ? null : b.toString("base64")); } return b === null ? null : b.toString("base64"); } case "write": fs.write(a.path, Buffer.from(a.b64 || "", "base64")); return true; case "kind": return fs.kind(a.path); case "mkdir": fs.mkdir(a.path); return true; case "remove": fs.remove(a.path); return true; case "list": return fs.list(a.path); default: throw new Error("unknown op " + op); } }); };
   const newCtx = async () => { const ctx = await browser.newContext(); const fs = makeFs(); await bind(ctx, fs); return { ctx, fs }; };
   const newPage = async (ctx, opts) => { const page = await ctx.newPage(); await page.addInitScript(INIT); page.on("pageerror", e => fail(`ページのエラー: ${e.message}`)); page.on("crash", () => fail("ページがクラッシュしました")); if (process.env.E2E_DEBUG) page.on("console", m => console.log("     console:", m.type(), m.text().slice(0, 160))); await page.goto(URL); if (!(opts && opts.noGate)) await page.waitForSelector("#startGate:not([hidden])"); return page; };
   // 「閉じて開き直す」は、新しいページを先に開いてから前のページを閉じる（インストール済みの Chrome は最後のページを閉じるとブラウザごと終了する）
@@ -287,6 +287,27 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.deepStrictEqual(await codes(), ["en", "ja"], "その言語のないフォルダでは選択肢から消える"); assert.notStrictEqual(await page.locator("#btnSolve").textContent(), "Calculer"); assert.ok(["en", "ja"].includes(await page.locator("#langSel").inputValue()));
     await ctx.close();
   });
+  await test("起動時の再接続の照合中の自動保存: 照合の読取りを待つ間にメモを変えて自動保存が済んだら、古い読取結果で画面を戻さない（画面・フォルダとも新しいメモ）", async () => {
+    const { ctx, fs } = await newCtx(); const page1 = await newPage(ctx); await start(page1); await waitSaved(page1); await setNotes(page1, "old memo"); await page1.waitForSelector("#saveState.dirty"); await waitSaved(page1);
+    let release; fs.gates = { "A/202611/202611_data.json": new Promise(r => { release = r; }) }; fs.waiting = 0;
+    const page = await newPage(ctx, { noGate: true }); await page1.close(); for (let i = 0; i < 200 && !fs.waiting; i++) await page.waitForTimeout(50); assert.ok(fs.waiting > 0, "照合の読取りが待っている");
+    await page.click('.tab[data-tab="input"]'); const ta = page.locator('textarea[data-path="notes"]'); await ta.fill("new memo saved during reconciliation"); await ta.press("Tab");
+    for (let i = 0; i < 200 && JSON.parse(fs.text("A/202611/202611_data.json")).month.notes !== "new memo saved during reconciliation"; i++) await page.waitForTimeout(100); // 自動保存（変更の 3 秒後）
+    assert.strictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.notes, "new memo saved during reconciliation", "待つ間の自動保存は済む");
+    release(); await page.waitForFunction(() => T.app.switching === 0, null, { timeout: 10000 }); await page.waitForTimeout(300); await waitSaved(page);
+    assert.strictEqual(await page.evaluate(() => T.app.state.month.notes), "new memo saved during reconciliation", "状態は新しいメモ"); assert.strictEqual(await page.locator('textarea[data-path="notes"]').inputValue(), "new memo saved during reconciliation", "画面も新しいメモ");
+    assert.strictEqual(await page.evaluate(() => T.app.isDirty()), false); assert.strictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.notes, "new memo saved during reconciliation", "フォルダも新しいメモ");
+    await ctx.close();
+  });
+  await test("施設の設定の言語が実行時の言語: ブラウザで言語を選んでいなければ、訳のプラグインを読んだ後・フォルダのデータを読んだ後に、その言語で表示する", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    const j = JSON.parse(fs.text("A/202611/202611_data.json")); j.rules.lang = "fr"; j.saved_at = "2026-10-09T00:00:00.000Z"; fs.write("A/202611/202611_data.json", Buffer.from(JSON.stringify(j)));
+    fs.write("A/plugins/lang/fr.json", Buffer.from(JSON.stringify({ code: "fr", name: "Français", dow: ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"], date_locale: "fr-FR", list_sep: ", ", name_sep: ", ", ui: { "計算する": "Calculer" }, msg: {} })));
+    ({ ctx, page } = await reopen(ctx, fs)); assert.strictEqual(await page.evaluate(() => { try { return localStorage.getItem("toban.lang"); } catch (e) { return "?"; } }), null, "ブラウザでは言語を選んでいない");
+    await start(page); await page.waitForFunction(() => (T.app.state.rules || {}).lang === "fr" && T.lang() === "fr" && document.querySelector("#btnSolve").textContent === "Calculer", null, { timeout: 10000 });
+    assert.strictEqual(await page.locator("#langSel").inputValue(), "fr", "ヘッダーの選択も施設の言語");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 15 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 17 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

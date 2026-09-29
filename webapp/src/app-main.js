@@ -24,6 +24,7 @@
     const nav0 = nav;
     langPaint = () => { // 言語の選択肢を作り直す（フォルダの訳のプラグインを読んだ後・フォルダを替えた後にも呼ぶ）
       const codes = T.LANGS().map(([k]) => k); let want = null, changed = false; try { want = localStorage.getItem(LANG_KEY); } catch (e) { }
+      if (!want) want = (state.rules || {}).lang || null; // ブラウザで選んでいなければ、施設の設定の言語（起動時と同じ優先順）
       if (!codes.includes(T.lang())) { T.setLang(codes.includes((state.rules || {}).lang) ? state.rules.lang : nav0); changed = true; } // いまの言語が無くなった（その言語のないフォルダへ替えた）
       else if (want && want !== T.lang() && codes.includes(want)) { T.setLang(want); changed = true; } // 選んでいた言語が、プラグインを読んで使えるようになった
       for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (x) { x.innerHTML = opts(); x.value = T.lang(); } }

@@ -158,6 +158,18 @@ test("同梱の id を上書きした暦: そのプラグインを無効にす�
   R3.plugins_off = ["calendars/f2.js", "calendars/jp_override.js"]; assert.deepStrictEqual(T.holidaysOf(R3, 2026, 11).holidays, [3, 23], "既定の jp（上書きも無効なので同梱の定義）");
   T.plugins.beginFolder(); assert.deepStrictEqual(T.holidaysOf(R, 2026, 11).holidays, [3, 23], "フォルダを替えれば同梱の定義"); delete globalThis.__calCalls;
 });
+test("暦の復元: フォルダの切替・読み込みの失敗で戻した定義は、下の定義の連鎖も元のまま（外したプラグイン・失敗した定義に到達しない）", () => {
+  const vm2 = require("vm"), mk = () => { const c = { console }; c.globalThis = c; vm2.createContext(c); for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "check.js", "plugins.js", "calendars/jp.js"]) vm2.runInContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), c, { filename: f }); return c.T; };
+  const R = off => ({ profile: { calendar: { holidays: "jp", closure: [] } }, doctors: [], plugins_off: off || [] }), hol = (T2, off) => JSON.stringify(T2.holidaysOf(R(off), 2026, 11).holidays);
+  { const T2 = mk(); assert.strictEqual(hol(T2), "[3,23]"); const jp0 = T2.calendars.byId.jp;
+    T2.pluginSource = "build:calendars/a.js"; T2.calendars.register({ id: "jp", label: "A", holidays() { return [5]; } }); T2.pluginSource = null; const A2 = T2.calendars.byId.jp; assert.strictEqual(A2.under, jp0); // 組み立て時の上書き（最初の読み込みより前＝切替の戻し先に入る）
+    const rb = T2.plugins.load("calendars", "calendars/b.js", "T.calendars.register({ id: 'jp', label: 'B', holidays() { globalThis.__b = (globalThis.__b || 0) + 1; return [9]; } });"); assert(rb.ok, rb.error); assert.strictEqual(hol(T2), "[9]");
+    T2.plugins.beginFolder(); assert.strictEqual(T2.calendars.byId.jp, A2, "組み立て時の定義に戻る"); assert.strictEqual(A2.under, jp0, "下の定義は同梱のまま（外した B を指さない）"); assert.strictEqual(hol(T2), "[5]");
+    assert.strictEqual(hol(T2, ["build:calendars/a.js"]), "[3,23]", "A を無効にしたら同梱の定義（外した B ではない）"); }
+  { const T2 = mk(), jp0 = T2.calendars.byId.jp; const ra = T2.plugins.load("calendars", "calendars/a.js", "T.calendars.register({ id: 'jp', label: 'A', holidays() { return [5]; } });"); assert(ra.ok, ra.error); const A2 = T2.calendars.byId.jp;
+    const rb = T2.plugins.load("calendars", "calendars/b.js", "T.calendars.register({ id: 'jp', label: 'B', holidays() { return [9]; } }); throw new Error('fixture failed after register');"); assert(!rb.ok, "B は読み込み失敗");
+    assert.strictEqual(T2.calendars.byId.jp, A2, "失敗した B の登録は戻る"); assert.strictEqual(A2.under, jp0, "A の下は同梱のまま"); assert.strictEqual(hol(T2), "[5]"); assert.strictEqual(hol(T2, ["calendars/a.js"]), "[3,23]", "A を無効にしても、失敗した B は呼ばれない"); }
+});
 test("プラグインの規則の出どころ・登録し直し・重なり: 定義に source が付き、入力チェック（LINT_PLUGIN_OVERRIDE・LINT_RULE_OVERLAP）に出る", () => {
   const rd2 = (kind, name) => fs.readFileSync(path.join(PLUG, kind, name), "utf8"); T.setLang("ja");
   T.plugins.beginFolder();

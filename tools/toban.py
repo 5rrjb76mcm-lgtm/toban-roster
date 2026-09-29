@@ -1299,6 +1299,10 @@ def metrics(P: Problem, A: Asg, charge):
 # ----------------------------------------------------------------------------
 # 報告書（Markdown）
 # ----------------------------------------------------------------------------
+# 固定指定が絡んでいても「許容」に分けない違反の文面（check が出す文の一部）。文面を変えるときはここも合わせる（webapp/test_node.js が最終の件数で確かめる）
+NEVER_ALLOWED = ("OCなしの固定なのに", "月1回まで", "OCに同じ人が重ねて入っている", "OCが当番候補でない", "OC構成不一致", "がOCを兼ねている", "はOC対象外")
+
+
 def split_fixed_warnings(P: Problem, V):
     """固定指定した枠・医師に関わる違反を「固定指定により許容（要確認）」に分ける（固定指定との不一致そのものは違反のまま）"""
     by_day = {}
@@ -1307,6 +1311,9 @@ def split_fixed_warnings(P: Problem, V):
     V2, Wf = [], []
     for v in V:
         moved = False
+        if any(k in v for k in NEVER_ALLOWED):  # 固定との不一致・構造の違反は、固定が絡んでいても許容にしない（JS 版の検算と同じ）
+            V2.append(v)
+            continue
         if "固定指定" not in v or "件のため" in v:
             for d, ns in by_day.items():
                 if any(n in v for n in ns) and (P.label(d) in v or ("翌" in v and d > 1 and P.label(d - 1) in v)):

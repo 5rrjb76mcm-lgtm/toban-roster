@@ -13,6 +13,7 @@
   A.solving = false; // 計算・診断中（app-solve.js が立てる。プラグインの読み直し・月の切替・フォルダの読み直しを受け付けない）
   A.pluginsPending = false;
   A.switching = 0; // 切替の処理中（transition の中。計算の開始を断る）
+  A.saveGen = 0; // 同期の基準（保存済みの版・統合の元）が変わるたびに進む。フォルダの読取りを待つ間に保存や統合が済んでいたら、その読取結果は古い（照合し直す）
   A.dirGen = 0; // 接続の世代（フォルダを開く・再接続するたびに進む）。保存の写しに入れ、保存中にフォルダが替わっていたら保存基準を更新しない // 計算中にフォルダへ接続した（プラグインの読み込みを計算後に回す。app-folder.js の loadPendingPlugins）
   const state = A.state;
 
@@ -70,6 +71,7 @@
   function markSaved(where, at, snap) {
     const s = snap || snapshot(at || new Date().toISOString());
     if ((s.tag && s.tag !== tag()) || (s.dirGen !== undefined && s.dirGen !== A.dirGen)) { persist(); return; } // 保存した写しと現在の月・接続先が違う（保存中に切り替わった）: 現在の保存基準には触れない
+    A.saveGen++;
     state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || s.where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
     state.base = s.base; state.baseRules = s.rules; persist(); A.renderHeader();
   }

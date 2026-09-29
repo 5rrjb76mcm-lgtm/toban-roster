@@ -53,7 +53,7 @@
     state.result = (theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""))) ? theirResult : mineResult;
     if (f.data.rules && rulesPick === "theirs") state.rules = f.data.rules;
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
-    state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = JSON.parse(JSON.stringify(theirs)); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules));
+    A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = JSON.parse(JSON.stringify(theirs)); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules));
     A.ensureMonth(state.month); A.persist(); A.renderAll();
     A.toast(T.t("別のPCの変更と自動で統合しました（自分 {mine} 件、相手 {theirs} 件、衝突 {n} 件）。入力が変わったので必要なら再計算してください", { mine: r.mineChanges, theirs: r.theirChanges, n: r.conflicts.length }));
     return true;
@@ -167,12 +167,14 @@
   }
   // 接続直後: フォルダのファイルとブラウザ内の状態を照合し、フォルダの方が新しければそちらを読む
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
-  async function reconcileCore() {
+  async function reconcileCore(again = 0) {
     if (!A.dirHandle) return;
-    // 読み取りの前の接続先・月を覚え、読み終えた後と当てる直前に確かめる（待つ間に別のフォルダへ替わっていたら、前のフォルダの応答を今のフォルダのデータとして当てない）
-    const g = A.switchMark(), h0 = A.dirHandle, stale = () => A.switchStale(g) || A.dirHandle !== h0;
+    // 読み取りの前の接続先・月・同期の基準を覚え、読み終えた後と当てる直前に確かめる（待つ間に別のフォルダへ替わっていたら、前のフォルダの応答を今のフォルダのデータとして当てない。
+    // 待つ間に自動保存や統合が済んで同期の基準が進んでいたら、その読取結果は保存より前の古い内容なので捨てて、照合し直す）
+    const g = A.switchMark(), h0 = A.dirHandle, sg0 = A.saveGen, moved = () => A.saveGen !== sg0, stale = () => A.switchStale(g) || A.dirHandle !== h0 || moved();
     const f = await findMonthData(A.tag());
-    if (stale()) return;
+    if (A.switchStale(g) || A.dirHandle !== h0) return;
+    if (moved()) { if (again < 3) return reconcileCore(again + 1); return; }
     if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません", { file: f.corrupt, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。ブラウザ内の状態で続けますが、このままでは保存しません", { file: f.corrupt, err: f.error })); return; }
     if (!f.data) {
       if (!A.monthDirs.length && state.meta && state.meta.savedAt && confirm(T.t("このフォルダには月データがありません。ブラウザ内に残っている {tag} の状態（保存 {at}）を捨てて、同梱のサンプルから始めますか？\n「キャンセル」＝ブラウザ内の状態をこのフォルダに保存して続けます", { tag: A.tag(), at: new Date(state.meta.savedAt).toLocaleString(T.dateLocale()) })))
@@ -279,7 +281,8 @@
   }
   // 無ければ null（NotFoundError だけを「無い」とみなす）。あるのに読めない（壊れている）・あるかどうかを確かめられない（権限・読取り障害）ときは { __corrupt: true, error } を返し、呼ぶ側は新規扱いで上書きしない
   const notFound = e => !!e && e.name === "NotFoundError";
-  async function readJson(dir, name) { let fh; try { fh = await dir.getFileHandle(name); } catch (e) { if (notFound(e)) return null; return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } try { const f = await fh.getFile(); return JSON.parse(await f.text()); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; } }
+  async function readJson(dir, name) { let fh; try { fh = await dir.getFileHandle(name); } catch (e) { if (notFound(e)) return null; return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } let text; try { const f = await fh.getFile(); text = await f.text(); } catch (e) { return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } // 読めない（権限・読取り障害）は「壊れている」ではない
+    try { return JSON.parse(text); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; } }
   async function writeFile(dir, name, blob) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(blob); await w.close(); }
   async function ensureFolder() {
     if (A.dirHandle) return true;
@@ -428,7 +431,7 @@
     state.month = month; if (rules) state.rules = rules; state.result = result;
     state.ui.doctor = 0; A.ensureMonth(state.month); A.persist();
     if (fromDir && A.dirHandle && o.month && o.rules) A.markSaved("フォルダ " + A.dirHandle.name, o.saved_at || undefined); else { state.meta = null; state.base = null; state.baseRules = null; } // 外部の JSON・フォルダ未接続は未保存
-    if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
+    if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); if (typeof A.renderLangs === "function") A.renderLangs(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
   }
 
   Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数

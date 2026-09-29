@@ -49,6 +49,14 @@ const pyScore = file => { const m = py(['score', '--json', file, '--time', Strin
     const a = jsScore(asg), b = pyScore(file);
     ok(Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-6, `${label}の減点の合計: JS ${a} / Python ${b}`);
   }
+  // 5) 「OC なし」の固定に反する割当: Python の最終の報告でも違反のまま（固定が絡んでも許容に移さない）。全枠を固定して解くと解なし。JS の検算とも一致
+  { const jr = P.refId('junior'), key = Object.keys(res.asg).find(k => k.endsWith(':night') && (res.asg[k].oc || []).some(n => P.team[n] === jr)), d = +key.split(':')[0], who = res.asg[key].oc.find(n => P.team[n] === jr);
+    const m2 = JSON.parse(JSON.stringify(month)); m2.fixed = m2.fixed || {}; (m2.fixed.night_oc_none = m2.fixed.night_oc_none || {})[d] = [jr]; (m2.fixed.night_oc = m2.fixed.night_oc || {})[d] = [who];
+    const mFile = path.join(os.tmpdir(), '202611.json'); fs.writeFileSync(mFile, JSON.stringify(m2)); const py2 = args => { try { return execFileSync(PY, [TOBAN, ...args, mFile, '--rules', rulesPath], { encoding: 'utf8', cwd: path.dirname(TOBAN) }); } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); } };
+    const out2 = py2(['check', '--json', jsFile, '--out', path.join(os.tmpdir(), 'toban_js_py_check2.md')]), mm = out2.match(/必須条件の違反 (\d+) 件/);
+    ok(mm && +mm[1] === 1 && /OCなしの固定なのに/.test(out2), `「OC なし」の固定に反する割当を Python で検算: 違反 ${mm ? mm[1] : '?'} 件（許容に移さない）`);
+    const vj = T.check(new T.Problem(rules, m2), res.asg); ok(vj.VC.filter(v => v.code === 'FIXED_OC_NONE').length === 1 && vj.V.length === 1, `同じ割当を JS で検算: 違反 ${vj.V.length} 件`);
+    ok(/INFEASIBLE/.test(py2(['score', '--json', jsFile, '--time', String(sec)])), 'Python で全枠を固定して解くと解なし'); }
   console.log(fail ? '突き合わせ: 不一致あり' : '突き合わせ: すべて一致');
   process.exit(fail);
 })().catch(e => { console.error(e); process.exit(1); });

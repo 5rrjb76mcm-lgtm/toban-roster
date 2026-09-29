@@ -587,6 +587,9 @@
     if (T.plugins && T.plugins.recording) T.plugins.recording.push({ kind: "calendars", id: def.id });
     return def;
   }
+  // 写しから戻す（プラグインの読み込み失敗・フォルダの切替）: 登録ではないので under を書き換えず、写しを取ったときの下の定義に戻す（外したプラグインの定義を連鎖に残さない）
+  function restoreCalendar(def, under) { const i = CAL_DEFS.findIndex(c => c.id === def.id); if (i >= 0) CAL_DEFS[i] = def; else CAL_DEFS.push(def); CAL_BY_ID[def.id] = def;
+    if (under) Object.defineProperty(def, "under", { value: under, enumerable: false, configurable: true, writable: true }); else delete def.under; return def; }
   function unregisterCalendar(id) { const i = CAL_DEFS.findIndex(c => c.id === id); if (i >= 0) CAL_DEFS.splice(i, 1); delete CAL_BY_ID[id]; } // プラグインのフォルダを切り替えたとき
   registerCalendar({ id: "none", label: { ja: "祝日なし（土日だけ）", en: "No public holidays (weekends only)" }, holidays() { return []; } });
   const DEFAULT_CALENDAR = { holidays: "jp", closure: [{ month: 12, days: [29, 30, 31] }, { month: 1, days: [2, 3] }] }; // 暦の指定が無い保存データ（循環器の既定）
@@ -659,7 +662,7 @@
     return c;
   }
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
-  T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar };
+  T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ
   const DAYFLAG_DEFS = [], DAYFLAG_BY_ID = {};
   function registerDayFlag(def) {
