@@ -348,6 +348,19 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.deepStrictEqual(await page.evaluate(n => T.app.state.month.unavailable_night[n], info.who), [5], "画面の状態も同じ");
     await ctx.close();
   });
+  await test("改名の後の統合と計算結果: 相手が旧名のまま計算し直した新しい結果を採っても、結果の氏名は手元の名簿（新しい氏名）に揃い、検算の違反 0 で勤務表を出せる", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const asg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "data/js_assignment.json"), "utf8")), who = [].concat(asg["2:night"].work)[0];
+    assert.strictEqual(await page.evaluate(a => { const A = T.app; A.state.result = { asg: a, status: "Optimal", seconds: 1, objective: 140, at: "2026-10-01T00:00:00.000Z", plugins: T.plugins.stamp(), build: T.BUILD_ID, input_sig: A.inputSig(), avoid_ref: null, base_asg: null }; A.save(); A.renderAll(); return T.check(new T.Problem(A.state.rules, A.state.month), a).V.length; }, asg), 0, "同梱の割当は違反 0");
+    await page.waitForSelector("#saveState.dirty"); await page.click("#btnHeaderSave"); await waitSaved(page); assert.ok(fs.names("A/202611").some(n => /_roster_v1_/.test(n)), "勤務表 v1 が出る");
+    const th = JSON.parse(fs.text("A/202611/202611_data.json")); th.result.at = "2099-01-01T00:00:00.000Z"; th.saved_at = "2099-01-01T00:00:01.000Z"; fs.write("A/202611/202611_data.json", Buffer.from(JSON.stringify(th))); // 相手は旧名のまま計算し直して保存（割当は同じ、計算の日時だけ新しい）
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); const i = await page.evaluate(n => T.app.state.rules.doctors.findIndex(d => d.name === n), who); const inp = page.locator(`#doctorTable tr[data-i="${i}"] input[data-f="name"]`); await inp.fill("Review Dr Z"); await inp.dispatchEvent("change");
+    await page.waitForFunction(() => /2099/.test((T.app.state.result || {}).at || ""), null, { timeout: 20000 }); await waitSaved(page); // 自動保存の統合で相手の結果（新しい）を採る
+    const st = await page.evaluate(() => { const A = T.app, txt = JSON.stringify(A.state.result), S = A.snapshot(new Date().toISOString()); return { z: txt.includes("Review Dr Z"), v: T.check(new T.Problem(A.state.rules, A.state.month), A.state.result.asg).V.length, stop: (A.outputCheck(S) || {}).stop || null }; });
+    assert.ok(st.z, "結果の氏名は新しい氏名"); assert.ok(!JSON.stringify(await page.evaluate(() => T.app.state.result)).includes(JSON.stringify(who)), "旧名は結果に残らない"); assert.strictEqual(st.v, 0, "検算の違反 0"); assert.strictEqual(st.stop, null, "勤務表を出せる");
+    const j = JSON.parse(fs.text("A/202611/202611_data.json")); assert.ok(JSON.stringify(j.result).includes("Review Dr Z") && !JSON.stringify(j.result).includes(JSON.stringify(who)), "保存した JSON の結果も新しい氏名"); assert.ok(j.rules.doctors.some(d => d.name === "Review Dr Z"));
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 20 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 21 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });
