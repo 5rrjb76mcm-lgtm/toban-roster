@@ -371,6 +371,10 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await waitSaved(page); assert.deepStrictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.fixed.night_oc["7"], [I[0], I[1]], "保存した JSON も 2 人");
     await page.selectOption('#fixedPane select[data-fx="nightI"][data-d="7"]', I[2]); assert.deepStrictEqual((await page.evaluate(() => T.app.state.month.fixed.night_oc[7])).slice().sort(), [I[1], I[2]].sort(), "欄を変えたら、出していた 1 人目だけを置き換える");
     await page.selectOption('#fixedPane select[data-fx="nightI"][data-d="7"]', ""); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.fixed.night_oc[7]), [I[1]], "欄を空にしたら、出していた人だけ外れる");
+    const label = () => page.locator('#fixedPane [data-extras="night_oc:7"]').textContent(); assert.ok((await label()).includes(I[1]), "残った 2 人目は欄の横に出る");
+    await page.selectOption('#fixedPane select[data-fx="nightI"][data-d="7"]', I[1]); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.fixed.night_oc[7]), [I[1]], "横に出ていた人を欄で選んでも 1 人のまま"); assert.strictEqual((await label()).trim(), "", "欄に出した人は横から消える");
+    await page.selectOption('#fixedPane select[data-fx="nightI"][data-d="7"]', ""); assert.strictEqual(await page.evaluate(() => (T.app.state.month.fixed.night_oc || {})[7]), undefined, "空にすると OC は無くなる"); assert.strictEqual((await label()).trim(), "", "「＋名前」も残らない");
+    await waitSaved(page); assert.strictEqual((JSON.parse(fs.text("A/202611/202611_data.json")).month.fixed.night_oc || {})["7"], undefined, "保存した JSON も空");
     await ctx.close();
   });
   await test("月別条件の人ごとの表: 一時的に配置禁止にした人の当月の目標（0 回）と累計は、別の欄の編集で消えない。当番に戻すと目標 0 回が効く", async () => {

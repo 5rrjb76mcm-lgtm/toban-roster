@@ -307,6 +307,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
 
   // ---------- 固定配置（決定済みの配置をまとめて入力する画面。{person}別カレンダーの「固定」欄と同じデータを枠ごとに編集） ----------
   const NONE_Y = "__noneY__";
+  const extrasText = (arr, shown) => { const rest = (arr || []).filter(n => !shown.includes(n)); return rest.length ? "＋" + rest.join(T.nameSep()) : ""; }; // 欄に出していない固定の OC（欄の横に見せる）
   function renderFixed() {
     const m = state.month; A.ensureMonth(m);
     const y = +m.year, mo = +m.month, N = A.daysIn(y, mo), hol = new Set((m.holidays || []).map(Number));
@@ -317,7 +318,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     const teamOf = n => (R.doctors.find(d => d.name === n) || {}).team;
     const pick = (arr, team) => (arr || []).find(n => teamOf(n) === team) || "";
     // 欄は役割ごとに 1 人しか出せない。同じ役割の 2 人目以降と、欄の無い役割の OC は、名前を横に見せて保持する（読み戻しで消さない）
-    const extras = (arr, shown) => { const rest = (arr || []).filter(n => !shown.includes(n)); return rest.length ? ` <small class="note" title="${esc(T.t("この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します"))}">＋${esc(rest.join(T.nameSep()))}</small>` : ""; };
+    const extras = (arr, shown, key) => ` <small class="note" data-extras="${key}" title="${esc(T.t("この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します"))}">${esc(extrasText(arr, shown))}</small>`;
     const nameOpts = [["", "―"], ...cand.map(n => [n, n])], iOpts = [["", "―"], ...iN.map(n => [n, n])], yOpts = [["", T.t("―（自動）")], ...yN.map(n => [n, n]), [NONE_Y, T.term(T.t("{junior}OCなし（追加しない）"), R)]];
     const rows = [];
     for (let d = 1; d <= N + 1; d++) {
@@ -331,7 +332,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       const SW = (val, k) => multi ? `<input data-fx="${k}" data-d="${d}" data-multi value="${esc([].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep()))}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">` : S(nameOpts, [].concat(val || [])[0] || "", k);
       const yVal = tbl => (juniorId && (fx[tbl + "_none"]?.[d] || []).includes(juniorId)) ? NONE_Y : pick(fx[tbl]?.[d], juniorId);
       const daySlot = next ? (P0 ? P0.nextSlotExists("day") : holiday) : (P0 ? P0.slotExists(d, "day") : holiday);
-      const ocCells = tbl => { const arr = fx[tbl]?.[d] || [], i1 = pick(arr, chargeId), y1 = yVal(tbl); return `<td>${S(iOpts, i1, tbl === "day_oc" ? "dayI" : "nightI")}</td><td>${S(yOpts, y1, tbl === "day_oc" ? "dayY" : "nightY")}${extras(arr, [i1, y1])}</td>`; };
+      const ocCells = tbl => { const arr = fx[tbl]?.[d] || [], i1 = pick(arr, chargeId), y1 = yVal(tbl); return `<td>${S(iOpts, i1, tbl === "day_oc" ? "dayI" : "nightI")}</td><td>${S(yOpts, y1, tbl === "day_oc" ? "dayY" : "nightY")}${extras(arr, [i1, y1], `${tbl}:${d}`)}</td>`; };
       const dayCells = daySlot ? `<td>${SW(fx.day?.[d], "day")}</td>${ocCells("day_oc")}` : `<td class="empty"></td><td class="empty"></td><td class="empty"></td>`;
       rows.push(`<tr class="${cls}"><th>${label}</th>${dayCells}<td>${SW(fx.night?.[d], "night")}</td>${ocCells("night_oc")}<td>${holiday ? S(iOpts, fx.weekend_charge?.[d] || "", "charge") : ""}</td></tr>`);
     }
@@ -366,7 +367,9 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         for (const [n, tg] of parts) if (n && tg) tags[`${d}:${k}|${n}`] = tg;
         if (ns.length) fx[k][d] = ns.length === 1 ? ns[0] : ns; } else if (k === "charge") fx.weekend_charge[d] = v;
     });
-    m.fixed = fx; m.fixed_tags = tags; A.save();
+    m.fixed = fx; m.fixed_tags = tags;
+    root.querySelectorAll("[data-extras]").forEach(el => { const [tbl, d] = el.dataset.extras.split(":"), k = tbl === "day_oc" ? "day" : "night", val = x => (root.querySelector(`select[data-fx="${k}${x}"][data-d="${d}"]`) || {}).value || ""; el.textContent = extrasText(fx[tbl][+d], [val("I"), val("Y")]); }); // 欄の横の「＋名前」も、読み戻した結果に合わせる
+    A.save();
   }
   function bindFixed() {
     const root = $("#fixedPane");

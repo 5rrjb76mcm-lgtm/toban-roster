@@ -681,12 +681,12 @@
     for (const k of ["last_weekend_charge", "prev_weekend_charge"]) if (pm[k] === oldN) pm[k] = newN;
     return m;
   }
-  // 改名の記録（[旧, 新] の列。最後に同期してからの分）から、いま効いている対応を出す: 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消え、新しい氏名が名簿にいて旧い氏名がいないものだけを残す
-  function effectiveRenames(list, names) {
-    const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); }
-    // 旧い氏名が名簿に残っていても、それが別の人の改名の先（空いた氏名の再利用。E→Z の後に F→E）なら、その対応は生きている
-    const cur = new Set(names || []), targets = new Set([...map].filter(([k, v]) => k !== v).map(([, v]) => v)); return [...map].filter(([k, v]) => k !== v && cur.has(v) && (!cur.has(k) || targets.has(k)));
-  }
+  // 改名の記録（[旧, 新] の列。最後に同期してからの分）は、最後に同期したときの名簿にいた人の改名だけを持つ（同期の後に足した人の氏名の変更は記録しない: renameOrigin）。
+  // いま効いている対応を出す: 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消える。旧い氏名がいまの名簿にあっても（空いた氏名を、別の人の改名や新しく足した人が使った）、対応は生きている
+  const renameMap = list => { const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); } return map; };
+  function effectiveRenames(list) { return [...renameMap(list)].filter(([k, v]) => k !== v); }
+  // いまの氏名 name の人が、最後に同期したときの名簿（baseNames）の誰だったか。同期の後に足した人なら null
+  function renameOrigin(list, baseNames, name) { const map = renameMap(list); for (const [k, v] of map) if (v === name) return k; return (baseNames || []).includes(name) && !map.has(name) ? name : null; }
   // いくつかの改名をまとめて当てる（pairs は [旧, 新] の列）。1 つずつ順に当てると、空いた氏名を再利用したとき（E→Z と F→E）や入れ替えのときに、別の人の項目を上書きする。
   // いったん全員を仮の氏名に移してから新しい氏名にする（同時に当てたのと同じ結果になる）
   function renameAll(R, m, pairs) {
@@ -700,7 +700,7 @@
     for (const d of RULE_DEFS) if (typeof d.rename === "function") d.rename(R || {}, m || {}, oldN, newN);
     if (m) renameMonthName(m, oldN, newN);
   }
-  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameOrigin = renameOrigin; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ

@@ -395,6 +395,10 @@
     return { R2, m2 };
   }
   const renameTrial = (oldN, newN) => !!renameTrialOn(state.rules, state.month, oldN, newN);
+  // 改名を記録する。最後に同期したときの名簿にいた人の改名だけ（同期の後に足した人の「新規」→氏名は、相手の版に対応する人がいないので記録しない。記録すると、空いた氏名を使ったときに相手の入力を別の人へ付けてしまう）。
+  // 同期したことが無い（共通の元の設定が無い）ときは、統合の元も無いので記録だけしておく
+  function noteRename(oldN, newN) { if (oldN === newN) return; const base = state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null;
+    if (base && T.renameOrigin(state.renames, base, oldN) === null) return; (state.renames ||= []).push([oldN, newN]); }
   function renameDoctor(oldN, newN) {
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     T.renameMonthName(m2, oldN, newN);
@@ -402,7 +406,7 @@
     const renAsg = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = ren1(v.work); if (v && v.oc) v.oc = v.oc.map(x => x === oldN ? newN : x); } };
     if (state.result) { renAsg(state.result.asg); renAsg(state.result.base_asg); if (state.result.avoid_ref && state.result.avoid_ref[oldN] !== undefined) { state.result.avoid_ref[newN] = state.result.avoid_ref[oldN]; delete state.result.avoid_ref[oldN]; } }
     // 共通の元（最後に同期した内容）は書き換えない。改名の対応を覚えておき、次の統合で相手の月と共通の元に同じ変換を当ててから比べる（相手が旧名のまま持っている入力を「旧名への追加」と誤って統合しない）。保存・読込で同期したら消す
-    (state.renames ||= []).push([oldN, newN]);
+    noteRename(oldN, newN);
     replaceInto(state.month, m2); replaceInto(state.rules, R2); return true; // 採用（参照は保つ。呼ぶ側が R.doctors を読み直しの結果で置き換える）
   }
   // 施設のプラグインが揃っていないか（改名と共有用の書き出しを断る判定）: 計算用の欠落・読込失敗・変換失敗に加え、設定が参照する local. の規則は「なし」でも登録が無ければ欠けているとみなす（独自データはその規則が持つ）
@@ -490,7 +494,7 @@
     const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
     const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name)) !== JSON.stringify((state.rules.doctors || []).map(d => d.name));
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
-    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name); if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) (state.renames ||= []).push([n, old[i]]); }); } // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
+    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name); if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); }); } // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
     state.rules = o.rules;
     if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();

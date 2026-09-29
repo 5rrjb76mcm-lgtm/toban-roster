@@ -43,7 +43,7 @@
     //    自分の設定を使うとき: 相手の版と共通の元に同じ改名を当てる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
     //    相手の設定を使うとき: 手元の月を改名の前の氏名に戻す（相手の名簿の本人に入力が付く）
     //    本体の項目だけでなく、プラグインの独自データも rename フックで追随させる。フックが失敗したら統合を止める（実物の設定・月には触れない）
-    const clone = o => JSON.parse(JSON.stringify(o)), ren = T.effectiveRenames(state.renames, (state.rules.doctors || []).map(d => d.name));
+    const clone = o => JSON.parse(JSON.stringify(o)), ren = T.effectiveRenames(state.renames), theirs0 = clone(theirs); // theirs0: 相手の保存内容そのまま（氏名を揃える前）。統合の後の共通の元にする
     const namesIn = R => new Set(((R || {}).doctors || []).map(d => d.name)), myRoster = namesIn(state.rules), theirRoster = namesIn(f.data.rules || state.rules), roster = rulesPick === "theirs" ? theirRoster : myRoster;
     // 元から名簿の外だった氏名（名簿から外した人の入力など。手元・相手それぞれの名簿に対して）。氏名を揃える前に数える: 揃えた結果として本人が分からなくなった入力を、元からの名簿外と取り違えない
     const known = new Set([...Object.keys(T.monthNameRefs(state.month)).filter(n => !myRoster.has(n)), ...Object.keys(T.monthNameRefs(theirs)).filter(n => !theirRoster.has(n))]);
@@ -80,7 +80,7 @@
     state.result = theirsNewer ? (theirFit || mineFit) : (mineFit || theirFit);
     if (rulesPick === "theirs") { state.rules = f.data.rules; state.renames = []; } // 相手の名簿を採る: 改名の記録は消す
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
-    A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = JSON.parse(JSON.stringify(theirs)); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules));
+    A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）
     A.ensureMonth(state.month); A.persist(); A.renderAll();
     A.toast(T.t("別のPCの変更と自動で統合しました（自分 {mine} 件、相手 {theirs} 件、衝突 {n} 件）。入力が変わったので必要なら再計算してください", { mine: r.mineChanges, theirs: r.theirChanges, n: r.conflicts.length })
       + (lostResult ? T.t("。計算結果は、氏名を採用した名簿に対応付けられないので外しました。もう一度「計算する」を押してください") : ""));

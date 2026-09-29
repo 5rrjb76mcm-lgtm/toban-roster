@@ -214,6 +214,12 @@ assert.ok(!("toban_profile" in A.state.rules));
     A.saveBeforeSwitch = async () => true; A.refreshMonths = async () => { }; let applied = 0, asked = 0; A.applyLoaded = () => { applied++; }; A.choose = async () => { asked++; return "open"; };
     A.findMonthData = async () => { A.dirHandle = { name: "B" }; A.dirGen++; return { data: { month: { year: 2026, month: 12, notes: "december-from-A" }, rules: r, result: null }, where: "x", tried: [] }; };
     await A.onMonthChange(2026, 12); assert.strictEqual(applied, 0, "古い読取結果は当てない"); assert.strictEqual(asked, 0, "確認も出さない"); assert.ok(toasts.some(x => /月の切替を中止しました/.test(x)), toasts.join("|")); assert.strictEqual(+A.state.month.month, 11); A.dirHandle = null; }
+  // 改名の記録は、同期したときの名簿にいた人の改名だけ: 設定の読み戻しを通して、A を Z に改名し、足した人（初期の氏名「新規」）を A に、もう 1 人を Q にしても、記録は A→Z だけ
+  { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11, unavailable_night: { [A_]: [5] } }, r), result: null, base: null, meta: null, renames: [] }); A.renderHeader = () => { }; A.markSaved(undefined, "2026-10-01T00:00:00Z");
+    const names = () => A.state.rules.doctors.map(d => d.name), setNames = list => withRows(mkRows(A.state.rules, list), toasts => { A.readSettings(); assert.ok(!toasts.some(x => /変えられません|重なる/.test(x)), toasts.join("|")); });
+    setNames(["Fictional Staff Z"]); assert.deepStrictEqual(A.state.renames, [[A_, "Fictional Staff Z"]]);
+    A.state.rules.doctors.push({ name: "新規", team: "I", quota: 0 }); setNames(names().map(n => n === "新規" ? A_ : n)); A.state.rules.doctors.push({ name: "新規", team: "I", quota: 0 }); setNames(names().map(n => n === "新規" ? "Fictional Staff Q" : n));
+    assert.deepStrictEqual(names().slice(-2), [A_, "Fictional Staff Q"]); assert.deepStrictEqual(A.state.renames, [[A_, "Fictional Staff Z"]], "足した人の氏名の変更は記録しない"); assert.deepStrictEqual(A.state.month.unavailable_night["Fictional Staff Z"], [5]); assert.deepStrictEqual(T.effectiveRenames(A.state.renames), [[A_, "Fictional Staff Z"]]); A.state.renames = []; }
   // 前月の取り込み: 別の施設のデータは無確認で混ぜない（やめれば履歴・固定は変わらない。分かったうえで取り込むこともできる）
   { const r = JSON.parse(before); T.fillDefaultRules(r); r.profile.id = "fictional-facility-A"; const rB = JSON.parse(JSON.stringify(r)); rB.profile.id = "fictional-facility-B";
     const mk = () => Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 12, profile_id: "fictional-facility-A", history: { work_balance: { [A_]: 1 } } }, r), result: null, base: null });
