@@ -22,17 +22,13 @@
     for (const [n, dd] of Object.entries(m.duty_days || {})) for (const [d, e] of Object.entries(dd || {})) for (const part of ["am", "pm"]) put(`duty:${n}:${+d}:${part}`, (e || {})[part]);
     // 不可・避は医師×日で1つの項目。値: night/allday/day/avoid_night/avoid_day/avoid_allday（有給は _paid を付ける）。
     // 同じ日に別の時間帯の条件が両方あるとき（日勤帯の不可と夜勤の避など）は、"day+avoid_night" のように並べた値にして、どちらも落とさない。
-    // 不可に含まれる条件は 1 つにまとめる: 日夜両方の不可があれば日勤帯・夜勤の不可と避はそれに含まれる。不可の時間帯と同じ時間帯の避は不可が勝つ（lint が重複を知らせる）。同じ区分なら有給の方を残す
+    // 入力はどれも落とさない（同じ時間帯の不可と避も両方残す: その枠を固定すると不可は許容になるが、避の減点は残る。表示の優先や重複の注意は画面と入力チェックの役目で、統合は入力を消さない）
     const cal = new Map(), putCal = (n, d, v) => { const k = `cal:${n}:${+d}`; if (!cal.has(k)) cal.set(k, new Set()); cal.get(k).add(v); };
     for (const [n, ds] of Object.entries(m.unavailable_night || {})) for (const d of ds || []) putCal(n, d, "night");
     for (const u of m.unavailable_other || []) putCal(u.name, u.day, u.part + (u.paid ? "_paid" : "")); // 有給は不可の区分と一体の値（相手が消し、自分が有給にしたら衝突になる）
     for (const u of m.avoid || []) putCal(u.name, u.day ?? u.date, "avoid_" + (u.part || "allday"));
-    for (const [k, vs] of cal) { const un = p => vs.has(p + "_paid") ? p + "_paid" : vs.has(p) ? p : null, out = [];
-      if (un("allday")) out.push(un("allday")); else { if (un("day")) out.push(un("day")); if (un("night")) out.push(un("night")); }
-      const covered = p => !!un("allday") || (p !== "allday" && !!un(p));
-      if (vs.has("avoid_allday") && !covered("allday")) out.push("avoid_allday"); else for (const p of ["day", "night"]) if (vs.has("avoid_" + p) && !vs.has("avoid_allday") && !covered(p)) out.push("avoid_" + p);
-      for (const v of vs) if (!/^(avoid_)?(allday|day|night)(_paid)?$/.test(v) && !out.includes(v)) out.push(v); // 知らない値も落とさない
-      if (out.length) put(k, out.join("+")); }
+    const CAL_ORDER = ["allday_paid", "allday", "day_paid", "day", "night_paid", "night", "avoid_allday", "avoid_day", "avoid_night"]; // 並べる順（同じ内容なら同じ値になるように）
+    for (const [k, vs] of cal) { const out = CAL_ORDER.filter(v => vs.has(v)).concat([...vs].filter(v => !CAL_ORDER.includes(v)).sort()); if (out.length) put(k, out.join("+")); }
     for (const n of (m.wishes || {}).weekend_dayshift || []) f[`wkwish:${n}`] = "1";
     for (const [n, ds] of Object.entries((m.wishes || {}).night_on || {})) for (const d of ds || []) f[`wish:${n}:${d}`] = "1";
     for (const [n, ds] of Object.entries((m.wishes || {}).day_on || {})) for (const d of ds || []) f[`wishd:${n}:${d}`] = "1";

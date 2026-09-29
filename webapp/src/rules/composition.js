@@ -31,7 +31,7 @@ T.rules.register({
         ctx.viol("COMPOSITION_OVER", { slot: ctx.slab(s), cond: P.compLabel(c), got, max: c.max }, got <= Math.max(c.max, fx.length) ? s[0] : null, got <= Math.max(c.max, fx.length) ? fx : []); } }
   },
   penalty(ctx, prm) {
-    const { P, pos } = ctx;
+    const { P, pos } = ctx; if (P.state("composition") !== "soft") return; // 必須のときは解く側が減点を足さない（固定した人の分で上限を超えるのは許容。検算が「固定指定により許容」として出す）
     for (const c of prm.list) for (const s of P.slots) { if (!P.compOn(c, s)) continue;
       const got = ctx.A.workers(s).filter(n => P.compMatch(c, n)).length;
       ctx.add("composition_miss", P.softW("composition"), (c.min != null ? pos(c.min - got) : 0) + (c.max != null ? pos(got - c.max) : 0)); }

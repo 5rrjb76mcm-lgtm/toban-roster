@@ -41,7 +41,9 @@
   }
   function unregister(id) { const i = defs.findIndex(d => d.id === id); if (i >= 0) defs.splice(i, 1); delete byId[id]; } // プラグインの読み込み失敗・フォルダ切替で外す（保存データが参照していれば入力チェック LINT_PLUGIN_MISSING）
   const orderOf = d => d.order ?? defs.indexOf(d) * 100;
-  const isOn = (P, d) => P.state(d.id) !== "off" && (d.needs || []).every(n => P.state(n) !== "off");
+  // 規則が実際に動くか: 自分が「なし」でなく、needs の先もすべて実際に動く（needs の先の needs も。A←B←C で A を止めたら C も止まる）
+  const isOn = (P, d, seen = new Set()) => { if (P.state(d.id) === "off") return false; if (seen.has(d.id)) return true; seen.add(d.id);
+    return (d.needs || []).every(n => P.state(n) !== "off" && (!byId[n] || isOn(P, byId[n], seen))); };
 
   // 口: kind（solve / check / penalty / lint）の実装を持つプラグインを、順が upto 以下のものまで順に呼ぶ（呼んだものは ctx.done に覚え、二度呼ばない）。
   // upto に id の配列を渡すと、そのプラグインだけをその並びで呼ぶ（検算の違反の並びを移す前と同じに保つため）。

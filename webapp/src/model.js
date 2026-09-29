@@ -536,7 +536,8 @@
     isExempt(n) { return this.isRole(n, "reserve") || this.isFixedOnly(n); } // 回数・休み・偏りの規則を当てはめない人（予備の役割と「固定したときだけ」の人）
     fixedWorkCount(n) { let c = 0; for (const k of this.fixedWorkKeys) if (k.endsWith("|" + n)) c++; return c; }
     nextDayIsHoliday() { return ((this.dow(this.N) + 1) % 7) >= 5 || this.nextFirstHoliday; }
-    nextFirstSlotKind() { return this.nextDayIsHoliday() ? "day" : "night"; } // 翌月1日の最初の枠（月末の夜勤に隣接する枠）
+    nextSlotExists(kind) { const sh = (this.shifts || []).find(x => x.id === kind), h = this.nextDayIsHoliday(); if (!sh) return kind === "night" || h; return sh.on === "none" ? false : sh.on === "all" ? true : sh.on === "weekdays" ? !h : h; } // 翌月 1 日にその勤務帯の枠があるか（勤務帯の設定に従う。2 交代は平日にも日勤がある）
+    nextFirstSlotKind() { return this.nextSlotExists("day") ? "day" : "night"; } // 翌月1日の最初の枠（月末の夜勤に隣接する枠）
     pmExtNightBanned(d, n) { return this.pmExtNight === "forbid" || (this.pmExtNight !== "allow" && !this.confirmedPmExtNight.has(`${d}:${n}`)); } // 午後外勤日の夜勤・夜間OCを禁止するか
     ocNone(s, team) { const x = this.fixedOcNone[`${s[0]}:${s[1]}`]; return !!(x && x.has(team)); } // その枠で team の OC を置かない固定があるか
     nextFixedWorks(n) { const x = this.nextFixed; return x.day.includes(n) || x.night.includes(n); }
@@ -683,7 +684,13 @@
   // 改名の記録（[旧, 新] の列。最後に同期してからの分）から、いま効いている対応を出す: 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消え、新しい氏名が名簿にいて旧い氏名がいないものだけを残す
   function effectiveRenames(list, names) {
     const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); }
-    const cur = new Set(names || []); return [...map].filter(([k, v]) => k !== v && cur.has(v) && !cur.has(k));
+    // 旧い氏名が名簿に残っていても、それが別の人の改名の先（空いた氏名の再利用。E→Z の後に F→E）なら、その対応は生きている
+    const cur = new Set(names || []), targets = new Set([...map].filter(([k, v]) => k !== v).map(([, v]) => v)); return [...map].filter(([k, v]) => k !== v && cur.has(v) && (!cur.has(k) || targets.has(k)));
+  }
+  // いくつかの改名をまとめて当てる（pairs は [旧, 新] の列）。1 つずつ順に当てると、空いた氏名を再利用したとき（E→Z と F→E）や入れ替えのときに、別の人の項目を上書きする。
+  // いったん全員を仮の氏名に移してから新しい氏名にする（同時に当てたのと同じ結果になる）
+  function renameAll(R, m, pairs) {
+    const tmp = i => `\u0000rename:${i}\u0000`; pairs.forEach(([o], i) => renameEverywhere(R, m, o, tmp(i))); pairs.forEach(([, n], i) => renameEverywhere(R, m, tmp(i), n));
   }
   // 設定と月（どちらも複製を渡す）の中の氏名を置き換える: 名簿・表示順、名簿の欄（columns の rename）、規則の rename フック、本体の月の項目。
   // 統合の前に、相手の版・共通の元・手元の月を、採用する名簿の氏名に揃えるのに使う（手元の改名と同じ追随を、プラグインの独自データにも当てる）。フックが失敗したら例外を投げる（呼ぶ側は統合を止める）
@@ -693,7 +700,7 @@
     for (const d of RULE_DEFS) if (typeof d.rename === "function") d.rename(R || {}, m || {}, oldN, newN);
     if (m) renameMonthName(m, oldN, newN);
   }
-  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameEverywhere = renameEverywhere;
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ

@@ -170,6 +170,21 @@ test("暦の復元: フォルダの切替・読み込みの失敗で戻した定
     const rb = T2.plugins.load("calendars", "calendars/b.js", "T.calendars.register({ id: 'jp', label: 'B', holidays() { return [9]; } }); throw new Error('fixture failed after register');"); assert(!rb.ok, "B は読み込み失敗");
     assert.strictEqual(T2.calendars.byId.jp, A2, "失敗した B の登録は戻る"); assert.strictEqual(A2.under, jp0, "A の下は同梱のまま"); assert.strictEqual(hol(T2), "[5]"); assert.strictEqual(hol(T2, ["calendars/a.js"]), "[3,23]", "A を無効にしても、失敗した B は呼ばれない"); }
 });
+test("needs の連鎖: A ← B ← C で A を「なし」にする・A のファイルを無効にすると、B も C も動かない（末端だけが動いて止まらない）。戻すと 3 つとも動く", () => {
+  T.plugins.beginFolder(); globalThis.__chain = [];
+  const src = (id, extra) => `T.rules.register({ id: "${id}", api: 1, order: ${extra.order}, states: ["hard", "off"], def: "hard", label: "連鎖 ${id}", ${extra.needs ? `needs: ${JSON.stringify(extra.needs)},` : ""} solve() {}, penalty() {}, checkAlways: true, check(ctx) { globalThis.__chain.push("${id}"); ${extra.body || ""} } });`;
+  const ra = T.plugins.load("rules", "rules/chain_a.js", src("local.chain.a", { order: 9001, body: "ctx.facts.chainA = 1;" })); assert(ra.ok, ra.error);
+  const rb = T.plugins.load("rules", "rules/chain_b.js", src("local.chain.b", { order: 9002, needs: ["local.chain.a"], body: "if (!ctx.facts.chainA) throw new Error('A の事実が無い'); ctx.facts.chainB = 1;" })); assert(rb.ok, rb.error);
+  const rc = T.plugins.load("rules", "rules/chain_c.js", src("local.chain.c", { order: 9003, needs: ["local.chain.b"], body: "if (!ctx.facts.chainB) throw new Error('B の事実が無い');" })); assert(rc.ok, rc.error);
+  const R = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8")); T.fillDefaultRules(R); const m = T.normalizeMonth(JSON.parse(fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8")), R), asg = JSON.parse(fs.readFileSync(path.join(__dirname, "data/js_assignment.json"), "utf8"));
+  const ran = (edit) => { const r2 = JSON.parse(JSON.stringify(R)); edit(r2); globalThis.__chain = []; T.check(new T.Problem(r2, m), asg); return globalThis.__chain.filter(x => /^local\.chain/.test(x)).join(","); };
+  assert.strictEqual(ran(r => { }), "local.chain.a,local.chain.b,local.chain.c", "全部有効なら 3 つとも動く");
+  assert.strictEqual(ran(r => { r.rule_states["local.chain.a"] = "off"; }), "", "A を「なし」にすると B も C も動かない");
+  assert.strictEqual(ran(r => { r.plugins_off = ["rules/chain_a.js"]; }), "", "A のファイルを無効にしても同じ");
+  assert.strictEqual(ran(r => { r.rule_states["local.chain.b"] = "off"; }), "local.chain.a", "B を「なし」にすると C も動かない（A は動く）");
+  assert.strictEqual(ran(r => { r.rule_states["local.chain.a"] = "off"; r.rule_states["local.chain.a"] = "hard"; }), "local.chain.a,local.chain.b,local.chain.c", "戻すと 3 つとも動く");
+  T.plugins.beginFolder(); delete globalThis.__chain;
+});
 test("プラグインの規則の出どころ・登録し直し・重なり: 定義に source が付き、入力チェック（LINT_PLUGIN_OVERRIDE・LINT_RULE_OVERLAP）に出る", () => {
   const rd2 = (kind, name) => fs.readFileSync(path.join(PLUG, kind, name), "utf8"); T.setLang("ja");
   T.plugins.beginFolder();

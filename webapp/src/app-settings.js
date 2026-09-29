@@ -57,7 +57,7 @@
     const cell = (c, d) => `<td data-col="${esc(c.key)}">${c.render(d, R, h)}</td>`;
     const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(T.normalizeRolesOf(R).map(x => [x.id, x.label]), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${d.years ?? ""}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
-      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${d.share ?? 1}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら当番に入らない"))}"></td>` : `<td><input type="number" data-f="quota" value="${d.quota ?? 0}" style="width:3.5em"></td>`) : "") +
+      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${d.share ?? 1}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" data-f="quota" value="${d.quota ?? 0}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
       `<td>${A.sel([["", tx("配置する")], ["fixed_only", tx("固定したときだけ")], ["no_unless_needed", tx("原則配置しない")], ["never", tx("配置禁止")]], d.duty || "", 'data-f="duty"')}</td>` +
       at("duty").map(c => cell(c, d)).join("") +
@@ -153,7 +153,7 @@
 <p class="note">${esc(tx("人数を決まった数にするなら上限だけを書きます。幅を持たせるなら下限も書き、なるべく近づけたい人数があれば理想に書きます（理想からずれた人数は減点。重みは日々の設定の「1枠の人数を理想値に近づける」）。下限と上限は必ず守ります。"))}</p>
 <p class="note">${esc(tx("1 日を日中と夜の 2 つに分け、それぞれに名前を付けて、計算で当番を決める日を選びます。日中を「計算しない」にすると夜だけの当直になります。夜は必ず計算で決めます。日中の予定（午前・午後の外来・外勤など）は計算の対象ではなく、人ごとの予定の入力に使います。3 つ以上の区分（3 交代など）はこの版では使えません。"))}</p>
 <p><label>${esc(tx("勤務回数の目安の決め方"))}: ${A.sel([["absolute", tx("絶対値（名簿に月◯回を書く）")], ["share", tx("相対（名簿に比重を書き、その月の枠数を按分する）")]], (R.profile || {}).quota_mode === "share" ? "share" : "absolute", 'id="setQuotaMode"')}</label></p>
-<p class="note">${esc(tx("相対にすると、その月に必要な延べ人数（枠ごとの人数。幅があるときは理想値）を名簿の比重で按分した値が目安になります（1 が標準、0.5 なら半分、0 なら当番に入らない。端数は累計の過不足が少ない人から）。1 枠に複数名を置く施設や、月ごとに枠数が変わる施設向けです。月の設定の「当月の目標」で人ごとに上書きできます。休みの日数を「ちょうど」にしている施設では勤務日数が休みから決まるので、比重を下げても回数は夜勤（2 日ぶん）が増える形でしか減りません。その場合は比重は全員 1 のままにします。"))}</p>
+<p class="note">${esc(tx("相対にすると、その月に必要な延べ人数（枠ごとの人数。幅があるときは理想値）を名簿の比重で按分した値が目安になります（1 が標準、0.5 なら半分、0 なら目安 0 回。当番に入れないなら、名簿の当番の欄を「配置禁止」にする。端数は累計の過不足が少ない人から）。1 枠に複数名を置く施設や、月ごとに枠数が変わる施設向けです。月の設定の「当月の目標」で人ごとに上書きできます。休みの日数を「ちょうど」にしている施設では勤務日数が休みから決まるので、比重を下げても回数は夜勤（2 日ぶん）が増える形でしか減りません。その場合は比重は全員 1 のままにします。"))}</p>
 <p class="note">${esc(tx("2 人以上にすると、オンコール・期間責任者・同日の役割集約は使えません（勤務者が 1 名である前提の規則のため、自動で「なし」にします）。人数を増やすほど同じ点数の解が増えるので、計算の上限時間は長めにしてください。"))}</p>`); }
     { const roles = T.normalizeRolesOf(R);
       // 「規則での役目」＝規則が役割を指すときの呼び名。施設ごとに違う役割名と規則を結び付ける

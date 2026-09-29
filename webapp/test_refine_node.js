@@ -126,9 +126,9 @@ test("統合の往復: 実データの全項目が flatten→unflatten で残る
   for (const k of Object.keys(m)) if (!["cath_off_days", "doc_versions"].includes(k)) assert(k in back, "項目が残る: " + k);
   assert.deepStrictEqual(T.flattenMonth(back), T.flattenMonth(m), "往復で同じ形");
 });
-test("不可と避が同じ日にあるときは不可が勝つ（統合の正規化）", () => {
+test("不可と避が同じ日の同じ時間帯にあっても、統合は両方を持つ（表示と計算は不可が優先。固定で不可が許容になると避の減点が効くので、入力は落とさない）", () => {
   const rules = clone(real.rules), m = T.normalizeMonth(clone(real.month), rules); m.avoid = [{ name: "Dr E", day: 8, part: "night" }]; m.unavailable_night["Dr E"] = [8]; m.unavailable_other = (m.unavailable_other || []).filter(u => !(u.name === "Dr E" && +u.day === 8));
-  const f = T.flattenMonth(m); assert.strictEqual(JSON.parse(f["cal:Dr E:8"]), "night");
+  const f = T.flattenMonth(m); assert.strictEqual(JSON.parse(f["cal:Dr E:8"]), "night+avoid_night"); const back = T.unflattenMonth(f, m); assert.ok(back.unavailable_night["Dr E"].includes(8) && back.avoid.some(u => u.name === "Dr E" && +u.day === 8 && u.part === "night"), "往復で両方残る");
 });
 test("曜日パターン運用（duty_days なし）では避パターンが自動で展開される", () => {
   const rules = clone(real.rules), m = clone(real.month); m.duty_days = null; delete m.avoid; m.regular_duties["Dr L"] = [{ kind: "avoid_night", dow: "Mon", part: "full" }];
@@ -270,6 +270,8 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     assert(c.W.some(w => /COMPOSITION_OVER|師長/.test(w)), "固定指定により許容に入る: " + c.W.join(" / "));
     assert(c.A.worked("師長A", [1, "day"]), "固定どおり 11/1 の日勤に入る");
     for (let d = 2; d <= P.N; d++) if (P.isHoliday(d)) assert(!c.A.worked("師長A", [d, "day"]) && !c.A.worked("師長A", [d, "night"]), `固定していない休日 ${d} には入らない`);
+    { const pin = T.solve(P, highs, { timeLimit: 60, pin: r.asg }), pen = T.penalty(P, r.asg); assert(pin.asg, "全枠固定で解ける"); assert(Math.abs(pin.objective - pen.total) < 1e-6, `必須の構成を固定で許容しても、目的関数 ${pin.objective} ＝ 減点 ${pen.total}`); assert(!(pen.items || {}).composition_miss, "必須のときは構成の減点を足さない: " + (pen.items || {}).composition_miss);
+      const soft = JSON.parse(JSON.stringify(rules)); soft.rule_states.composition = "soft"; const Ps = new T.Problem(soft, month), pins = T.solve(Ps, highs, { timeLimit: 60, pin: r.asg }), pens = T.penalty(Ps, r.asg); assert(pins.asg && Math.abs(pins.objective - pens.total) < 1e-6, `減点のときも一致: ${pins.objective} / ${pens.total}`); assert((pens.items || {}).composition_miss > 0, "減点のときは上限の超過を数える"); }
   });
   test("連勤の下限が夜勤の数に対して長すぎるときは、避けられない短い連の本数を入力チェックが知らせる", () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, "data/fixtures/ward-2shift.json"), "utf8"));

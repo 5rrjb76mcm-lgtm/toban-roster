@@ -388,13 +388,13 @@
     "月を作るときに、ここで決めた祝日と施設の休日が月の設定の「祝日・施設の休日」に入ります（月ごとに手で直せます）。祝日のない地域や、土日だけを休日にする施設は「祝日なし」を選びます。国の祝日を足すには src/calendars/ にファイルを 1 つ足します。": "When a month is created, the holidays and closures chosen here go into \"Holidays and facility closures\" in the month settings (editable per month). Choose \"No public holidays\" for regions without them or facilities that close only on weekends. To add a country's holidays, add one file under src/calendars/.",
     "暦: {src}。施設の休日: {closure}": "Calendar: {src}. Facility closures: {closure}",
     "比重": "Weight",
-    "比重。1 が標準、0.5 なら半分、0 なら当番に入らない": "Weight: 1 is standard, 0.5 is half, 0 means no duty",
+    "比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）": "Weight: 1 is standard, 0.5 is half, 0 means a target of 0 (to keep someone off duty, set Duty to \"Never assign\")",
     "比重 {n}": "weight {n}",
     "目安（比重から）": "Target (from weights)",
     "勤務回数の目安の決め方": "How the shift-count target is set",
     "絶対値（名簿に月◯回を書く）": "Absolute (write shifts per month in the roster)",
     "相対（名簿に比重を書き、その月の枠数を按分する）": "Relative (write a weight in the roster; the month's slots are shared out in proportion)",
-    "相対にすると、その月に必要な延べ人数（枠ごとの人数。幅があるときは理想値）を名簿の比重で按分した値が目安になります（1 が標準、0.5 なら半分、0 なら当番に入らない。端数は累計の過不足が少ない人から）。1 枠に複数名を置く施設や、月ごとに枠数が変わる施設向けです。月の設定の「当月の目標」で人ごとに上書きできます。休みの日数を「ちょうど」にしている施設では勤務日数が休みから決まるので、比重を下げても回数は夜勤（2 日ぶん）が増える形でしか減りません。その場合は比重は全員 1 のままにします。": "With relative targets, the month's total head count (people per slot; the ideal when there is a range) is shared out in proportion to the weights in the roster (1 is standard, 0.5 is half, 0 means no duty; remainders go first to those behind on the running balance). Meant for facilities with several people per slot or a slot count that changes month to month. \"This month's targets\" in the month settings still overrides per person. Where the number of days off is fixed exactly, working days follow from the days off, so a lower weight can only reduce the count by adding night shifts (which use two days); keep every weight at 1 there.",
+    "相対にすると、その月に必要な延べ人数（枠ごとの人数。幅があるときは理想値）を名簿の比重で按分した値が目安になります（1 が標準、0.5 なら半分、0 なら目安 0 回。当番に入れないなら、名簿の当番の欄を「配置禁止」にする。端数は累計の過不足が少ない人から）。1 枠に複数名を置く施設や、月ごとに枠数が変わる施設向けです。月の設定の「当月の目標」で人ごとに上書きできます。休みの日数を「ちょうど」にしている施設では勤務日数が休みから決まるので、比重を下げても回数は夜勤（2 日ぶん）が増える形でしか減りません。その場合は比重は全員 1 のままにします。": "With relative targets, the month's total head count (people per slot; the ideal when there is a range) is shared out in proportion to the weights in the roster (1 is standard, 0.5 is half, 0 means a target of 0; to keep someone off duty, set Duty to \"Never assign\" in the roster; remainders go first to those behind on the running balance). Meant for facilities with several people per slot or a slot count that changes month to month. \"This month's targets\" in the month settings still overrides per person. Where the number of days off is fixed exactly, working days follow from the days off, so a lower weight can only reduce the count by adding night shifts (which use two days); keep every weight at 1 there.",
     "目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。": "Targets are relative: the total head count {need} shared out by the roster weights (sum {w}); remainders go first to those behind on the running balance.",
     "勤務回数の目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分": "Shift-count targets are relative: total head count {need} shared out by roster weights (sum {w})",
     "翌月1日は休日": "The 1st of next month is a day off",
@@ -1078,7 +1078,8 @@
     "。2 連休は続いた休みを 1 回と数える": ". A run of days off counts as one two-day break",
     "。有給の日数は必要な休みに足す": ". Paid leave days are added to the required days off",
     "別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください": "Merging with the other PC's changes was stopped: a plug-in's per-person data could not be adjusted to the rename ({err}). Please tell the plug-in's author",
-    "。計算結果は、氏名を採用した名簿に対応付けられないので外しました。もう一度「計算する」を押してください": ". The result was dropped because its names could not be matched to the roster in use. Press Solve again"
+    "。計算結果は、氏名を採用した名簿に対応付けられないので外しました。もう一度「計算する」を押してください": ". The result was dropped because its names could not be matched to the roster in use. Press Solve again",
+    "この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します": "Fixed on-call that this screen has no field for (it is kept as is). To change it, use the Fixed field in the per-person calendar"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

@@ -4,7 +4,7 @@
 // コードを読まずに立てた期待値と突き合わせる。期待値の根拠は各例のコメントに書く。名前はすべて架空（同梱の 2 交代プロファイル）
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "report.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "report.js", "merge.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/calendars")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/calendars", f), "utf8"), { filename: "calendars/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
@@ -188,5 +188,13 @@ test("名簿にない人の当月の目標 0 回: 0 回も入力として数え�
   assert.deepStrictEqual(T.monthNameRefs(m)["Outside Person"], ["targets"]);
   const L = T.lint(new T.Problem(R, m)); assert.ok(L.some(x => x.code === "LINT_MONTH_UNKNOWN_NAMES" && JSON.stringify(x).includes("Outside Person")), "知らせる: " + L.map(x => x.code).join(","));
   const { R: R2, m: m2 } = base({ month: { targets: { "Dr B": 0 } } }); assert.strictEqual(new T.Problem(R2, m2).targets["Dr B"], 0, "名簿の人の 0 回は目標として効く"); assert.ok(!T.lint(new T.Problem(R2, m2)).some(x => x.code === "LINT_MONTH_UNKNOWN_NAMES"));
+});
+test("同じ時間帯の不可＋避と固定: 夜勤不可の日の夜勤を固定すると不可は許容（違反 0・許容 1）、避の減点 30 は残る。無関係な項目だけを変えた統合の後も、条件と減点は変わらない", () => {
+  const { R, m, D } = base({ states: { avoid_days: "soft" }, weights: { avoid_day: 30, avoid_no_reduction: 0 }, month: { unavailable_night: { "Dr B": [7] }, avoid: [{ name: "Dr B", day: 7, part: "night" }] } });
+  m.fixed.night[7] = "Dr B"; const a = rotation(D); a["7:night"].work = "Dr B"; a["7:day"].work = D.find(n => n !== "Dr B" && n !== a["6:night"].work && n !== a["8:day"].work);
+  const score = mm => { const P = new T.Problem(R, mm), r = T.check(P, a); return { V: r.V.length, W: wcodes(r).filter(c => c === "UNAVAIL_NIGHT").length, avoid: pen(P, a).avoid_day }; };
+  assert.deepStrictEqual(score(m), { V: 0, W: 1, avoid: 30 });
+  const mine = clone(m), theirs = clone(m); mine.day_notes = { 1: "手元の予定" }; theirs.notes = "相手のメモ"; const mg = T.mergeMonth(m, mine, theirs); assert.strictEqual(mg.conflicts.length, 0);
+  const merged = T.normalizeMonth(mg.merged, R); assert.ok(merged.avoid.some(u => u.name === "Dr B" && +u.day === 7 && u.part === "night"), "避が残る"); assert.deepStrictEqual(merged.unavailable_night["Dr B"], [7]); assert.deepStrictEqual(score(merged), { V: 0, W: 1, avoid: 30 }, "統合の後も同じ減点");
 });
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

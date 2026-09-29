@@ -165,7 +165,7 @@
         // 勤務の無い日: 前日が夜勤なら「明」、有給の印があれば「有給」。休みの日数も数える（明けを休みに数えない施設では明けは休みに入れない）
         if (!dayTag && !nightTag) { const ake = nightOf(d - 1), paid = ((P.paidDays || {})[n] || new Set()).has(d);
           if (ake) { cnt.ake++; dayTag = `<div class="dc-ake">${esc(T.t("明"))}</div>`; } else if (paid) dayTag = `<div class="dc-paid">${esc(T.t("有給"))}</div>`;
-          if (!ake || P.akeIsOff) cnt.off++; }
+        }
         const sym = symOf(n, d); // 施設の記号があれば、日勤・夜勤の帯の代わりにそれを出す（数え方はそのまま）
         const upper = sym ? `<div class="dc-r dc-r2"><div class="dc-sym">${sym}</div></div>` : dayTag && !am && !pm ? `<div class="dc-r dc-r2">${dayTag}</div>` : `<div class="dc-r">${dayTag}${am ? dtag(am, "午前 ") : ""}</div><div class="dc-r">${dayTag}${pm ? dtag(pm, "午後 ") : ""}</div>`;
         const wd = (first + d - 1) % 7, cls = [wd === 0 || P.holidaysExtra.has(d) ? "sun" : wd === 6 ? "sat" : "", dayTag || nightTag ? "on" : ""].join(" ");
@@ -174,6 +174,7 @@
       }
       while (cells.length % 7) cells.push('<td class="empty"></td>');
       const rows = []; for (let i = 0; i < cells.length; i += 7) rows.push("<tr>" + cells.slice(i, i + 7).join("") + "</tr>");
+      try { cnt.off = T.rules.checkCtx(P, new T.Asg(P, asg), "check", () => { }).offDays(n).length; } catch (e) { cnt.off = 0; } // 休みの日数は検算と同じ数え方（実勤務の無い日。OC だけの日は休み。明けの扱いは設定に従う）
       const offOn = P.state("days_off_min") !== "off", ocOn = P.state("oncall") !== "off";
       const sum = [`${esc(P.shiftLabel("day"))} ${cnt.day}`, `${esc(P.shiftLabel("night"))} ${cnt.night}`].concat(ocOn ? [`OC ${cnt.oc}`] : []).concat(cnt.ake ? [`${esc(T.t("明"))} ${cnt.ake}`] : []).concat(offOn ? [esc(T.t("休み {n} 日（決まった日数 {t}）", { n: cnt.off, t: P.offTarget(n) }))] : []).join("・");
       return `<div class="doccal"><h4>${esc(n)}　<small>${sum}</small></h4><table class="calendar dccal"><tr><th class="sun">${esc(T.dowLabel(6))}</th>${[0, 1, 2, 3, 4].map(i => `<th>${esc(T.dowLabel(i))}</th>`).join("")}<th class="sat">${esc(T.dowLabel(5))}</th></tr>${rows.join("")}</table></div>`;

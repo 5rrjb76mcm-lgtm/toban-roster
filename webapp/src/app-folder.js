@@ -49,8 +49,8 @@
     const known = new Set([...Object.keys(T.monthNameRefs(state.month)).filter(n => !myRoster.has(n)), ...Object.keys(T.monthNameRefs(theirs)).filter(n => !theirRoster.has(n))]);
     let mine = state.month;
     if (ren.length) { try {
-      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; for (const [o, n] of ren) { T.renameEverywhere(tr, theirs, o, n); T.renameEverywhere(br, base, o, n); } }
-      else { mine = clone(state.month); const mr = clone(state.rules); for (const [o, n] of ren.slice().reverse()) T.renameEverywhere(mr, mine, n, o); }
+      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; T.renameAll(tr, theirs, ren); T.renameAll(br, base, ren); } // まとめて当てる（空いた氏名の再利用・入れ替えでも、別の人の項目を上書きしない）
+      else { mine = clone(state.month); const mr = clone(state.rules); T.renameAll(mr, mine, ren.map(([o, n]) => [n, o])); }
     } catch (e) { A.toast(T.t("別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください", { err: e && e.message || e })); return false; } }
     // 採用する名簿にいない氏名が、統合で新しく月データに入るなら自動では統合しない（両方が同じ人を別の氏名に変えたときなど、氏名の対応を推測しない。読み込むか上書きするかを利用者が選ぶ）
     const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n));
