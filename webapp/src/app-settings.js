@@ -395,10 +395,10 @@
     return { R2, m2 };
   }
   const renameTrial = (oldN, newN) => !!renameTrialOn(state.rules, state.month, oldN, newN);
-  // 改名を記録する。最後に同期したときの名簿にいた人の改名だけ（同期の後に足した人の「新規」→氏名は、相手の版に対応する人がいないので記録しない。記録すると、空いた氏名を使ったときに相手の入力を別の人へ付けてしまう）。
-  // 同期したことが無い（共通の元の設定が無い）ときは、統合の元も無いので記録だけしておく
-  function noteRename(oldN, newN) { if (oldN === newN) return; const base = state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null;
-    if (base && T.renameOrigin(state.renames, base, oldN) === null) return; (state.renames ||= []).push([oldN, newN]); }
+  // 改名を記録する（起きた順にすべて。同期の後に足した人の氏名の変更も）。統合のときに、共通の元の名簿にいた人から始まる対応だけを使う（T.effectiveRenames）
+  function noteRename(oldN, newN) { if (oldN !== newN) (state.renames ||= []).push([oldN, newN]); }
+  // 名簿から外す: 月の入力と、設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す。外したことを改名の記録に残す（外した後にその氏名を別の人が使っても、相手の版の元の人の入力を別の人に付けない）
+  function removeDoctor(i) { const R = state.rules, nm = (R.doctors[i] || {}).name; if (nm === undefined) return; R.doctors.splice(i, 1); T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); noteRename(nm, T.GONE + nm); }
   function renameDoctor(oldN, newN) {
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     T.renameMonthName(m2, oldN, newN);
@@ -531,7 +531,7 @@
       if (b.dataset.act === "add") R.doctors.push({ name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null });
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
-        R.doctors.splice(i, 1); if (refs) T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す
+        removeDoctor(i); } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す
       else if (b.dataset.act === "up" && i > 0) { [R.doctors[i - 1], R.doctors[i]] = [R.doctors[i], R.doctors[i - 1]]; }
       else if (b.dataset.act === "down" && i < R.doctors.length - 1) { [R.doctors[i + 1], R.doctors[i]] = [R.doctors[i], R.doctors[i + 1]]; }
       A.refreshNameOrder(R);
@@ -561,5 +561,5 @@
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

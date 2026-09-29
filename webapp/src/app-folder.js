@@ -43,7 +43,7 @@
     //    自分の設定を使うとき: 相手の版と共通の元に同じ改名を当てる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
     //    相手の設定を使うとき: 手元の月を改名の前の氏名に戻す（相手の名簿の本人に入力が付く）
     //    本体の項目だけでなく、プラグインの独自データも rename フックで追随させる。フックが失敗したら統合を止める（実物の設定・月には触れない）
-    const clone = o => JSON.parse(JSON.stringify(o)), ren = T.effectiveRenames(state.renames), theirs0 = clone(theirs); // theirs0: 相手の保存内容そのまま（氏名を揃える前）。統合の後の共通の元にする
+    const clone = o => JSON.parse(JSON.stringify(o)), ren = T.effectiveRenames(state.renames, state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null, (state.rules.doctors || []).map(d => d.name)), theirs0 = clone(theirs); // theirs0: 相手の保存内容そのまま（氏名を揃える前）。統合の後の共通の元にする
     const namesIn = R => new Set(((R || {}).doctors || []).map(d => d.name)), myRoster = namesIn(state.rules), theirRoster = namesIn(f.data.rules || state.rules), roster = rulesPick === "theirs" ? theirRoster : myRoster;
     // 元から名簿の外だった氏名（名簿から外した人の入力など。手元・相手それぞれの名簿に対して）。氏名を揃える前に数える: 揃えた結果として本人が分からなくなった入力を、元からの名簿外と取り違えない
     const known = new Set([...Object.keys(T.monthNameRefs(state.month)).filter(n => !myRoster.has(n)), ...Object.keys(T.monthNameRefs(theirs)).filter(n => !theirRoster.has(n))]);

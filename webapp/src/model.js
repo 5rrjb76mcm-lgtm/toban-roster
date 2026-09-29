@@ -681,12 +681,24 @@
     for (const k of ["last_weekend_charge", "prev_weekend_charge"]) if (pm[k] === oldN) pm[k] = newN;
     return m;
   }
-  // 改名の記録（[旧, 新] の列。最後に同期してからの分）は、最後に同期したときの名簿にいた人の改名だけを持つ（同期の後に足した人の氏名の変更は記録しない: renameOrigin）。
-  // いま効いている対応を出す: 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消える。旧い氏名がいまの名簿にあっても（空いた氏名を、別の人の改名や新しく足した人が使った）、対応は生きている
-  const renameMap = list => { const map = new Map(); for (const [o, n] of list || []) { let hit = false; for (const [k, v] of map) if (v === o) { map.set(k, n); hit = true; } if (!hit) map.set(o, n); } return map; };
-  function effectiveRenames(list) { return [...renameMap(list)].filter(([k, v]) => k !== v); }
+  // 改名の記録（[旧, 新] の列）は、最後に同期してからの氏名の変更をすべて、起きた順に持つ（同期の後に足した人の「新規」→氏名も）。
+  // 使うときに、共通の元の名簿（baseNames＝最後に同期したときの名簿）にいた人から始まる対応だけを取り出す。記録するときに絞らないのは、保存の途中（写しを取った後）の改名を、
+  // その保存が成功した後の名簿（写しの名簿）に対して読めるようにするため: 写しに初めて入った人を保存中に改名しても、保存の後は「共通の元にいた人の改名」として効く。
+  // 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消える。旧い氏名がいまの名簿にあっても（空いた氏名を、別の人の改名や新しく足した人が使った）、対応は生きている
+  // 記録を人ごとの連なりにする: [旧, 新] の「旧」がいまの氏名の人がいればその人の氏名が変わり、いなければ新しい連なり（同じ「新規」から始まる人が何人いても、別々の連なりになる）
+  const GONE = "\u0000gone:"; // 名簿から外した人の印（外した人は、この印の付いた氏名への改名として記録する）
+  const renameChains = list => { const es = []; for (const [o, n] of list || []) { const e = es.find(x => x.cur === o); if (e) e.cur = n; else es.push({ from: o, cur: n }); } return es; };
+  // baseNames: 共通の元の名簿（分からなければ絞らない）。curNames: いまの名簿（外した人が取り消しで戻っているかを見る）
+  function effectiveRenames(list, baseNames, curNames) {
+    const base = Array.isArray(baseNames) ? new Set(baseNames) : null, cur = Array.isArray(curNames) ? new Set(curNames) : null, es = renameChains(list), seen = new Set(), out = [];
+    for (const e of es) { if (seen.has(e.from)) continue; seen.add(e.from); // 同じ氏名から始まる 2 つ目以降の連なりは、空いた氏名を使った別の人（共通の元の人ではない）
+      if (e.from === e.cur || (base && !base.has(e.from))) continue;
+      if (String(e.cur).startsWith(GONE) && cur && cur.has(e.from) && !es.some(x => x !== e && x.cur === e.from)) continue; // 外した人が「元に戻す」で名簿に戻っている（その氏名を別の人が使っているのではない）
+      out.push([e.from, e.cur]); }
+    return out;
+  }
   // いまの氏名 name の人が、最後に同期したときの名簿（baseNames）の誰だったか。同期の後に足した人なら null
-  function renameOrigin(list, baseNames, name) { const map = renameMap(list); for (const [k, v] of map) if (v === name) return k; return (baseNames || []).includes(name) && !map.has(name) ? name : null; }
+  function renameOrigin(list, baseNames, name) { const es = renameChains(list), seen = new Set(); for (const e of es) { const first = !seen.has(e.from); seen.add(e.from); if (e.cur === name) return first && (baseNames || []).includes(e.from) ? e.from : null; } return (baseNames || []).includes(name) && !es.some(e => e.from === name) ? name : null; }
   // いくつかの改名をまとめて当てる（pairs は [旧, 新] の列）。1 つずつ順に当てると、空いた氏名を再利用したとき（E→Z と F→E）や入れ替えのときに、別の人の項目を上書きする。
   // いったん全員を仮の氏名に移してから新しい氏名にする（同時に当てたのと同じ結果になる）
   function renameAll(R, m, pairs) {
@@ -700,7 +712,7 @@
     for (const d of RULE_DEFS) if (typeof d.rename === "function") d.rename(R || {}, m || {}, oldN, newN);
     if (m) renameMonthName(m, oldN, newN);
   }
-  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameOrigin = renameOrigin; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameOrigin = renameOrigin; T.GONE = GONE; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ
