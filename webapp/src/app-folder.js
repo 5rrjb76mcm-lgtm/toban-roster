@@ -244,13 +244,20 @@
   function bindMonthSelect() {
     $("#monthSel").addEventListener("change", async ev => {
       let t = ev.target.value; if (t === A.tag()) return;
-      const r = await A.transition("month", async () => { // 共通の窓口（計算中は断る・進行中の保存を待つ）
+      const r = await A.transition("month", async () => { // 共通の窓口（計算中は断る・進行中の保存を待つ・ほかの切替と並行させない）
         if (t === "__other__") { ev.target.value = A.tag(); const y = +prompt(T.t("年"), state.month.year); if (!y) return true; const mo = +prompt(T.t("月（1〜12）"), state.month.month); if (!mo || mo < 1 || mo > 12) return true; t = `${y}${String(mo).padStart(2, "0")}`; if (t === A.tag()) return true; }
-        if (A.dirHandle) { const f = await findMonthData(t); if (f.data) { if (!(await saveBeforeSwitch())) { ev.target.value = A.tag(); return true; } applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return true; } }
-        ev.target.value = A.tag(); await A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); return true; // 保存の確認は onMonthChange 側で1回だけ行う
+        await openMonth(t); ev.target.value = A.tag(); return true;
       });
-      if (r === false) ev.target.value = A.tag(); // 計算中で断られた
+      if (r === false) ev.target.value = A.tag(); // 計算中・ほかの切替の処理中で断られた
     });
+  }
+  // 年月 t（YYYYMM）を開く: 接続中のフォルダに保存データがあれば開き、無ければ作り方を聞く（onMonthChange）。
+  // 読み取りの前の年月と接続の世代を覚え、読み終えた後と当てる直前に確かめる（待つ間に接続先や月が替わっていたら、古い読取結果を別のフォルダのデータとして当てない）
+  async function openMonth(t) {
+    if (A.dirHandle) { const g = A.switchMark(), f = await findMonthData(t); const stale = () => { if (!A.switchStale(g)) return false; A.toast(T.t("月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください")); renderHeader(); return true; };
+      if (stale()) return false;
+      if (f.data) { if (!(await saveBeforeSwitch())) return false; if (stale()) return false; applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return true; } }
+    await A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); return true; // 保存の確認は onMonthChange 側で行う
   }
   // 月データを探す: YYYYMM フォルダ内 → フォルダ直下 → YYYYMM で始まる名前のフォルダ内
   async function findMonthData(t) {
@@ -415,5 +422,5 @@
     if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
   }
 
-  Object.assign(A, { repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
+  Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

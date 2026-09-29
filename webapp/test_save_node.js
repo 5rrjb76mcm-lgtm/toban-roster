@@ -214,5 +214,29 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     await A.writeSave(dir, prep); assert.strictEqual(files["202611_roster_v1_draft.docx"], "roster"); assert.strictEqual(files["202611_report_v1_draft.html"], "report", "無ければ同じ版で書き直す"); assert.ok(/書き直しました/.test(prep.note), prep.note); A.commitSave(prep); assert.strictEqual(A.state.month.doc_versions.length, 1, "版は増えない");
     delete files["202611_report_v1_draft.html"]; assert.strictEqual(await A.saveToFolder(), "saved"); assert.ok(files["202611_report_v1_draft.html"], "説明資料だけ無くても書き直す"); assert.strictEqual(A.state.month.doc_versions.length, 1);
     const n0 = writes.length; await A.saveToFolder(); assert.ok(!writes.slice(n0).some(n => /_roster_|_report_/.test(n)), "揃っていれば書かない"); }
+  // 切替どうしは並行させない: 進行中の切替があれば、次の切替は断って false（知らせる）。終われば受け付ける
+  { const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m)); A.solving = false; let release; const gate = new Promise(r => { release = r; });
+    const first = A.transition("month", async () => { await gate; return "done"; }); await new Promise(r => setTimeout(r, 10)); let ran = false;
+    assert.strictEqual(await A.transition("folder", async () => { ran = true; }), false, "進行中は断る"); assert.strictEqual(ran, false); assert.ok(/別の切り替え/.test(toasts.pop()));
+    release(); assert.strictEqual(await first, "done"); assert.strictEqual(await A.transition("folder", async () => "next"), "next", "終われば受け付ける"); A.toast = t0; }
+  // 月の読取り中の保存フォルダの変更: 画面からの変更は窓口が断る。読取りの間に接続先が替わっていたら（窓口を通らない経路）、古い読取結果を捨てて、前のフォルダの月を今のフォルダの「保存済み」にしない
+  { for (const k of Object.keys(files)) delete files[k]; const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m)); A.showTab = () => { }; A.renderAll = () => { }; A.clearUndo = () => { }; A.save = () => { }; A.readAll = () => { }; A.renderHeader = () => { }; A.onMonthChange = async () => { throw new Error("呼ばれない"); };
+    const rules = { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, nov = () => ({ year: 2026, month: 11, notes: "november" });
+    const fresh = () => { Object.assign(A.state, { rules: JSON.parse(JSON.stringify(rules)), month: nov(), result: null, meta: null, base: null }); A.dirHandle = dir; A.dirGen++; A.monthDirs = ["202611", "202612"]; A.markSaved(); files["202612_data.json"] = JSON.stringify({ rules, month: { year: 2026, month: 12, notes: "december-from-A" }, result: null, saved_at: "2026-10-05T00:00:00Z" }); };
+    const filesB = {}, dirB = { name: "B", async *entries() { }, async getDirectoryHandle(n, o) { if (n === "plugins") throw Object.assign(new Error("nf"), { name: "NotFoundError" }); if (!(o && o.create) && !Object.keys(filesB).length) throw Object.assign(new Error("nf"), { name: "NotFoundError" }); return dirB; },
+      async getFileHandle(n, opt) { if (!(opt && opt.create) && !(n in filesB)) throw Object.assign(new Error("nf"), { name: "NotFoundError" }); return { getFile: async () => ({ text: async () => filesB[n] }), createWritable: async () => ({ write: async x => { filesB[n] = typeof x === "string" ? x : await x.text(); }, close: async () => { } }) }; }, async queryPermission() { return "granted"; }, async requestPermission() { return "granted"; } };
+    const w0 = dir.getFileHandle; const gated = () => { let release; const g = new Promise(r => { release = r; }); dir.getFileHandle = async (n, o) => { const h = await w0(n, o); if (n !== "202612_data.json" || (o && o.create)) return h; return { getFile: async () => { await g; return h.getFile(); } }; }; return release; };
+    globalThis.window.showDirectoryPicker = async () => dirB; globalThis.confirm = () => false; A.choose = async () => null;
+    // (1) 画面からの変更: 月の切替の処理中なので断られ、A の 12 月は A のデータとして開く
+    fresh(); let release = gated(); const p1 = A.transition("month", () => A.openMonth("202612")); await new Promise(r => setTimeout(r, 20));
+    assert.strictEqual(await A.openFolderUI(), false, "読取り中のフォルダ変更は断る"); assert.strictEqual(A.dirHandle, dir); release(); await p1;
+    assert.strictEqual(+A.state.month.month, 12); assert.strictEqual(A.state.month.notes, "december-from-A"); assert.strictEqual(A.isDirty(), false); assert.ok(/フォルダ test/.test(A.state.meta.savedWhere), "A の保存済み"); assert.strictEqual(Object.keys(filesB).length, 0);
+    // (2) 窓口を通らずに接続先が替わった場合: 古い読取結果を捨てる
+    fresh(); release = gated(); toasts.length = 0; const p2 = A.openMonth("202612"); await new Promise(r => setTimeout(r, 20));
+    await A.openFolderUI(); assert.strictEqual(A.dirHandle, dirB, "B へ接続"); release(); assert.strictEqual(await p2, false, "古い読取結果は捨てる");
+    assert.strictEqual(+A.state.month.month, 11, "A の 12 月を B の月として開かない"); assert.ok(toasts.some(x => /月の切替を中止しました/.test(x)), toasts.join("|")); assert.ok(!(A.state.meta && /フォルダ B/.test(A.state.meta.savedWhere || "") && +A.state.month.month === 12), "B に 12 月を保存済みとしない"); assert.ok(!("202612_data.json" in filesB));
+    // (3) 対照: 何も替わらなければ開く
+    fresh(); dir.getFileHandle = w0; assert.strictEqual(await A.openMonth("202612"), true); assert.strictEqual(+A.state.month.month, 12);
+    dir.getFileHandle = w0; A.dirHandle = dir; delete globalThis.window.showDirectoryPicker; A.toast = t0; }
   console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口（待機中の計算開始も断る）・保存の 3 段階（帳票だけの失敗でも月データは保存）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

@@ -48,7 +48,8 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       list: p => { const out = new Map(); for (const k of files.keys()) if (parent(k) === p) out.set(k.split("/").pop(), "file"); for (const k of dirs) if (parent(k) === p && k !== p) out.set(k.split("/").pop(), "directory"); return [...out].map(([name, kind]) => ({ name, kind })).sort((a, b) => a.name.localeCompare(b.name)); },
       text: p => { const b = fs.read(p); return b === null ? null : b.toString("utf8"); }, names: p => fs.list(p).map(e => e.name) };
     return fs; };
-  const bind = async (ctx, fs) => { await ctx.exposeBinding("__e2efs", (_, op, a) => { switch (op) { case "read": { const b = fs.read(a.path); return b === null ? null : b.toString("base64"); } case "write": fs.write(a.path, Buffer.from(a.b64 || "", "base64")); return true; case "kind": return fs.kind(a.path); case "mkdir": fs.mkdir(a.path); return true; case "remove": fs.remove(a.path); return true; case "list": return fs.list(a.path); default: throw new Error("unknown op " + op); } }); };
+  // fs.gates[path] に Promise を置くと、その読取りを保留する（読取り中の操作の試験用）
+  const bind = async (ctx, fs) => { await ctx.exposeBinding("__e2efs", (_, op, a) => { switch (op) { case "read": { const b = fs.read(a.path); if (fs.gates && fs.gates[a.path]) { fs.waiting = (fs.waiting || 0) + 1; return fs.gates[a.path].then(() => b === null ? null : b.toString("base64")); } return b === null ? null : b.toString("base64"); } case "write": fs.write(a.path, Buffer.from(a.b64 || "", "base64")); return true; case "kind": return fs.kind(a.path); case "mkdir": fs.mkdir(a.path); return true; case "remove": fs.remove(a.path); return true; case "list": return fs.list(a.path); default: throw new Error("unknown op " + op); } }); };
   const newCtx = async () => { const ctx = await browser.newContext(); const fs = makeFs(); await bind(ctx, fs); return { ctx, fs }; };
   const newPage = async ctx => { const page = await ctx.newPage(); await page.addInitScript(INIT); page.on("pageerror", e => fail(`ページのエラー: ${e.message}`)); page.on("crash", () => fail("ページがクラッシュしました")); if (process.env.E2E_DEBUG) page.on("console", m => console.log("     console:", m.type(), m.text().slice(0, 160))); await page.goto(URL); await page.waitForSelector("#startGate:not([hidden])"); return page; };
   // 「閉じて開き直す」は、新しいページを先に開いてから前のページを閉じる（インストール済みの Chrome は最後のページを閉じるとブラウザごと終了する）
@@ -209,6 +210,25 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")); assert.strictEqual(saved.month.fixed.night[7], "Review Z", "保存した JSON も新しい氏名"); assert.ok(!JSON.stringify(saved.month.fixed).includes(info.who), "旧名は固定に残らない");
     await ctx.close();
   });
+  await test("月の読取り中の保存フォルダの変更: 読取りの間は断られ、A の 12 月は A のデータとして開く。B には何も書かれない", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    const novJ = JSON.parse(fs.text("A/202611/202611_data.json")); const dec = JSON.parse(JSON.stringify(novJ)); dec.month.year = 2026; dec.month.month = 12; dec.month.notes = "december-from-A"; dec.result = null; dec.saved_at = "2026-10-05T00:00:00.000Z"; delete dec.month.doc_versions;
+    fs.write("A/202612/202612_data.json", Buffer.from(JSON.stringify(dec))); ({ ctx, page } = await reopen(ctx, fs)); await start(page); await waitSaved(page); // 開き直すと月の一覧に 12 月が出る
+    let release; fs.gates = { "A/202612/202612_data.json": new Promise(r => { release = r; }) }; fs.waiting = 0;
+    await page.selectOption("#monthSel", "202612"); for (let i = 0; i < 100 && !fs.waiting; i++) await page.waitForTimeout(50); assert.ok(fs.waiting > 0, "A の 12 月の読取りが待っている");
+    await page.evaluate(() => localStorage.setItem("__e2e_folder", "B")); const n0 = await page.evaluate(() => window.__toasts.length);
+    await page.evaluate(() => { const b = document.querySelector("#btnOpenFolder"); for (let d = b.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true; }); await page.click("#btnOpenFolder");
+    await page.waitForFunction(n => window.__toasts.slice(n).some(t => /別の切り替え/.test(t)), n0, { timeout: 10000 }); assert.strictEqual(await page.locator("#folderBar b").textContent(), "A", "接続先は A のまま");
+    fs.gates = {}; release(); await page.waitForFunction(() => +T.app.state.month.month === 12, null, { timeout: 10000 }); await waitSaved(page);
+    const st = await page.evaluate(() => ({ folder: T.app.dirHandle && T.app.dirHandle.name, notes: T.app.state.month.notes, where: T.app.state.meta && T.app.state.meta.savedWhere, dirty: T.app.isDirty() }));
+    assert.strictEqual(st.folder, "A"); assert.strictEqual(st.notes, "december-from-A"); assert.strictEqual(st.dirty, false); assert.ok(/A/.test(st.where || ""), "A の保存済み: " + st.where);
+    assert.ok(!fs.names("B").length, "B には何も書かれない: " + fs.names("B").join(",")); assert.strictEqual(JSON.parse(fs.text("A/202612/202612_data.json")).month.notes, "december-from-A");
+    // 読み終えた後なら保存フォルダを変更できる（空の B では未保存になり、自動保存で B に 12 月ができる）
+    await page.click("#btnOpenFolder"); await page.waitForFunction(() => T.app.dirHandle && T.app.dirHandle.name === "B", null, { timeout: 10000 });
+    for (let i = 0; i < 200 && !fs.names("B/202612").includes("202612_data.json"); i++) await page.waitForTimeout(100); // 空の B では未保存になり、自動保存（変更の 3 秒後）で書かれる
+    assert.ok(fs.names("B/202612").includes("202612_data.json"), "B に 12 月が保存される: " + await page.locator("#saveState").textContent()); await waitSaved(page); assert.strictEqual(JSON.parse(fs.text("B/202612/202612_data.json")).month.notes, "december-from-A");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 10 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 11 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

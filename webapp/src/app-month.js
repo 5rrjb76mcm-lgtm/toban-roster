@@ -103,16 +103,18 @@
     if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return; }
     if (!A.dirHandle && A.fsOK() && A.storedHandle) await A.ensureFolder();
     // 状態を置き換える直前にもう一度、未保存の入力を確かめる（フォルダの読み取りや選択を待つ間の入力を、無確認で失わない）。待つ間に別の月へ替わっていたら中止
-    const tag0 = A.tag(), again = async () => { if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return false; } if (A.tag() !== tag0) { A.toast(T.t("月の切替を中止しました（待っている間に別の月へ切り替わりました）")); A.renderSettingsMonth(); return false; } return true; };
+    // 年月に加えて接続の世代も見る（読み取りの間に保存フォルダが替わっていたら、前のフォルダのデータを今のフォルダのものとして開かない）
+    const g = A.switchMark(), stale = () => { if (!A.switchStale(g)) return false; A.toast(T.t("月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください")); A.renderSettingsMonth(); A.renderHeader(); return true; };
+    const again = async () => { if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return false; } return !stale(); };
     if (A.dirHandle) {
       await A.refreshMonths();
-      const f = await A.findMonthData(t);
+      const f = await A.findMonthData(t); if (stale()) return;
       if (f.data) { const v = await A.choose(T.t("{y}年{m}月 の保存データがあります（{where}）。", { y: ny, m: nm, where: f.where }), [{ label: T.t("この保存データを開く"), value: "open", primary: true }, { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]); if (v === "open") { if (await again()) A.applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); } else A.renderSettingsMonth(); return; }
       // 直前の月（同じ年月がなければそれより前で最新）のデータを探す
       const cands = [...new Set(A.monthDirs.map(x => x.slice(0, 6)))].filter(x => x < t).sort().reverse();
       let triedMsg = T.t("{y}年{m}月 の保存データは見つかりません（探した場所: {tried}）。", { y: ny, m: nm, tried: f.tried.join(T.listSep()) });
       for (const c of cands) {
-        const f2 = await A.findMonthData(c); const o2 = f2.data;
+        const f2 = await A.findMonthData(c); const o2 = f2.data; if (stale()) return;
         if (!o2) continue;
         const v = await A.choose(T.t("{y}年{m}月 の保存データはありません。どのように作りますか。", { y: ny, m: nm }), [
           { label: T.t("{y}年{m}月 のデータから引き継いで作成", { y: c.slice(0, 4), m: +c.slice(4) }), sub: T.t("引き継ぐ: 曜日パターンのうち「翌月へ引き継ぐ」を付けた行（業務・避けたい日）、土日いずれかの日勤の希望、履歴、前月末の接続。引き継がない: 印のない行、不可日・日付の当直希望・固定指定"), value: "prev", primary: true },

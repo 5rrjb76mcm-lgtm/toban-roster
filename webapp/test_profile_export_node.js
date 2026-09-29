@@ -208,6 +208,12 @@ assert.ok(!("toban_profile" in A.state.rules));
     // フォルダに保存データがある月を開く分岐も同じ
     calls = 0; answers = [true, false]; mk(); A.dirHandle = { name: "x" }; A.refreshMonths = async () => { }; A.monthDirs = []; A.findMonthData = async () => ({ data: { month: { year: 2026, month: 12, notes: "dec" }, rules: r, result: null }, where: "x", tried: [] }); let applied = 0; A.applyLoaded = () => { applied++; }; A.choose = async () => "open";
     await A.onMonthChange(2026, 12); assert.strictEqual(calls, 2); assert.strictEqual(applied, 0, "確認が通らなければ開かない"); calls = 0; answers = [true, true]; await A.onMonthChange(2026, 12); assert.strictEqual(applied, 1); A.dirHandle = null; }
+  // 月の切替: フォルダの読取りの間に接続先が替わっていたら、古い読取結果を捨てる（前のフォルダのデータを今のフォルダの月として開かない）
+  { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11, notes: "nov" }, r), result: null, base: null, meta: null });
+    A.showTab = () => { }; A.renderAll = () => { }; A.renderSettingsMonth = () => { }; A.renderHeader = () => { }; A.save = () => { }; const toasts = []; A.toast = x => toasts.push(String(x)); A.fsOK = () => true; A.storedHandle = null; A.dirHandle = { name: "A" }; A.monthDirs = [];
+    A.saveBeforeSwitch = async () => true; A.refreshMonths = async () => { }; let applied = 0, asked = 0; A.applyLoaded = () => { applied++; }; A.choose = async () => { asked++; return "open"; };
+    A.findMonthData = async () => { A.dirHandle = { name: "B" }; A.dirGen++; return { data: { month: { year: 2026, month: 12, notes: "december-from-A" }, rules: r, result: null }, where: "x", tried: [] }; };
+    await A.onMonthChange(2026, 12); assert.strictEqual(applied, 0, "古い読取結果は当てない"); assert.strictEqual(asked, 0, "確認も出さない"); assert.ok(toasts.some(x => /月の切替を中止しました/.test(x)), toasts.join("|")); assert.strictEqual(+A.state.month.month, 11); A.dirHandle = null; }
   // 前月の取り込み: 別の施設のデータは無確認で混ぜない（やめれば履歴・固定は変わらない。分かったうえで取り込むこともできる）
   { const r = JSON.parse(before); T.fillDefaultRules(r); r.profile.id = "fictional-facility-A"; const rB = JSON.parse(JSON.stringify(r)); rB.profile.id = "fictional-facility-B";
     const mk = () => Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 12, profile_id: "fictional-facility-A", history: { work_balance: { [A_]: 1 } } }, r), result: null, base: null });

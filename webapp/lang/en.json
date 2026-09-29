@@ -1063,11 +1063,12 @@
     "施設のプラグインが欠けている・読めない間は共有用の書き出しができません（プラグインが共有から除くはずの個人の記録を除けないため）。プラグインを揃えてから書き出してください": "The sharing export is unavailable while facility plug-ins are missing or unreadable (the per-person records a plug-in would strip cannot be stripped). Restore the plug-ins first",
     "（現在は使わない値）": " (value not in use now)",
     "（勤務表 v{v} がこのフォルダに無かったので書き直しました）": "(roster v{v} was missing from this folder, so it was written again)",
-    "月の切替を中止しました（待っている間に別の月へ切り替わりました）": "Switching months was cancelled (another month was opened while waiting)",
     "{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。": "The saved data for {y}-{m} belongs to another facility ({id}). Importing its history, balances, month-end connection and fixed assignments would mix in another facility's values.",
     "取り込まない（推奨）": "Do not import (recommended)",
     "別の施設のデータと分かったうえで取り込む": "Import anyway, knowing it is another facility's data",
-    "前月の取り込みをやめました（別の施設のデータ）": "Import from the previous month was cancelled (another facility's data)"
+    "前月の取り込みをやめました（別の施設のデータ）": "Import from the previous month was cancelled (another facility's data)",
+    "別の切り替え（月・データ・フォルダ・表示言語）の処理中です。終わってからもう一度操作してください": "Another switch (month, data, folder or language) is in progress. Try again when it has finished",
+    "月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください": "Switching months was cancelled (the month or the save folder changed while reading). Choose the month again"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",

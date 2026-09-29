@@ -54,6 +54,7 @@
   const BUSY = { month: "計算中は月を切り替えられません。計算が終わるか「中止」を押してから切り替えてください", data: "計算中はデータを読み込めません。計算が終わってからもう一度選んでください", folder: "計算中は保存フォルダを変更できません。計算が終わってからもう一度押してください", lang: "計算中は表示言語を切り替えられません。計算が終わってからもう一度選んでください", plugins: "計算中はプラグインを読み直せません。計算が終わってからもう一度押してください" };
   async function transition(kind, fn) { // A.toast: 試験が差し替えられるように公開した側を呼ぶ
     if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; }
+    if (A.switching) { A.toast(T.t("別の切り替え（月・データ・フォルダ・表示言語）の処理中です。終わってからもう一度操作してください")); return false; } // 切替どうしは並行させない（読み取りを待つ間に接続先や月が替わると、古い読取結果を別の場所のデータとして当ててしまう）
     A.switching++; try { await awaitSaves(); if (A.solving) { A.toast(T.t(BUSY[kind] || BUSY.data)); return false; } return await fn(); } finally { A.switching--; } // 保存を待つ間に計算が始まっていたら断る。切替の間（A.switching）は計算を始めない（app-solve.js）
   }
   function save() {
@@ -130,7 +131,11 @@
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
 
   // 施設の識別（設定の profile.id と月の profile_id）。相手（フォルダ・前月）のデータが別の施設のものかは、手元と相手の id の集合が 1 つでないことで判定する
+  // 読み取りを待つ操作の見張り: 始めるときの年月と接続の世代を覚え、読み終えた後・当てる直前に変わっていないかを見る（変わっていたら古い読取結果を捨てる）。
+  // 未接続で始めた操作は、自分の保存の確認の中でフォルダに接続することがあるので、接続の世代は接続中に始めたときだけ比べる
+  const switchMark = () => ({ tag: tag(), dirGen: A.dirGen, connected: !!A.dirHandle });
+  const switchStale = g => tag() !== g.tag || (g.connected && (A.dirGen !== g.dirGen || !A.dirHandle));
   const facilityIds = (rules, month) => [((rules || {}).profile || {}).id, (month || {}).profile_id].filter(Boolean);
   const otherFacility = f => new Set(facilityIds(state.rules, state.month).concat(facilityIds(f.data.rules, f.data.month))).size > 1;
-  Object.assign(A, { facilityIds, otherFacility, DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  Object.assign(A, { switchMark, switchStale, facilityIds, otherFacility, DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});
