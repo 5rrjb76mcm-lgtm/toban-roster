@@ -425,6 +425,7 @@
     const leftover = [];
     if (!withRoster) {
       if (pluginsIncomplete(state.rules, state.month)) throw new Error(T.t("施設のプラグインが欠けている・読めない間は共有用の書き出しができません（プラグインが共有から除くはずの個人の記録を除けないため）。プラグインを揃えてから書き出してください")); // 名簿込み（施設内の引き継ぎ用）は対象外
+      T.pruneRosterRefs(R); // 以前に名簿から外した人の条件が名簿の欄の項目に残っていれば除く（いまの氏名との一致では見つけられない）
       const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
       const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; const nn = `${base}${cnt[base]}`; if (d.name) map.set(d.name, nn);
         const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });
@@ -527,7 +528,7 @@
       if (b.dataset.act === "add") R.doctors.push({ name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null });
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
-        R.doctors.splice(i, 1); if (refs) T.purgeMonthNames(state.month, [nm]); }
+        R.doctors.splice(i, 1); if (refs) T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す
       else if (b.dataset.act === "up" && i > 0) { [R.doctors[i - 1], R.doctors[i]] = [R.doctors[i], R.doctors[i - 1]]; }
       else if (b.dataset.act === "down" && i < R.doctors.length - 1) { [R.doctors[i + 1], R.doctors[i]] = [R.doctors[i], R.doctors[i + 1]]; }
       A.refreshNameOrder(R);

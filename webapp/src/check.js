@@ -60,6 +60,8 @@
       const youngMissAllowed = jr && (P.isRole(w, "other") || P.ocNone(s, jr)) && ocCnt[jr] === 0 &&
         P.standbyRoleIds.every(sid => sid === jr || ocCnt[sid] === +(need[sid] || 0)) && ocs.length === total;
       if (!youngMissAllowed && (P.standbyRoleIds.some(sid => ocCnt[sid] !== +(need[sid] || 0)) || ocs.length !== total)) viol("SLOT_OC_MISMATCH", { slot: slab(s), worker: w, role: P.roleLabel(Tm[w]), oc: ocs.join("・") || "―" });
+      if (new Set(ocs).size !== ocs.length) viol("SLOT_OC_DUP", { slot: slab(s), who: ocs.join("・") }); // 同じ人を重ねて数えない（構造の違反。固定でも許容しない）
+      { const badOc = ocs.filter(n => !names.includes(n)); if (badOc.length) viol("SLOT_OC_UNKNOWN", { slot: slab(s), who: [...new Set(badOc)].join("・") }); } // 当番候補でない人（名簿に無い・配置しない）
       if (ocs.includes(w)) viol("SLOT_OC_SELF", { slot: slab(s), worker: w });
       for (const n of ocs) if (!P.isStandby(n)) viol("SLOT_OC_NOT_STANDBY", { slot: slab(s), who: n });
     }

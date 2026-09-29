@@ -180,4 +180,46 @@ assert.ok(!("toban_profile" in A.state.rules));
     const def = { id: "local.review.secret", api: 1, states: ["hard", "off"], def: "hard", solve() { }, check() { }, penalty() { }, share(R) { delete R.local_review; } }; T.rules.register(def);
     try { const ex2 = A.profileForExport(false); assert.ok(!ex2.rules.local_review, "登録すれば書き出せ、share が除く"); assert.ok(!JSON.stringify(ex2).includes("個人の記録")); } finally { T.rules.unregister(def.id); }
     assert.ok(A.state.rules.local_review.secret[A_], "元の設定は変えない"); }
+  // 名簿から外した人: 設定の側の人ごとの項目（氏名のキー・氏名の配列要素・name が氏名の要素。プラグインの項目も）を外す。文の中の氏名は触らない
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const gone = "Fictional Removed Person";
+    r.friday_night_min = { [A_]: 1, [gone]: 2 }; r.weekend_dayshift_wish = ["Fictional Staff B", gone]; r.name_order = r.name_order.concat([gone]); r.local_example = { by_name: { [gone]: { max: 1 } }, members: [{ name: gone, note: "x" }, { name: A_ }], memo: gone + " の件" };
+    const c = T.purgeRulesNames(r, [gone]); assert.strictEqual(c, 5, "5 件"); assert.deepStrictEqual(r.friday_night_min, { [A_]: 1 }); assert.deepStrictEqual(r.weekend_dayshift_wish, ["Fictional Staff B"]); assert.ok(!r.name_order.includes(gone)); assert.deepStrictEqual(r.local_example.by_name, {}); assert.deepStrictEqual(r.local_example.members, [{ name: A_ }]);
+    assert.strictEqual(r.local_example.memo, gone + " の件", "文の中の氏名は触らない"); assert.strictEqual(r.doctors.length, 3, "名簿は触らない"); }
+  // 共有用の書き出し: 以前に名簿から外した人の条件が、隠れた規則（「なし」）の名簿の欄の項目に残っている保存データでも、氏名と条件を出さない（いまの名簿の氏名との一致に頼らない）。元の設定は変えない
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const gone = "Fictional Removed Person"; r.rule_states.friday_night_min = "off"; r.rule_states.wish_weekend_dayshift = "off";
+    r.friday_night_min = { [gone]: 2 }; r.weekend_dayshift_wish = ["Fictional Staff B", gone]; delete r.local_example; r.profile.label = "試験の設定";
+    Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null }); const snap = JSON.stringify(r);
+    const ex2 = A.profileForExport(false), txt2 = JSON.stringify(ex2.rules); assert.ok(!txt2.includes(gone), "外した人の氏名が残らない"); assert.deepStrictEqual(ex2.rules.friday_night_min, {}, "条件も残らない"); assert.deepStrictEqual(ex2.rules.weekend_dayshift_wish, ["副担当1"], "いまの名簿の人は仮の名前で残る");
+    assert.strictEqual(JSON.stringify(A.state.rules), snap, "元の設定は変えない"); assert.deepStrictEqual(A.profileForExport(true).rules.friday_night_min, { [gone]: 2 }, "名簿込みは何も落とさない"); }
+  // 月の変換フックに渡す設定は複製: フックが設定を書き換えても（途中で失敗しても、成功しても）実物の設定は変わらない。入力チェックだけでも変わらない
+  { const r = JSON.parse(before); T.fillDefaultRules(r); r.local_review = { legacy_days: [2, 4] };
+    const bad = { id: "local.review.legacy", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, normalizeMonth(m, R) { const v = R.local_review.legacy_days; delete R.local_review.legacy_days; m.local_days = v; throw new Error("fixture hook failed"); } }; T.rules.register(bad);
+    try { const m = T.normalizeMonth({ year: 2026, month: 11 }, r); assert.deepStrictEqual(r.local_review.legacy_days, [2, 4], "失敗しても設定は変わらない"); assert.strictEqual(m.local_days, undefined, "月の変更は採用されない");
+      const hc = T.hookCheck(r, m); assert.ok(hc.some(x => x.id === bad.id && x.hook === "normalizeMonth")); assert.deepStrictEqual(r.local_review.legacy_days, [2, 4], "検査だけでも変わらない");
+      T.lintPlugins(new T.Problem(r, m)); assert.deepStrictEqual(r.local_review.legacy_days, [2, 4], "入力チェックでも変わらない"); } finally { T.rules.unregister(bad.id); }
+    const good = { id: "local.review.legacy", api: 1, states: ["hard", "off"], def: "off", solve() { }, check() { }, penalty() { }, normalizeMonth(m, R) { if (m.local_days === undefined) m.local_days = (R.local_review.legacy_days || []).slice(); delete R.local_review.legacy_days; } }; T.rules.register(good);
+    try { const m = T.normalizeMonth({ year: 2026, month: 11 }, r); assert.deepStrictEqual(m.local_days, [2, 4], "月の変更は採用"); assert.deepStrictEqual(r.local_review.legacy_days, [2, 4], "設定は読むだけ（移行は normalize で）"); } finally { T.rules.unregister(good.id); } }
+  // 月の切替: 状態を置き換える直前にもう一度、未保存の確認をする（読み取り・選択を待つ間の入力を無確認で失わない）。保存できずにやめたら元の月のまま
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const mk = () => Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11, notes: "nov" }, r), result: null, base: null, meta: null });
+    A.showTab = () => { }; A.renderAll = () => { }; A.renderSettingsMonth = () => { }; A.save = () => { }; A.toast = () => { }; A.fsOK = () => false; A.storedHandle = null; A.dirHandle = null;
+    let calls = 0, answers = [true, false]; A.saveBeforeSwitch = async () => answers[calls++]; A.choose = async () => { A.state.month.notes = "typed-while-choosing"; return "empty"; };
+    mk(); await A.onMonthChange(2026, 12); assert.strictEqual(calls, 2, "置き換えの直前にもう一度確認"); assert.strictEqual(+A.state.month.month, 11, "保存できずにやめたら元の月のまま"); assert.strictEqual(A.state.month.notes, "typed-while-choosing", "待つ間の入力も残る");
+    calls = 0; answers = [true, true]; mk(); await A.onMonthChange(2026, 12); assert.strictEqual(calls, 2); assert.strictEqual(+A.state.month.month, 12, "確認が通れば切り替わる");
+    // フォルダに保存データがある月を開く分岐も同じ
+    calls = 0; answers = [true, false]; mk(); A.dirHandle = { name: "x" }; A.refreshMonths = async () => { }; A.monthDirs = []; A.findMonthData = async () => ({ data: { month: { year: 2026, month: 12, notes: "dec" }, rules: r, result: null }, where: "x", tried: [] }); let applied = 0; A.applyLoaded = () => { applied++; }; A.choose = async () => "open";
+    await A.onMonthChange(2026, 12); assert.strictEqual(calls, 2); assert.strictEqual(applied, 0, "確認が通らなければ開かない"); calls = 0; answers = [true, true]; await A.onMonthChange(2026, 12); assert.strictEqual(applied, 1); A.dirHandle = null; }
+  // 前月の取り込み: 別の施設のデータは無確認で混ぜない（やめれば履歴・固定は変わらない。分かったうえで取り込むこともできる）
+  { const r = JSON.parse(before); T.fillDefaultRules(r); r.profile.id = "fictional-facility-A"; const rB = JSON.parse(JSON.stringify(r)); rB.profile.id = "fictional-facility-B";
+    const mk = () => Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 12, profile_id: "fictional-facility-A", history: { work_balance: { [A_]: 1 } } }, r), result: null, base: null });
+    A.dirHandle = { name: "x" }; A.refreshMonths = async () => { }; A.findMonthData = async () => ({ data: { month: T.normalizeMonth({ year: 2026, month: 11, profile_id: "fictional-facility-B", history: { work_balance: { [A_]: 17 } }, fixed: { night: { 31: A_ } } }, rB), rules: rB, result: null }, where: "x", tried: [] });
+    A.readAll = () => { }; A.renderSettingsMonth = () => { }; A.renderDoctor = () => { }; A.renderFixed = () => { }; A.save = () => { }; const toasts = []; A.toast = x => toasts.push(String(x)); let asked = 0, ans = null; A.choose = async q => { asked++; assert.ok(/別の施設/.test(String(q))); return ans; };
+    mk(); await A.importPrevious(); assert.strictEqual(asked, 1, "確認を出す"); assert.deepStrictEqual(A.state.month.history.work_balance, { [A_]: 1 }, "やめれば履歴は変わらない"); assert.ok(!(A.state.month.fixed.night || {})[1], "固定も入らない"); assert.ok(toasts.some(x => /やめました/.test(x)));
+    ans = "go"; asked = 0; mk(); await A.importPrevious(); assert.strictEqual(asked, 1); assert.strictEqual(A.state.month.history.work_balance[A_], 17, "分かったうえでなら取り込む"); assert.strictEqual(A.state.month.fixed.night[1], A_);
+    // 同じ施設なら確認なし
+    asked = 0; A.findMonthData = async () => ({ data: { month: T.normalizeMonth({ year: 2026, month: 11, profile_id: "fictional-facility-A", history: { work_balance: { [A_]: 5 } } }, r), rules: r, result: null }, where: "x", tried: [] }); mk(); await A.importPrevious(); assert.strictEqual(asked, 0, "同じ施設は確認なし"); assert.strictEqual(A.state.month.history.work_balance[A_], 5); A.dirHandle = null; }
+  // 翌月 1 日欄の固定の引き継ぎ: 勤務者・OC に加えて、固定の印と「OC なし」も当月 1 日へ移る（配列は複製）
+  { const r = JSON.parse(before); T.fillDefaultRules(r); Object.assign(A.state, { rules: r, month: T.normalizeMonth({ year: 2026, month: 11 }, r), result: null, base: null });
+    const prevM = T.normalizeMonth({ year: 2026, month: 11, fixed: { night: { 31: A_, 7: A_ }, night_oc_none: { 31: ["Y"], 7: ["Y"] } }, fixed_tags: { ["31:night|" + A_]: "公開試験研修", ["7:night|" + A_]: "別の印", "31:day|Fictional Staff B": "固定の無い印" } }, r), prev = { rules: r, month: prevM, result: null };
+    const dec = A.fromPrevious(prev, 2026, 12); assert.strictEqual(dec.fixed.night[1], A_); assert.deepStrictEqual(dec.fixed.night_oc_none[1], ["Y"], "「OC なし」も移る"); assert.deepStrictEqual(dec.fixed_tags, { ["1:night|" + A_]: "公開試験研修" }, "印は引き継いだ固定の分だけ、日付を 1 日へ");
+    dec.fixed.night_oc_none[1].push("X"); assert.deepStrictEqual(prevM.fixed.night_oc_none[31], ["Y"], "配列は複製"); assert.ok(!dec.fixed.night[7], "ほかの日の固定は引き継がない"); }
 })().then(() => { console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK"); }).catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

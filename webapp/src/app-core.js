@@ -129,5 +129,8 @@
   }
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
 
-  Object.assign(A, { DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  // 施設の識別（設定の profile.id と月の profile_id）。相手（フォルダ・前月）のデータが別の施設のものかは、手元と相手の id の集合が 1 つでないことで判定する
+  const facilityIds = (rules, month) => [((rules || {}).profile || {}).id, (month || {}).profile_id].filter(Boolean);
+  const otherFacility = f => new Set(facilityIds(state.rules, state.month).concat(facilityIds(f.data.rules, f.data.month))).size > 1;
+  Object.assign(A, { facilityIds, otherFacility, DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

@@ -1081,5 +1081,13 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const r2 = await T.solveWithAvoidRef(P, highs, { timeLimit: 60 }); assert(r2.asg, "二段階計算: " + r2.status); const p2 = T.penalty(P, r2.asg, { avoidRef: r2.avoidRef }).total; assert(Math.abs(r2.objective - p2) < 1e-6, `二段階の目的関数 ${r2.objective} ＝ 減点 ${p2}`);
     assert(p2 <= pen + 1e-6, `二段階計算は検算を通る割当（${pen}）より悪くならない: ${p2}`); assert.strictEqual(Object.values(r2.asg).filter(x => x.work === D[1]).length, 0, "避けたい人は 0 回（不足の上限で残さない）");
   });
+  await test("連日は日で数える: 15 日の日勤＋夜勤だけの人がいる割当（実際の連日なし）を全枠固定しても、連日を必須にして解ける。減点にしても目的関数＝減点", async () => {
+    const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+    for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.rule_states.consecutive_days = "hard"; two.rule_states.work_gap = "soft"; Object.assign(two.weights, { work_gap_1: 20, work_gap_2: 7, consecutive_days: 200 }); const D = two.doctors.map(d => d.name);
+    const a = {}; for (let d = 1; d <= 30; d++) { const odd = d % 2 === 1; a[`${d}:day`] = { work: d === 15 ? D[0] : odd ? D[1] : D[3], oc: [] }; a[`${d}:night`] = { work: d === 15 ? D[0] : odd ? D[2] : D[4], oc: [] }; }
+    const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23] }, two), P = new T.Problem(two, m); assert.strictEqual(T.check(P, a).V.length, 0, "検算は通る");
+    const pin = T.solve(P, highs, { timeLimit: 60, pin: a }); assert(pin.asg, "全枠固定で解ける（以前は Infeasible）: " + pin.status); const pen = T.penalty(P, a).total; assert(Math.abs(pin.objective - pen) < 1e-6, `目的関数 ${pin.objective} ＝ 減点 ${pen}`); assert.strictEqual(pen, 52 * 20, "中 1 日 52 組 × 20");
+    const soft = JSON.parse(JSON.stringify(two)); soft.rule_states.consecutive_days = "soft"; const Ps = new T.Problem(soft, m), pin2 = T.solve(Ps, highs, { timeLimit: 60, pin: a }); assert(pin2.asg); assert(Math.abs(pin2.objective - T.penalty(Ps, a).total) < 1e-6 && Math.abs(pin2.objective - 52 * 20) < 1e-6, "減点でも同じ: " + pin2.objective);
+  });
   console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}`);
 })();

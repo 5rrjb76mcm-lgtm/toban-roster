@@ -104,6 +104,7 @@
       if (y[k2] === undefined) {
         const ws = ["day", "night"].filter(k => has([d, k])).map(k => work[`${d}:${k}|${n}`]);
         if (!ws.length) { y[k2] = 0; return 0; }
+        if (ws.length === 1) { y[k2] = ws[0]; return ws[0]; } // 枠が 1 つの日は、その枠の変数がそのまま指標
         const v = lp.aux("yd"); for (const w of ws) lp.add(v, ">=", w); lp.add(v, "<=", LP.sum(ws)); y[k2] = v;
       }
       return y[k2];

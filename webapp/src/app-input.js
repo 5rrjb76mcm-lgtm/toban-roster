@@ -290,7 +290,8 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
   }
 
   // 表示中の画面だけ読み戻す（隠れている画面の DOM は古いことがあり、読み戻すと他の画面で入れた固定などを消してしまう。隠れた画面は表示時に描き直す）
-  function readAll() { const vis = id => { const e = $("#" + id); return e && !e.hidden; }; if (vis("monthSettings")) readSettingsMonth(); if (vis("doctorPane")) readDoctor(); if (vis("fixedPane")) readFixed(); }
+  // 親のタブが隠れていれば読まない（設定タブで改名した後に、描き直していない固定配置の旧名を読み戻さない）
+  function readAll() { const vis = id => { const e = $("#" + id); return !!e && !e.hidden && !(typeof e.closest === "function" && e.closest("[hidden]")); }; if (vis("monthSettings")) readSettingsMonth(); if (vis("doctorPane")) readDoctor(); if (vis("fixedPane")) readFixed(); }
 
   // ---------- 固定配置（決定済みの配置をまとめて入力する画面。{person}別カレンダーの「固定」欄と同じデータを枠ごとに編集） ----------
   const NONE_Y = "__noneY__";

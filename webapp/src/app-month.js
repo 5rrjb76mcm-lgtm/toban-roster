@@ -31,6 +31,9 @@
       const pf = prev.month.fixed || {}, nk = String(A.daysIn(y, mo) + 1), got = []; nmn.fixed ||= {};
       for (const [tbl, lbl] of [["day", T.t("日勤")], ["night", T.t("夜勤")], ["weekend_charge", T.t("期間責任者")]]) { const v = (pf[tbl] || {})[nk]; if (v) { (nmn.fixed[tbl] ||= {})[1] = v; got.push(`${lbl} ${v}`); } }
       for (const [tbl, lbl] of [["day_oc", T.t("日勤OC")], ["night_oc", T.t("夜間OC")]]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${lbl} ${v.join("・")}`); } }
+      for (const tbl of ["day_oc_none", "night_oc_none"]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${T.t(tbl === "day_oc_none" ? "日勤OC" : "夜間OC")} ${T.t("なし")}（${v.join("・")}）`); } } // 「OC なし」の指定も固定の一部
+      for (const [key, tg] of Object.entries(prev.month.fixed_tags || {})) { const [sl, who] = key.split("|"), [dd, kk] = sl.split(":"); if (dd !== nk) continue; // 固定の印（日付を翌月 1 日から当月 1 日へ）。引き継いだ固定に付いている印だけ
+        if ([].concat((nmn.fixed[kk] || {})[1] || []).includes(who)) { (nmn.fixed_tags ||= {})[`1:${kk}|${who}`] = tg; got.push(`${who}(${tg})`); } }
       if (got.length) notes.push(T.t("前月の翌月1日欄の固定指定を {m}/1 の固定に引き継ぎ: {list}", { m: nmn.month, list: got.join(T.listSep()) }));
     }
     if (prev.result && prev.result.asg) {
@@ -64,6 +67,11 @@
     const f = await A.findMonthData(t);
     if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));
     if (!f.data) return alert(T.t("{y}年{m}月 の保存データが見つかりません（探した場所: {tried}）", { y: py, m: pm, tried: f.tried.join(T.listSep()) }));
+    if (A.otherFacility(f)) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
+      const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id || "?" }),
+        [{ label: T.t("取り込まない（推奨）"), value: null, cancel: true, primary: true }, { label: T.t("別の施設のデータと分かったうえで取り込む"), value: "go" }]);
+      if (v !== "go") return A.toast(T.t("前月の取り込みをやめました（別の施設のデータ）"));
+      if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); }
     A.readAll();
     const notes = applyConnection(f.data, state.month);
     try { state.month.targets = T.autoTargets(state.rules, state.month).targets; } catch (e) { }
@@ -94,10 +102,12 @@
     const t = `${ny}${String(nm).padStart(2, "0")}`;
     if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return; }
     if (!A.dirHandle && A.fsOK() && A.storedHandle) await A.ensureFolder();
+    // 状態を置き換える直前にもう一度、未保存の入力を確かめる（フォルダの読み取りや選択を待つ間の入力を、無確認で失わない）。待つ間に別の月へ替わっていたら中止
+    const tag0 = A.tag(), again = async () => { if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return false; } if (A.tag() !== tag0) { A.toast(T.t("月の切替を中止しました（待っている間に別の月へ切り替わりました）")); A.renderSettingsMonth(); return false; } return true; };
     if (A.dirHandle) {
       await A.refreshMonths();
       const f = await A.findMonthData(t);
-      if (f.data) { const v = await A.choose(T.t("{y}年{m}月 の保存データがあります（{where}）。", { y: ny, m: nm, where: f.where }), [{ label: T.t("この保存データを開く"), value: "open", primary: true }, { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]); if (v === "open") A.applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); else A.renderSettingsMonth(); return; }
+      if (f.data) { const v = await A.choose(T.t("{y}年{m}月 の保存データがあります（{where}）。", { y: ny, m: nm, where: f.where }), [{ label: T.t("この保存データを開く"), value: "open", primary: true }, { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]); if (v === "open") { if (await again()) A.applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); } else A.renderSettingsMonth(); return; }
       // 直前の月（同じ年月がなければそれより前で最新）のデータを探す
       const cands = [...new Set(A.monthDirs.map(x => x.slice(0, 6)))].filter(x => x < t).sort().reverse();
       let triedMsg = T.t("{y}年{m}月 の保存データは見つかりません（探した場所: {tried}）。", { y: ny, m: nm, tried: f.tried.join(T.listSep()) });
@@ -108,6 +118,7 @@
           { label: T.t("{y}年{m}月 のデータから引き継いで作成", { y: c.slice(0, 4), m: +c.slice(4) }), sub: T.t("引き継ぐ: 曜日パターンのうち「翌月へ引き継ぐ」を付けた行（業務・避けたい日）、土日いずれかの日勤の希望、履歴、前月末の接続。引き継がない: 印のない行、不可日・日付の当直希望・固定指定"), value: "prev", primary: true },
           { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
           { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
+        if (v && !(await again())) return;
         if (v === "prev") { if (o2.rules) state.rules = o2.rules; state.meta = null; state.base = null; state.month = fromPrevious(o2, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); return; }
         if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); return; }
         A.renderSettingsMonth(); return;
@@ -117,6 +128,7 @@
       { label: T.t("現在の入力（{y}年{m}月）から引き継いで作成", { y: state.month.year, m: state.month.month }), sub: T.t("引き継ぐ: 曜日パターンのうち「翌月へ引き継ぐ」を付けた行（業務・避けたい日）、土日いずれかの日勤の希望、履歴、前月末の接続。引き継がない: 印のない行、不可日・日付の当直希望・固定指定"), value: "prev", primary: true },
       { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
       { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
+    if (v && !(await again())) return;
     if (v === "prev") { const base = { rules: state.rules, month: state.month, result: state.result }; state.meta = null; state.base = null; state.month = fromPrevious(base, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); }
     else if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); }
     else A.renderSettingsMonth();

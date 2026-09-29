@@ -184,6 +184,31 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await waitSaved(page); const savedFx = JSON.parse(fs.text("A/202611/202611_data.json")).month.fixed; assert.strictEqual((savedFx.weekend_charge || {})[14], undefined, "保存した JSON にも残らない"); assert.strictEqual((savedFx.weekend_charge || {})[7], undefined);
     await ctx.close();
   });
+  await test("名簿から外した人: 隠れた規則（「なし」）の個人別の条件も設定から外れ、共有用の書き出しに氏名も条件も残らない", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]');
+    const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = R.doctors[R.doctors.length - 1].name; R.friday_night_min = { [n]: 2 }; R.rule_states.friday_night_min = "off"; R.weekend_dayshift_wish = [n]; A.renderSettings(); window.confirm = () => true; return n; });
+    const n0 = await page.evaluate(() => T.app.state.rules.doctors.length); await page.click(`#doctorTable tr[data-i="${n0 - 1}"] [data-act="del"]`);
+    const after = await page.evaluate(() => ({ n: T.app.state.rules.doctors.length, fri: T.app.state.rules.friday_night_min, wk: T.app.state.rules.weekend_dayshift_wish, order: T.app.state.rules.name_order }));
+    assert.strictEqual(after.n, n0 - 1, "名簿から外れる"); assert.deepStrictEqual(after.fri, {}, "隠れた欄の条件も外れる"); assert.deepStrictEqual(after.wk, []); assert.ok(!after.order.includes(who));
+    await page.click('[data-setmode="build"]'); await page.click("#btnExportProfile"); await page.waitForFunction(() => window.__toasts.some(t => /profile_/.test(t)), null, { timeout: 10000 });
+    const names = fs.names("A").filter(n => /^profile_.*\.json$/.test(n)); assert.strictEqual(names.length, 1); const txt = fs.text("A/" + names[0]); assert.ok(!txt.includes(who), "共有用の書き出しに外した人の氏名が残らない"); assert.deepStrictEqual(JSON.parse(txt).friday_night_min || {}, {});
+    await waitSaved(page); assert.ok(!JSON.stringify(JSON.parse(fs.text("A/202611/202611_data.json")).rules).includes(who), "保存した設定にも残らない");
+    await ctx.close();
+  });
+  await test("改名と固定配置: 固定配置の画面を開いた後に設定タブで改名しても、入力タブへ戻ったときに固定が旧名へ戻らない（保存した JSON も新しい氏名）", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]');
+    const info = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = A.dutyNames()[0]; (A.state.month.fixed.night ||= {})[7] = n; A.save(); A.renderAll(); return { who: n, i: R.doctors.findIndex(d => d.name === n) }; });
+    await page.click('.subnav .sub[data-sub="fixedPane"]'); assert.ok(await page.locator("#fixedPane").isVisible(), "固定配置の画面を開く");
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]');
+    const inp = page.locator(`#doctorTable tr[data-i="${info.i}"] input[data-f="name"]`); await inp.fill("Review Z"); await inp.dispatchEvent("change");
+    assert.strictEqual(await page.evaluate(() => T.app.state.month.fixed.night[7]), "Review Z", "改名の直後は新しい氏名");
+    await page.click('.tab[data-tab="input"]'); assert.strictEqual(await page.evaluate(() => T.app.state.month.fixed.night[7]), "Review Z", "入力タブへ戻っても旧名へ戻らない");
+    await page.click('.subnav .sub[data-sub="monthSettings"]'); assert.strictEqual(await page.evaluate(() => T.app.state.month.fixed.night[7]), "Review Z");
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")); assert.strictEqual(saved.month.fixed.night[7], "Review Z", "保存した JSON も新しい氏名"); assert.ok(!JSON.stringify(saved.month.fixed).includes(info.who), "旧名は固定に残らない");
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 8 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 10 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

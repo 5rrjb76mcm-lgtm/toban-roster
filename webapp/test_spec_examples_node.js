@@ -4,7 +4,7 @@
 // コードを読まずに立てた期待値と突き合わせる。期待値の根拠は各例のコメントに書く。名前はすべて架空（同梱の 2 交代プロファイル）
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "report.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/calendars")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/calendars", f), "utf8"), { filename: "calendars/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
@@ -112,5 +112,28 @@ test("当月目標の自動調整: 日勤 2 名・夜勤 1 名の月は必要枠
   const at = T.autoTargets(R, m); assert.strictEqual(at.slots, 90); assert.strictEqual(at.quotaSum, 90); assert.deepStrictEqual(at.targets, {}, "調整なし"); assert.ok(at.lines.some(l => /調整不要/.test(l)), at.lines.join(" / "));
   const { R: R2, m: m2 } = base({ count: { day: 2 } }); R2.profile.quota_mode = "absolute"; R2.doctors.forEach(d => { d.quota = 17; }); // 目安を 17 ずつ（合計 85）にすると、足りない 5 枠分を ±1 の範囲で 1 ずつ増やす
   const at2 = T.autoTargets(R2, m2); assert.strictEqual(at2.slots, 90); assert.strictEqual(at2.quotaSum, 85); assert.deepStrictEqual(Object.values(at2.targets), [18, 18, 18, 18, 18]);
+});
+test("連日・勤務間隔は日で数える: 15 日の日勤＋夜勤だけの人に、連日（14→15・15→16）も中 1 日・中 2 日も付かない。ほかの 4 名は 1 日おきで、中 1 日の組は 12＋12＋14＋14＝52", () => {
+  // 奇数日（15 日を除く）は D[1] が日勤・D[2] が夜勤、偶数日は D[3] が日勤・D[4] が夜勤、15 日は D[0] が両方。実際に連日で働く人はいない
+  const mk = states => base({ states: Object.assign({ same_day_double: "off" }, states), weights: { consecutive_days: 200, work_gap_1: 20, work_gap_2: 7 } });
+  const asgOf = D => { const a = {}; for (let d = 1; d <= 30; d++) { const odd = d % 2 === 1; a[`${d}:day`] = { work: d === 15 ? D[0] : odd ? D[1] : D[3], oc: [] }; a[`${d}:night`] = { work: d === 15 ? D[0] : odd ? D[2] : D[4], oc: [] }; } return a; };
+  { const { R, m, D } = mk({ consecutive_days: "hard" }); const r = T.check(new T.Problem(R, m), asgOf(D)); assert.strictEqual(r.V.length, 0, "連日の違反なし: " + codes(r).join(",")); assert.strictEqual(r.W.length, 0); }
+  { const { R, m, D } = mk({ consecutive_days: "soft" }); const it = pen(new T.Problem(R, m), asgOf(D)); assert.ok(!it.consecutive_days, "連日の減点 0（以前は 2 組 × 200）: " + it.consecutive_days); }
+  { const { R, m, D } = mk({ work_gap: "soft" }); const it = pen(new T.Problem(R, m), asgOf(D)); assert.strictEqual(it.work_gap_1, 52 * 20, "中 1 日は 52 組"); assert.ok(!it.work_gap_2, "中 2 日は 0（1 日おきの人は 3 日離れた日に働かない）"); }
+  // 対照: 実際の連日は数える（D[1] を 16 日の日勤にも入れると 15 日の人ではなく D[1] の 1 組… 17 日と連日）
+  { const { R, m, D } = mk({ consecutive_days: "soft" }); const a = asgOf(D); a["16:day"].work = D[1]; const it = pen(new T.Problem(R, m), a); assert.strictEqual(it.consecutive_days, 200, "16→17 の 1 組"); }
+});
+test("OC の検算: 当番候補でない人（配置しない）の OC と、同じ人を重ねた OC は構造の違反（人数を満たした扱いにしない）", () => {
+  const R = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8")); T.fillDefaultRules(R); const m = T.normalizeMonth(JSON.parse(fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8")), R), asg = JSON.parse(fs.readFileSync(path.join(__dirname, "data/js_assignment.json"), "utf8"));
+  const P0 = new T.Problem(R, m); assert.strictEqual(T.check(P0, asg).V.length, 0, "同梱の割当は違反なし");
+  const key = Object.keys(asg).find(k => (asg[k].oc || []).length >= 1), who = asg[key].oc[0];
+  const R2 = clone(R); R2.doctors.find(d => d.name === who).duty = "never"; const r2 = T.check(new T.Problem(R2, m), asg); assert.ok(codes(r2).includes("SLOT_OC_UNKNOWN"), "候補から外した人の OC: " + codes(r2).join(","));
+  const key2 = Object.keys(asg).find(k => (asg[k].oc || []).length >= 2); assert.ok(key2, "OC 2 名の枠がある"); const a3 = clone(asg); a3[key2].oc = [a3[key2].oc[0], a3[key2].oc[0]];
+  const r3 = T.check(P0, a3); assert.ok(codes(r3).includes("SLOT_OC_DUP"), "同じ人の重複: " + codes(r3).join(","));
+});
+test("説明資料の延べ人数: 日勤 2 名・夜勤 1 名で毎日 3 人が別の人なら 30 日 × 3 ＝ 90（1 枠の先頭の人だけを数えない）", () => {
+  const { R, m, D } = base({ count: { day: 2 }, states: { staff_per_day: "soft" }, weights: { staff_per_day: 1 } }); const P = new T.Problem(R, m), a = rotation(D, 30, 2);
+  assert.strictEqual(T.check(P, a).V.length, 0); assert.strictEqual(pen(P, a).staff_per_day, 90, "減点の数え方は 90");
+  const txt = JSON.stringify(T.buildReport(P, a)); assert.ok(/当番に入った延べ人数[^"]*: 90/.test(txt), "説明資料も 90: " + (txt.match(/当番に入った延べ人数[^"]*/) || [""])[0]);
 });
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

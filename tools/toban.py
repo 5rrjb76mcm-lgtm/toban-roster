@@ -559,6 +559,22 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
     def workday(d, n):
         return sum(Wv((d, k), n) for k in ("day", "night") if (d, k) in P.all_slots_set)
     first_prev = min([s[0] for s in P.prev_slots], default=1)
+    _yd = {}
+
+    def yday(d, n):
+        """その日にどれかの枠で勤務するか（0/1）。同じ日の 2 勤務を 2 日分と数えない（JS 版の ctx.y と同じ）。前月末は定数"""
+        ks = [k for k in ("day", "night") if (d, k) in P.all_slots_set]
+        if d < 1:
+            return 1 if any(Wv((d, k), n) == 1 for k in ks) else 0
+        if not ks:
+            return 0
+        if len(ks) == 1:
+            return Wv((d, ks[0]), n)
+        if (d, n) not in _yd:
+            v = M.NewBoolVar(f"yd_{d}_{n}")
+            M.AddMaxEquality(v, [Wv((d, k), n) for k in ks])
+            _yd[(d, n)] = v
+        return _yd[(d, n)]
     # 連続禁止は、固定指定した枠・医師が絡む組だけ「減点付きで許容」（fixed_conflict）。それ以外は必須
     def le1(fixed_involved, expr):
         if fixed_involved:
@@ -578,7 +594,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                     le1(fx_w(d, n), work[(d, "day"), n] + work[(d, "night"), n])
         if P.consecutive_days_on:
             for d in range(max(first_prev, 0), P.N):  # 前月どうしの組は対象外（定数の式で解なしにしない）
-                le1(fx_w(d, n) or fx_w(d + 1, n), workday(d, n) + workday(d + 1, n))
+                le1(fx_w(d, n) or fx_w(d + 1, n), yday(d, n) + yday(d + 1, n))
 
     # 隣接枠の連続禁止（例外: 主担当の同一期間、若手の同日兼務）
     def same_period(s1, s2):
@@ -680,7 +696,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 return P.is_fixed_eng((N, "day"), n) or P.is_fixed_eng((N, "night"), n)
             for n in names:
                 if P.next_fixed_works(n):
-                    le0(fx_n(n), workday(N, n))
+                    le0(fx_n(n), yday(N, n))
                 if P.next_fixed_engaged(n, first_k) and (N, "night") in P.all_slots_set:
                     if P.team[n] == "I" and cross and first_k == "day":
                         if not P.next_fixed["charge"]:  # 主担当担当の固定があればそれを優先（下で1本だけ張る）
@@ -900,7 +916,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
         def wd(d, n=n):
             if d > P.N:
                 return 1 if P.next_fixed_works(n) else 0
-            return workday(d, n)
+            return yday(d, n)
         def prev_worked(d, n=n):
             return any(Wv((d, k), n) == 1 for k in ("day", "night") if (d, k) in P.all_slots_set)
         for gap, w in ((2, W["work_gap_1"]), (3, W["work_gap_2"])):
@@ -1035,6 +1051,11 @@ def check(P: Problem, asg: dict):
         for n in ocs:
             if T.get(n) in ("A", "C"):
                 V.append(f"{slab(s)}: {n} はOC対象外")
+        if len(set(ocs)) != len(ocs):
+            V.append(f"{slab(s)}: OCに同じ人が重ねて入っている（{'・'.join(ocs)}）")
+        for n in dict.fromkeys(ocs):
+            if n not in names:
+                V.append(f"{slab(s)}: OCが当番候補でない（{n}）")
     # 2 不可
     for n in names:
         for d in P.unavail_night.get(n, ()):

@@ -16,7 +16,7 @@ T.rules.register({
   // 説明資料の第 9 節（調整目標の達成状況）の行
   report(ctx, prm) {
     const { P, A, t } = ctx; let staff = 0;
-    for (let d = 1; d <= P.N; d++) { const ppl = new Set(); for (const k of ["day", "night"]) if (ctx.has([d, k])) { ppl.add(A.work([d, k])); for (const x of A.oc([d, k])) ppl.add(x); } staff += ppl.size; }
+    for (let d = 1; d <= P.N; d++) { const ppl = new Set(); for (const k of ["day", "night"]) if (ctx.has([d, k])) { for (const x of A.workers([d, k])) if (x) ppl.add(x); for (const x of A.oc([d, k])) if (x) ppl.add(x); } staff += ppl.size; } // 1 枠に複数名の勤務者も全員数える（空の枠は数えない）
     ctx.line(t("当番に入った延べ人数（1人・1日を1と数える。減点 staff_per_day の対象）: {n}", { n: staff }));
   },
   python: true,

@@ -632,7 +632,29 @@
     for (const byName of Object.values(m.person_days || {})) for (const n of Object.keys(byName || {})) if (bad.has(n)) { delete byName[n]; c++; }
     return c;
   }
-  T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames;
+  // 設定（名簿の外）から、指定した氏名の人ごとの項目を除く: 氏名をキーにした項目・氏名そのものの配列要素・name が氏名の要素（名簿から外すときに使う。文の中の氏名は触らない）。戻り値は除いた件数
+  function purgeRulesNames(R, names) {
+    const bad = new Set(names); let c = 0; if (!bad.size || !R) return 0;
+    const walk = v => { if (Array.isArray(v)) { for (let i = v.length - 1; i >= 0; i--) { const x = v[i]; if ((typeof x === "string" && bad.has(x)) || (x && typeof x === "object" && !Array.isArray(x) && bad.has(x.name))) { v.splice(i, 1); c++; } else walk(x); } }
+      else if (v && typeof v === "object") for (const k of Object.keys(v)) { if (bad.has(k)) { delete v[k]; c++; } else walk(v[k]); } };
+    for (const k of Object.keys(R)) if (k !== "doctors") walk(R[k]);
+    return c;
+  }
+  // 設定のうち名簿の欄（規則の columns の begin / end）が持つ人ごとの項目から、いまの名簿にいない人の分を除く（以前に名簿から外した人の条件が、隠れた欄に残っている保存データ向け）。
+  // 欄を空で書いた結果と比べ、消えた項目＝人ごとの項目とみなす。戻り値は除いた件数
+  function pruneRosterRefs(R) {
+    const names = new Set((R.doctors || []).map(d => d.name)); let c = 0; const plain = v => v && typeof v === "object" && !Array.isArray(v), J = v => JSON.stringify(v);
+    const prune = (orig, cleared) => {
+      if (Array.isArray(orig)) { if (J(orig) === J(cleared)) return orig; const keepAll = Array.isArray(cleared) ? cleared.map(J) : [];
+        return orig.filter(x => { const who = typeof x === "string" ? x : plain(x) ? x.name : undefined; const keep = who === undefined || names.has(who) || keepAll.includes(J(x)); if (!keep) c++; return keep; }); }
+      if (plain(orig)) { const cl = plain(cleared) ? cleared : {}; for (const k of Object.keys(orig)) { if (k in cl) orig[k] = prune(orig[k], cl[k]); else if (!names.has(k)) { delete orig[k]; c++; } } }
+      return orig; };
+    for (const col of (T.rules && T.rules.columnsAll ? T.rules.columnsAll(R) : [])) { if (typeof col.end !== "function") continue;
+      let R2; try { R2 = JSON.parse(J(R)); col.end(R2, col.begin ? col.begin(R2) : {}); } catch (e) { continue; }
+      for (const k of Object.keys(R)) if (k !== "doctors" && J(R[k]) !== J(R2[k])) R[k] = prune(R[k], R2[k]); }
+    return c;
+  }
+  T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ
   const DAYFLAG_DEFS = [], DAYFLAG_BY_ID = {};
@@ -729,14 +751,14 @@
   // 失敗の記録は持たない。計算・帳票の出力の前に、判定対象の設定・月そのものの複製で同じフックを走らせて確かめる（T.hookCheck → 入力チェック LINT_PLUGIN_HOOK）。
   // 記録の表だと、同じ年月の別のデータ（統合で読んだ相手の月など）の成功で手元の失敗が消えるので、対象そのもので毎回見る
   function runHook(def, hook, target, ...rest) {
-    let copy; try { copy = JSON.parse(JSON.stringify(target)); def[hook](copy, ...rest); } catch (e) { return false; }
+    let copy; try { copy = JSON.parse(JSON.stringify(target)); def[hook](copy, ...rest.map(x => x && typeof x === "object" ? JSON.parse(JSON.stringify(x)) : x)); } catch (e) { return false; } // 2 つ目以降の引数（normalizeMonth の設定）は読むだけの複製。フックが書き換えても実物は変わらない（設定の移行は normalize で行う）
     for (const k of Object.keys(target)) delete target[k]; Object.assign(target, copy); return true;
   }
   // この設定・この月に対して独自データのフックが失敗するか（複製で試すだけで何も変えない）。[{ id, hook, err }]
   function hookCheck(rules, month) {
     const out = [];
     for (const def of RULE_DEFS) for (const hook of ["normalize", "normalizeMonth"]) { if (typeof def[hook] !== "function") continue; const target = hook === "normalize" ? rules : month; if (!target) continue;
-      try { const copy = JSON.parse(JSON.stringify(target)); if (hook === "normalize") def.normalize(copy); else def.normalizeMonth(copy, rules); } catch (e) { out.push({ id: def.id, hook, err: (e && e.message) || String(e) }); } }
+      try { const copy = JSON.parse(JSON.stringify(target)); if (hook === "normalize") def.normalize(copy); else def.normalizeMonth(copy, rules ? JSON.parse(JSON.stringify(rules)) : rules); } catch (e) { out.push({ id: def.id, hook, err: (e && e.message) || String(e) }); } }
     return out;
   }
   T.runHook = runHook; T.hookCheck = hookCheck;

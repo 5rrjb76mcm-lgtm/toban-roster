@@ -8,10 +8,10 @@ T.rules.register({
   solve(ctx) {
     const { P, E } = ctx;
     for (const n of ctx.names) for (let d = ctx.firstPrev; d < P.N; d++) { if (d + 1 < 1) continue; // 前月どうしの組は対象外（定数の式で解なしにしない）
-      ctx.limit("consecutive_days", E(ctx.workday(d, n), ctx.workday(d + 1, n)), "<=", 1, { fixed: ctx.fixedInvolved([d, d + 1], n), aux: "cw", ub: 3 }); }
+      ctx.limit("consecutive_days", E(ctx.y(d, n), ctx.y(d + 1, n)), "<=", 1, { fixed: ctx.fixedInvolved([d, d + 1], n), aux: "cw", ub: 1 }); } // 日ごとの 0/1（同じ日の 2 勤務を 2 日分と数えない）
     // 翌月 1 日の固定指定（カレンダーの翌月 1 日欄）との連日。月末の枠もその人で固定されているときは減点付きで許す
     if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny()) { const N = P.N;
-      for (const n of ctx.names) if (P.nextFixedWorks(n)) ctx.limit("consecutive_days", ctx.workday(N, n), "<=", 0, { fixed: P.isFixedEng([N, "day"], n) || P.isFixedEng([N, "night"], n), aux: "fxc", ub: 3 }); }
+      for (const n of ctx.names) if (P.nextFixedWorks(n)) ctx.limit("consecutive_days", ctx.y(N, n), "<=", 0, { fixed: P.isFixedEng([N, "day"], n) || P.isFixedEng([N, "night"], n), aux: "fxc", ub: 1 }); }
   },
   check(ctx) {
     const { P } = ctx;
@@ -22,9 +22,9 @@ T.rules.register({
   penalty(ctx) {
     const { P } = ctx;
     for (const n of ctx.names) for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1)
-      ctx.limit("consecutive_days", ctx.workday(n, d) + ctx.workday(n, d + 1), "<=", 1, { fixed: ctx.fixedInvolved([d, d + 1], n) });
+      ctx.limit("consecutive_days", ctx.y(n, d) + ctx.y(n, d + 1), "<=", 1, { fixed: ctx.fixedInvolved([d, d + 1], n) });
     if (P.nextFixedAny()) for (const n of ctx.names) if (P.nextFixedWorks(n))
-      ctx.limit("consecutive_days", ctx.workday(n, P.N), "<=", 0, { fixed: P.isFixedEng([P.N, "day"], n) || P.isFixedEng([P.N, "night"], n) });
+      ctx.limit("consecutive_days", ctx.y(n, P.N), "<=", 0, { fixed: P.isFixedEng([P.N, "day"], n) || P.isFixedEng([P.N, "night"], n) });
   },
   messages: {
     CONSECUTIVE_DAYS: { en: "{day}→{next}: {who} works on consecutive days", ja: "{day}→{next}: {who} 連日の実勤務" },

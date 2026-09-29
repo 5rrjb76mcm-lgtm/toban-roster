@@ -8,16 +8,16 @@ T.rules.register({
     const { P, lp, LP, E, W } = ctx;
     for (const n of ctx.names) { if (P.isRole(n, "reserve")) continue;
       const prevWorked = d => ["day", "night"].some(k => ctx.has([d, k]) && ctx.Wv([d, k], n) === 1);
-      const wd = d => d > P.N ? (P.nextFixedWorks(n) ? 1 : 0) : ctx.workday(d, n);
+      const wd = d => ctx.y(d, n); // 日ごとの 0/1（同じ日の 2 勤務を 2 日分と数えない。前月末と翌月 1 日の固定は定数）
       for (const [gap, w] of [[2, W.work_gap_1], [3, W.work_gap_2]]) for (let d = ctx.firstPrev; d + gap <= P.N + 1; d++) {
         if (d < 1 && (d + gap < 1 || !prevWorked(d))) continue; // 前月どうしの組と、前月に勤務が無い組は式が不要
         if (d + gap > P.N && !P.nextFixedWorks(n)) continue;
-        const v = lp.auxInt("gap", 0, 3); lp.add(LP.sub(E(wd(d), wd(d + gap)), 1), "<=", v); lp.objAdd(w, v); } } // 固定指定で同日に日勤＋夜勤があると式が3になるので整数
+        const v = lp.auxInt("gap", 0, 1); lp.add(LP.sub(E(wd(d), wd(d + gap)), 1), "<=", v); lp.objAdd(w, v); } }
   },
   penalty(ctx) {
     const { P, pos } = ctx, W = P.weights;
     for (const n of ctx.names) { if (P.isRole(n, "reserve")) continue;
-      const wd = d => d > ctx.N ? (P.nextFixedWorks(n) ? 1 : 0) : ctx.workday(n, d);
+      const wd = d => ctx.y(n, d);
       for (const [gap, k, w] of [[2, "work_gap_1", W.work_gap_1], [3, "work_gap_2", W.work_gap_2]]) for (let d = ctx.firstPrev; d + gap <= ctx.N + 1; d++) {
         if (d < 1 && (d + gap < 1 || !ctx.workday(n, d))) continue;
         if (d + gap > ctx.N && !P.nextFixedWorks(n)) continue;
