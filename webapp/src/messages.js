@@ -15,6 +15,8 @@
     SLOT_OC_ON_MULTI: { en: "{slot}: on-call attached to a multi-person slot ({who})", ja: "{slot}: 複数名の枠にOCが付いている（{who}）" },
     SLOT_OC_MISMATCH: { en: "{slot}: on-call does not match the required make-up. On duty {worker} ({role}), on-call {oc}", ja: "{slot}: OC構成不一致 勤務者{worker}（{role}） OC={oc}" },
     SLOT_OC_SELF: { en: "{slot}: {worker} is on duty and on-call at once", ja: "{slot}: 勤務者{worker}がOCを兼ねている" },
+    FIXED_OC_NONE: { en: "{slot}: fixed as no {role} on-call, but {who} is on-call", ja: "{slot}: {role}のOCなしの固定なのに、{who} がOCに入っている" },
+    RESERVE_OVER: { en: "{who}: a reserve member is on duty {count} times (at most once a month)", ja: "{who}: 予備の役割の勤務が{count}回（月1回まで）" },
     SLOT_OC_DUP: { en: "{slot}: the same person is listed twice as on-call ({who})", ja: "{slot}: OCに同じ人が重ねて入っている（{who}）" },
     SLOT_OC_UNKNOWN: { en: "{slot}: on-call is not a duty candidate ({who})", ja: "{slot}: OCが当番候補でない（{who}）" },
     SLOT_OC_NOT_STANDBY: { en: "{slot}: {who} cannot take on-call", ja: "{slot}: {who} はOC対象外" },

@@ -1089,5 +1089,18 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const pin = T.solve(P, highs, { timeLimit: 60, pin: a }); assert(pin.asg, "全枠固定で解ける（以前は Infeasible）: " + pin.status); const pen = T.penalty(P, a).total; assert(Math.abs(pin.objective - pen) < 1e-6, `目的関数 ${pin.objective} ＝ 減点 ${pen}`); assert.strictEqual(pen, 52 * 20, "中 1 日 52 組 × 20");
     const soft = JSON.parse(JSON.stringify(two)); soft.rule_states.consecutive_days = "soft"; const Ps = new T.Problem(soft, m), pin2 = T.solve(Ps, highs, { timeLimit: 60, pin: a }); assert(pin2.asg); assert(Math.abs(pin2.objective - T.penalty(Ps, a).total) < 1e-6 && Math.abs(pin2.objective - 52 * 20) < 1e-6, "減点でも同じ: " + pin2.objective);
   });
+  await test("検算と解く側の一致: 「OC なし」の固定に反する割当・予備の役割の 2 回は、検算が違反にし、全枠を固定して解いても解なし。直した割当は解ける", async () => {
+    { const R = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8")); T.fillDefaultRules(R); const m = T.normalizeMonth(JSON.parse(fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8")), R), asg = JSON.parse(fs.readFileSync(path.join(__dirname, "data/js_assignment.json"), "utf8"));
+      const P0 = new T.Problem(R, m), jr = P0.refId("junior"), key = Object.keys(asg).find(k => k.endsWith(":night") && (asg[k].oc || []).some(n => P0.team[n] === jr)), d = +key.split(":")[0];
+      const m2 = JSON.parse(JSON.stringify(m)); (m2.fixed.night_oc_none ||= {})[d] = [jr]; const P2 = new T.Problem(R, m2);
+      assert(T.check(P2, asg).VC.some(v => v.code === "FIXED_OC_NONE"), "検算が違反にする"); assert(!T.solve(P2, highs, { timeLimit: 60, pin: asg }).asg, "全枠固定は解なし");
+      const a3 = JSON.parse(JSON.stringify(asg)); a3[key].oc = a3[key].oc.filter(n => P0.team[n] !== jr); const r3 = T.check(P2, a3); if (!r3.V.length) { const pin = T.solve(P2, highs, { timeLimit: 60, pin: a3 }); assert(pin.asg, "OC を外した割当は解ける: " + pin.status); assert(Math.abs(pin.objective - T.penalty(P2, a3).total) < 1e-6, "目的関数＝減点"); } }
+    { const two = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); two.doctors = two.doctors.slice(0, 5); two.name_order = two.doctors.map(d => d.name); T.fillDefaultRules(two);
+      for (const def of T.RULE_DEFS) if ((def.states || []).includes("off")) two.rule_states[def.id] = "off"; two.profile.roles = [{ id: "S", label: "職員", refs: ["charge", "other", "junior"] }, { id: "C", label: "予備", refs: ["reserve"] }]; two.doctors[0].team = "C"; two.doctors[0].duty = "no_unless_needed"; two.weights.chief_duty = 1000;
+      const D = two.doctors.map(d => d.name), others = D.slice(1), mk = k => { const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: others[(d - 1) % 4], oc: [] }; a[`${d}:night`] = { work: others[(d + 1) % 4], oc: [] }; } if (k >= 1) a["4:night"].work = D[0]; if (k >= 2) a["10:night"].work = D[0]; return a; };
+      const P = new T.Problem(two, T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], allow_chief_duty: true }, two));
+      assert(T.check(P, mk(2)).VC.some(v => v.code === "RESERVE_OVER"), "2 回は検算が違反にする"); assert(!T.solve(P, highs, { timeLimit: 60, pin: mk(2) }).asg, "2 回の全枠固定は解なし");
+      assert.strictEqual(T.check(P, mk(1)).V.length, 0); const pin1 = T.solve(P, highs, { timeLimit: 60, pin: mk(1) }); assert(pin1.asg, "1 回は解ける: " + pin1.status); assert(Math.abs(pin1.objective - T.penalty(P, mk(1)).total) < 1e-6 && Math.abs(pin1.objective - 1000) < 1e-6, "目的関数＝減点＝1000: " + pin1.objective); }
+  });
   console.log(`${passed} tests passed${process.exitCode ? "（失敗あり）" : ""}`);
 })();

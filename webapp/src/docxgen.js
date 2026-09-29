@@ -65,7 +65,8 @@
     const changed = (s, kind) => {
       if (!baseAsg) return false;
       const a = (opts.asg || {})[`${s[0]}:${s[1]}`] || {}, b = baseAsg[`${s[0]}:${s[1]}`] || {};
-      return kind === "work" ? (a.work || "") !== (b.work || "") : [...(a.oc || [])].sort().join("・") !== [...(b.oc || [])].sort().join("・");
+      const set = v => [].concat(v || []).filter(Boolean).map(String).sort().join("\u0001"); // 勤務者は文字列（1 名）か配列（複数名）。中身の集合で比べる（複製した配列・並び順だけの違い・1 名の表し方の違いを変更にしない）
+      return kind === "work" ? set(a.work) !== set(b.work) : set(a.oc) !== set(b.oc);
     };
     const today = opts.today ? new Date(opts.today) : new Date(); // opts.today: 表題の日付を固定する（回帰テスト用）
     return Object.assign({}, p, {

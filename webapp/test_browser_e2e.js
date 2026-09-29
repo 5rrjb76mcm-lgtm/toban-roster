@@ -37,7 +37,11 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       async getFileHandle(name, opt) { const p = this.__path + "/" + name, k = await __e2efs("kind", { path: p }); if (k === "file") return new FakeFile(p); if (k) throw new DOMException("not a file", "TypeMismatchError"); if (opt && opt.create) { await __e2efs("write", { path: p, b64: "" }); return new FakeFile(p); } throw new DOMException("not found", "NotFoundError"); }
       async removeEntry(name) { await __e2efs("remove", { path: this.__path + "/" + name }); }
       async queryPermission() { return "granted"; } async requestPermission() { return "granted"; } async isSameEntry(o) { return o && o.__path === this.__path; } }
-    window.showDirectoryPicker = async () => { const p = localStorage.getItem("__e2e_folder") || "A"; await __e2efs("mkdir", { path: p }); return new FakeDir(p); };`;
+    window.showDirectoryPicker = async () => { const p = localStorage.getItem("__e2e_folder") || "A"; await __e2efs("mkdir", { path: p }); return new FakeDir(p); };
+    // 偽のフォルダを IndexedDB に覚えられるようにする（実物のハンドルは複製できる。偽物は関数を持つので、場所だけを入れて読むときに作り直す）。同じ context で開き直すと、権限が残っているときの自動の再接続を通る
+    { const put0 = IDBObjectStore.prototype.put, get0 = IDBObjectStore.prototype.get, res = Object.getOwnPropertyDescriptor(IDBRequest.prototype, "result");
+      IDBObjectStore.prototype.put = function (v, k) { return put0.call(this, v instanceof FakeDir ? { __fakeDir: v.__path } : v, k); };
+      IDBObjectStore.prototype.get = function (k) { const r = get0.call(this, k); Object.defineProperty(r, "result", { configurable: true, get() { const v = res.get.call(r); return v && v.__fakeDir ? new FakeDir(v.__fakeDir) : v; } }); return r; }; }`;
   // Node 側のファイル置き場（試験ごとに 1 つ）。path は "A/202611/202611_data.json" の形
   const makeFs = () => { const files = new Map(), dirs = new Set();
     const parent = p => p.split("/").slice(0, -1).join("/");
@@ -51,7 +55,7 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   // fs.gates[path] に Promise を置くと、その読取りを保留する（読取り中の操作の試験用）
   const bind = async (ctx, fs) => { await ctx.exposeBinding("__e2efs", (_, op, a) => { switch (op) { case "read": { const b = fs.read(a.path); if (fs.gates && fs.gates[a.path]) { fs.waiting = (fs.waiting || 0) + 1; return fs.gates[a.path].then(() => b === null ? null : b.toString("base64")); } return b === null ? null : b.toString("base64"); } case "write": fs.write(a.path, Buffer.from(a.b64 || "", "base64")); return true; case "kind": return fs.kind(a.path); case "mkdir": fs.mkdir(a.path); return true; case "remove": fs.remove(a.path); return true; case "list": return fs.list(a.path); default: throw new Error("unknown op " + op); } }); };
   const newCtx = async () => { const ctx = await browser.newContext(); const fs = makeFs(); await bind(ctx, fs); return { ctx, fs }; };
-  const newPage = async ctx => { const page = await ctx.newPage(); await page.addInitScript(INIT); page.on("pageerror", e => fail(`ページのエラー: ${e.message}`)); page.on("crash", () => fail("ページがクラッシュしました")); if (process.env.E2E_DEBUG) page.on("console", m => console.log("     console:", m.type(), m.text().slice(0, 160))); await page.goto(URL); await page.waitForSelector("#startGate:not([hidden])"); return page; };
+  const newPage = async (ctx, opts) => { const page = await ctx.newPage(); await page.addInitScript(INIT); page.on("pageerror", e => fail(`ページのエラー: ${e.message}`)); page.on("crash", () => fail("ページがクラッシュしました")); if (process.env.E2E_DEBUG) page.on("console", m => console.log("     console:", m.type(), m.text().slice(0, 160))); await page.goto(URL); if (!(opts && opts.noGate)) await page.waitForSelector("#startGate:not([hidden])"); return page; };
   // 「閉じて開き直す」は、新しいページを先に開いてから前のページを閉じる（インストール済みの Chrome は最後のページを閉じるとブラウザごと終了する）
   // 「閉じて開き直す」は、同じ Node 側のフォルダを結び付けた新しい context（localStorage・IndexedDB は空）で開く。ブラウザ内の保存が無いので、フォルダのデータから再開する経路そのものを通る
   const reopen = async (ctx, fs) => { const c2 = await browser.newContext(); await bind(c2, fs); const p2 = await newPage(c2); await ctx.close(); return { ctx: c2, page: p2 }; };
@@ -229,6 +233,60 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.ok(fs.names("B/202612").includes("202612_data.json"), "B に 12 月が保存される: " + await page.locator("#saveState").textContent()); await waitSaved(page); assert.strictEqual(JSON.parse(fs.text("B/202612/202612_data.json")).month.notes, "december-from-A");
     await ctx.close();
   });
+  const reveal = (page, sel) => page.evaluate(q => { const b = document.querySelector(q); for (let d = b.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true; }, sel); // 折りたたみの中のボタンを押せるようにする
+  await test("起動時の自動の再接続: 前回のフォルダの照合を待つ間は保存フォルダを変更できず、別のフォルダに保存済みと表示しない", async () => {
+    const { ctx, fs } = await newCtx(); const page1 = await newPage(ctx); await start(page1); await waitSaved(page1); await setNotes(page1, "from A"); await page1.waitForSelector("#saveState.dirty"); await waitSaved(page1);
+    const b = JSON.parse(fs.text("A/202611/202611_data.json")); b.month.notes = "from B"; b.saved_at = "2026-10-09T00:00:00.000Z"; fs.write("B/202611/202611_data.json", Buffer.from(JSON.stringify(b)));
+    let release; fs.gates = { "A/202611/202611_data.json": new Promise(r => { release = r; }) }; fs.waiting = 0;
+    const page = await newPage(ctx, { noGate: true }); await page1.close(); // 同じ context で開き直す（前回のフォルダのハンドルと権限が残っている）
+    for (let i = 0; i < 200 && !fs.waiting; i++) await page.waitForTimeout(50); assert.ok(fs.waiting > 0, "自動の再接続で A の 11 月の読取りが待っている"); assert.ok(await page.locator("#startGate").isHidden(), "開始画面は出ない");
+    await page.evaluate(() => localStorage.setItem("__e2e_folder", "B")); const n0 = await page.evaluate(() => window.__toasts.length); await reveal(page, "#btnOpenFolder"); await page.click("#btnOpenFolder");
+    await page.waitForFunction(n => window.__toasts.slice(n).some(t => /別の切り替え/.test(t)), n0, { timeout: 10000 }); fs.gates = {}; release();
+    await page.waitForFunction(() => T.app.switching === 0, null, { timeout: 10000 }); await waitSaved(page);
+    const st = await page.evaluate(() => ({ folder: T.app.dirHandle && T.app.dirHandle.name, notes: T.app.state.month.notes, where: T.app.state.meta && T.app.state.meta.savedWhere, dirty: T.app.isDirty() }));
+    assert.strictEqual(st.folder, "A"); assert.strictEqual(st.notes, "from A"); assert.strictEqual(st.dirty, false); assert.ok(/A/.test(st.where || ""), st.where); assert.strictEqual(JSON.parse(fs.text("B/202611/202611_data.json")).month.notes, "from B", "B は変わらない");
+    // 照合が終わった後なら変更でき、B のデータを B のものとして読む
+    await page.click("#btnOpenFolder"); await page.waitForFunction(() => T.app.dirHandle && T.app.dirHandle.name === "B" && T.app.state.month.notes === "from B", null, { timeout: 10000 }); await waitSaved(page);
+    assert.strictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.notes, "from A", "A は変わらない");
+    await ctx.close();
+  });
+  await test("医師別カレンダー: 同じ日の日勤帯の不可と夜勤の「避」は、別の欄の編集で片方が消えない。欄を空にすると出していた不可だけが消え、残った「避」が欄に出る", async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0], m = A.state.month; m.unavailable_other = [{ name: n, day: 7, part: "day" }]; m.avoid = [{ name: n, day: 7, part: "night" }]; m.unavailable_night[n] = [12]; A.state.ui.doctor = 0; A.renderDoctor(); return n; }); // 11/7（土）
+    const sel = page.locator('#doctorPane [data-cal="unavail"][data-d="7"]'); assert.strictEqual(await sel.inputValue(), "day", "不可を出す");
+    await page.check('#doctorPane [data-cal="wish"][data-d="9"]');
+    const both = m => ({ other: (m.unavailable_other || []).filter(u => +u.day === 7).map(u => u.part), avoid: (m.avoid || []).filter(u => +u.day === 7).map(u => u.part), night: (m.unavailable_night || {})[who] || [] });
+    assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: ["day"], avoid: ["night"], night: [12] }, "別の日の希望を変えても両方残る");
+    await waitSaved(page); assert.deepStrictEqual(both(JSON.parse(fs.text("A/202611/202611_data.json")).month), { other: ["day"], avoid: ["night"], night: [12] }, "保存した JSON にも両方");
+    ({ ctx, page } = await reopen(ctx, fs)); await start(page); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: ["day"], avoid: ["night"], night: [12] }, "開き直しても両方");
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.evaluate(() => { T.app.state.ui.doctor = 0; T.app.renderDoctor(); });
+    await page.selectOption('#doctorPane [data-cal="unavail"][data-d="7"]', ""); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: [], avoid: ["night"], night: [12] }, "欄を空にすると、出していた不可だけが消える");
+    await page.waitForFunction(() => { const e = document.querySelector('#doctorPane [data-cal="unavail"][data-d="7"]'); return e && e.value === "avoid_night"; }, null, { timeout: 5000 }); // 残った条件が欄に出る
+    await page.selectOption('#doctorPane [data-cal="unavail"][data-d="7"]', "night"); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: [], avoid: [], night: [7, 12] }, "出していた「避」を不可：夜勤に置き換える");
+    await ctx.close();
+  });
+  await test("医師別カレンダー: 施設のプラグインが足した日ごとの欄で、いまの選択肢に無い値は「（現在は使わない値）」として残り、別の欄の編集で消えない。空欄を選んだときだけ消える", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; T.calendarExt.register({ id: "local.e2e.cal", fields: [{ id: "review_kind", label: "区分", options: [["active", "有効"]] }] }); A.state.month.person_days = { review_kind: { [n]: { 7: "retired", 8: "active" } } }; A.state.ui.doctor = 0; A.renderDoctor(); return n; });
+    const sel = page.locator('#doctorPane [data-cal="pfield"][data-id="review_kind"][data-d="7"]'); assert.strictEqual(await sel.inputValue(), "retired"); assert.ok(/現在は使わない値/.test(await sel.locator("option:checked").textContent()));
+    await page.check('#doctorPane [data-cal="wish"][data-d="9"]'); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.person_days.review_kind), { [who]: { 7: "retired", 8: "active" } }, "別の欄を変えても残る");
+    await waitSaved(page); assert.deepStrictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.person_days.review_kind, { [who]: { 7: "retired", 8: "active" } }, "保存した JSON にも残る");
+    await page.selectOption('#doctorPane [data-cal="pfield"][data-id="review_kind"][data-d="7"]', ""); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.person_days.review_kind), { [who]: { 8: "active" } }, "空欄を選んだときだけ消える");
+    await ctx.close();
+  });
+  await test("実行時に足した表示言語: 訳のプラグインのあるフォルダに接続すると言語の選択肢に出て選べる。その言語のないフォルダへ替えると選択肢から消え、表示は既定の言語に戻る", async () => {
+    const { ctx, fs } = await newCtx(); fs.write("A/plugins/lang/fr.json", Buffer.from(JSON.stringify({ code: "fr", name: "Français", dow: ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"], date_locale: "fr-FR", list_sep: ", ", name_sep: ", ", ui: { "計算する": "Calculer" }, msg: {} })));
+    const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const codes = () => page.evaluate(() => [...document.querySelectorAll("#langSel option")].map(o => o.value).sort());
+    assert.deepStrictEqual(await page.evaluate(() => T.LANGS().map(x => x[0]).sort()), ["en", "fr", "ja"]); assert.deepStrictEqual(await codes(), ["en", "fr", "ja"], "ヘッダーの選択肢に出る");
+    await page.selectOption("#langSel", "fr"); await page.waitForFunction(() => T.lang() === "fr" && document.querySelector("#btnSolve").textContent === "Calculer", null, { timeout: 10000 });
+    await waitSaved(page); await page.evaluate(() => localStorage.setItem("__e2e_folder", "B")); await reveal(page, "#btnOpenFolder"); await page.click("#btnOpenFolder");
+    await page.waitForFunction(() => T.app.dirHandle && T.app.dirHandle.name === "B" && T.lang() !== "fr", null, { timeout: 10000 });
+    assert.deepStrictEqual(await codes(), ["en", "ja"], "その言語のないフォルダでは選択肢から消える"); assert.notStrictEqual(await page.locator("#btnSolve").textContent(), "Calculer"); assert.ok(["en", "ja"].includes(await page.locator("#langSel").inputValue()));
+    await ctx.close();
+  });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 11 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 15 本 OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

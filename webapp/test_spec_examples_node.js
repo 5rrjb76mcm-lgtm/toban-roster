@@ -136,4 +136,20 @@ test("説明資料の延べ人数: 日勤 2 名・夜勤 1 名で毎日 3 人が
   assert.strictEqual(T.check(P, a).V.length, 0); assert.strictEqual(pen(P, a).staff_per_day, 90, "減点の数え方は 90");
   const txt = JSON.stringify(T.buildReport(P, a)); assert.ok(/当番に入った延べ人数[^"]*: 90/.test(txt), "説明資料も 90: " + (txt.match(/当番に入った延べ人数[^"]*/) || [""])[0]);
 });
+test("「OC なし」の固定: その役割の OC が残っている割当は固定との不一致（違反）。OC を外せば違反なし（省略は減点）。固定が無ければ元の割当は違反なし", () => {
+  const R = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8")); T.fillDefaultRules(R); const m = T.normalizeMonth(JSON.parse(fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8")), R), asg = JSON.parse(fs.readFileSync(path.join(__dirname, "data/js_assignment.json"), "utf8"));
+  const P0 = new T.Problem(R, m), jr = P0.refId("junior"); assert.ok(jr, "補助の役割がある"); assert.strictEqual(T.check(P0, asg).V.length, 0);
+  for (const kind of ["night", "day"]) { const key = Object.keys(asg).find(k => k.endsWith(":" + kind) && (asg[k].oc || []).some(n => P0.team[n] === jr)); assert.ok(key, kind + " に補助の OC がいる枠がある"); const d = +key.split(":")[0];
+    const m2 = clone(m); (m2.fixed[kind + "_oc_none"] ||= {})[d] = [jr]; const P2 = new T.Problem(R, m2), r2 = T.check(P2, asg); assert.deepStrictEqual(codes(r2), ["FIXED_OC_NONE"], kind + ": OC が残っていれば違反 1 件: " + codes(r2).join(",")); assert.strictEqual(r2.W.length, 0, "固定による許容にしない");
+    const a3 = clone(asg); a3[key].oc = a3[key].oc.filter(n => P0.team[n] !== jr); assert.ok(!codes(T.check(P2, a3)).includes("FIXED_OC_NONE"), kind + ": 外せば不一致なし"); }
+});
+test("予備の役割: 登用を許した月でも月 1 回まで。0 回・1 回は違反なし、2 回は違反（固定していても許容にしない）。許していない月は 1 回でも違反", () => {
+  const { R, m, D } = base({ states: { same_day_double: "off" } }); R.profile.roles = [{ id: "S", label: "職員", refs: ["charge", "other", "junior"] }, { id: "C", label: "予備", refs: ["reserve"] }]; R.doctors[0].team = "C"; R.doctors[0].duty = "no_unless_needed";
+  const others = D.slice(1), mk = k => { const a = {}; for (let d = 1; d <= 30; d++) { a[`${d}:day`] = { work: others[(d - 1) % 4], oc: [] }; a[`${d}:night`] = { work: others[(d + 1) % 4], oc: [] }; } if (k >= 1) a["4:night"].work = D[0]; if (k >= 2) a["10:night"].work = D[0]; return a; };
+  const Pon = new T.Problem(R, Object.assign(clone(m), { allow_chief_duty: true })), Poff = new T.Problem(R, clone(m)); assert.ok(Pon.isRole(D[0], "reserve"), "予備の役割");
+  assert.ok(!codes(T.check(Pon, mk(0))).some(c => /^RESERVE/.test(c))); assert.ok(!codes(T.check(Pon, mk(1))).some(c => /^RESERVE/.test(c)), "1 回は違反なし");
+  const r2 = T.check(Pon, mk(2)); assert.deepStrictEqual(codes(r2).filter(c => /^RESERVE/.test(c)), ["RESERVE_OVER"], "2 回は違反");
+  const mf = Object.assign(clone(m), { allow_chief_duty: true }); mf.fixed.night[4] = D[0]; mf.fixed.night[10] = D[0]; const rf = T.check(new T.Problem(R, mf), mk(2)); assert.ok(codes(rf).includes("RESERVE_OVER"), "固定していても違反"); assert.ok(!wcodes(rf).includes("RESERVE_OVER"));
+  assert.deepStrictEqual(codes(T.check(Poff, mk(1))).filter(c => /^RESERVE/.test(c)), ["RESERVE_ASSIGNED"], "許していない月は 1 回でも違反"); assert.deepStrictEqual(codes(T.check(Poff, mk(2))).filter(c => /^RESERVE/.test(c)), ["RESERVE_ASSIGNED"], "許していない月は登用の違反 1 件にまとめる");
+});
 console.log(failed ? `仕様の正解例: ${passed} 件通過、${failed} 件失敗` : `仕様の正解例 ${passed} 件 OK`); if (failed) process.exit(1);

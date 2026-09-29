@@ -178,7 +178,9 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-d="${d}" data-shown="${esc(fixedDayVal(d))}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
-    const fieldRows = d => ext.fields.map(f => `<div>${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : f.label)} ${A.sel([["", "―"], ...f.options.map(o => [String(o[0]), T.pickLabel ? T.pickLabel(o[1], String(o[0])) : String(o[1])])], String((((m.person_days || {})[f.id] || {})[n] || {})[d] ?? ""), `data-cal="pfield" data-id="${esc(f.id)}" data-d="${d}"`)}</div>`).join(""); // 施設のプラグインが足した日ごとの欄
+    // 施設のプラグインが足した日ごとの欄。いまの選択肢に無い値（プラグインの更新で外れた値）は「（現在は使わない値）」として残す（空欄を選んだときだけ消える）
+    const fieldRows = d => ext.fields.map(f => { const cur = String((((m.person_days || {})[f.id] || {})[n] || {})[d] ?? ""), os = [["", "―"], ...f.options.map(o => [String(o[0]), T.pickLabel ? T.pickLabel(o[1], String(o[0])) : String(o[1])])]; if (cur && !os.some(o => o[0] === cur)) os.push([cur, cur + T.t("（現在は使わない値）")]);
+      return `<div>${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : f.label)} ${A.sel(os, cur, `data-cal="pfield" data-id="${esc(f.id)}" data-d="${d}"`)}</div>`; }).join("");
     // 不可・避の選択肢: 土日祝は日勤帯を含む全種類、平日は夜勤だけ（平日の日中の不在は午前・午後の「不在」で申告し、カテ室配置の候補から外す）
     // 有給（休みの日数の規則を使う施設だけ）: その日は勤務に入らず、休みの日数にその分を足す
     const paidOpt = T.ruleState(R, "days_off_min") !== "off" || ext.paidLeave ? [["paid", T.t("有給")]] : [];
@@ -196,7 +198,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const w = A.dowOf(y, mo, d), isSun = w === 6 || hol.has(d), isSat = w === 5 && !hol.has(d);
       cells.push(`<td class="cal ${isSun ? "sun" : isSat ? "sat" : ""}"><div class="dnum">${d}<small>${esc(dowJa(w))}${hol.has(d) ? esc(T.t("祝")) : ""}</small>${symAt(d) ? ` <span class="calres" title="${esc(T.t("計算結果"))}">${symAt(d)}</span>` : ""}</div>${dayHead(d)}
 ${ext.hideDuties ? "" : `<div>${esc(T.t("午前"))} ${kindSel(d, "am")}</div><div>${esc(T.t("午後"))} ${kindSel(d, "pm")}</div>`}
-${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${(m.wishes?.night_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${(m.wishes?.day_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
+${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" data-shown="${esc(unavailPart(m, n, d))}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${(m.wishes?.night_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${(m.wishes?.day_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
       if ((first + d) % 7 === 0 && d < N) cells.push("</tr><tr>");
     }
     // 翌月1日の欄（業務のみ。月末の夜勤・夜間OCの翌日制約に使う。曜日パターンからの推定が入っているので、翌月の業務が分かれば直す）
@@ -228,11 +230,18 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     root.querySelectorAll('[data-cal="duty"]').forEach(el => { const d = +el.dataset.d; if (!seen.has(d)) { seen.add(d); delete dd[d]; } if (el.value) (dd[d] ||= {})[el.dataset.part] = el.value; });
     m.duty_days[n] = dd;
     {
-      const nights = [], others = [], avoids = [];
-      root.querySelectorAll('[data-cal="unavail"]').forEach(el => { const d = +el.dataset.d; if (el.value.startsWith("avoid_")) avoids.push({ name: n, day: d, part: el.value.slice(6) }); else if (el.value === "night") nights.push(d); else if (el.value === "paid") others.push({ name: n, day: d, part: "allday", paid: true }); else if (el.value) others.push({ name: n, day: d, part: el.value }); });
-      m.unavailable_night[n] = nights;
-      m.unavailable_other = (m.unavailable_other || []).filter(u => u.name !== n).concat(others);
-      m.avoid = (m.avoid || []).filter(u => u.name !== n).concat(avoids); if (!m.avoid.length) delete m.avoid;
+      // 不可・避: 欄は 1 日に 1 つの値しか出せない（同じ日に不可と避の両方があるときは不可を出す）。この欄を変えた日は、欄に出していた条件だけを新しい値に置き換える。
+      // 出していなかった条件（同じ日の別の時間帯の避など）と、変えていない日はそのまま残す。置き換えた後に残った条件があれば、欄を描き直してそれを見せる
+      { const nightsOf = () => (m.unavailable_night[n] ||= []); let redraw = false;
+        const drop = (d, v) => { if (!v) return; if (v === "night") m.unavailable_night[n] = nightsOf().filter(x => +x !== d);
+          else if (v.startsWith("avoid_")) m.avoid = (m.avoid || []).filter(u => !(u.name === n && +(u.day ?? u.date) === d && (u.part || "allday") === v.slice(6)));
+          else m.unavailable_other = (m.unavailable_other || []).filter(u => !(u.name === n && +u.day === d && (v === "paid" ? !!u.paid : !u.paid && u.part === v))); };
+        const add = (d, v) => { if (!v) return; drop(d, v); if (v === "night") nightsOf().push(d); else if (v.startsWith("avoid_")) (m.avoid ||= []).push({ name: n, day: d, part: v.slice(6) }); else (m.unavailable_other ||= []).push(v === "paid" ? { name: n, day: d, part: "allday", paid: true } : { name: n, day: d, part: v }); };
+        root.querySelectorAll('[data-cal="unavail"]').forEach(el => { const d = +el.dataset.d, was = el.dataset.shown; if (was !== undefined && el.value === was) return;
+          if (was === undefined) { m.unavailable_night[n] = nightsOf().filter(x => +x !== d); m.unavailable_other = (m.unavailable_other || []).filter(u => !(u.name === n && +u.day === d)); m.avoid = (m.avoid || []).filter(u => !(u.name === n && +(u.day ?? u.date) === d)); } else drop(d, was);
+          add(d, el.value); el.dataset.shown = el.value; if (unavailPart(m, n, d) !== el.value) redraw = true; });
+        m.unavailable_night[n] = [...new Set(nightsOf().map(Number))].sort((a, b) => a - b); m.unavailable_other ||= []; if (m.avoid && !m.avoid.length) delete m.avoid;
+        if (redraw) setTimeout(renderDoctor, 0); }
       const wishes = []; root.querySelectorAll('[data-cal="wish"]').forEach(el => { if (el.checked) wishes.push(+el.dataset.d); });
       m.wishes.night_on = m.wishes.night_on || {};
       if (wishes.length) m.wishes.night_on[n] = wishes; else delete m.wishes.night_on[n];

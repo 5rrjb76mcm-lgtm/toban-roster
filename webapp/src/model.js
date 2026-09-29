@@ -581,23 +581,27 @@
   const CAL_DEFS = [], CAL_BY_ID = {};
   function registerCalendar(def) {
     if (!def || !def.id || typeof def.holidays !== "function") throw new Error("暦のプラグインには id と holidays(y, m) が要ります");
-    stampSource(def); const i = CAL_DEFS.findIndex(c => c.id === def.id); if (i >= 0) CAL_DEFS[i] = def; else CAL_DEFS.push(def); CAL_BY_ID[def.id] = def; // 同じ id は defs も置き換える（組み立て時の上書きが有効な定義になる）
+    stampSource(def); const i = CAL_DEFS.findIndex(c => c.id === def.id), old = i >= 0 ? CAL_DEFS[i] : null;
+    if (old && old !== def && def.source) Object.defineProperty(def, "under", { value: old, enumerable: false, configurable: true, writable: true }); // プラグインが同じ id を上書きしたとき、下にあった定義を覚える（そのプラグインを無効にしたら下の定義に戻る）
+    if (i >= 0) CAL_DEFS[i] = def; else CAL_DEFS.push(def); CAL_BY_ID[def.id] = def; // 同じ id は defs も置き換える（組み立て時の上書きが有効な定義になる）
     if (T.plugins && T.plugins.recording) T.plugins.recording.push({ kind: "calendars", id: def.id });
     return def;
   }
   function unregisterCalendar(id) { const i = CAL_DEFS.findIndex(c => c.id === id); if (i >= 0) CAL_DEFS.splice(i, 1); delete CAL_BY_ID[id]; } // プラグインのフォルダを切り替えたとき
   registerCalendar({ id: "none", label: { ja: "祝日なし（土日だけ）", en: "No public holidays (weekends only)" }, holidays() { return []; } });
   const DEFAULT_CALENDAR = { holidays: "jp", closure: [{ month: 12, days: [29, 30, 31] }, { month: 1, days: [2, 3] }] }; // 暦の指定が無い保存データ（循環器の既定）
+  // その id の暦のうち、有効な定義（無効にしたプラグインの定義は飛ばし、その下にあった定義を使う）。無ければ null
+  function calendarDef(rules, id) { let d = CAL_BY_ID[id], n = 0; while (d && pluginOff(rules, d.source) && n++ < 20) d = d.under; return d && !pluginOff(rules, d.source) ? d : null; }
   function calendarOf(rules) {
     const c = ((rules || {}).profile || {}).calendar;
     if (!c || typeof c !== "object") return DEFAULT_CALENDAR;
-    return { holidays: CAL_BY_ID[c.holidays] && !pluginOff(rules, CAL_BY_ID[c.holidays].source) ? c.holidays : (c.holidays === "none" ? "none" : DEFAULT_CALENDAR.holidays), // 無効にしたプラグインの暦は既定へ
+    return { holidays: calendarDef(rules, c.holidays) ? c.holidays : (c.holidays === "none" ? "none" : DEFAULT_CALENDAR.holidays), // 無効にしたプラグインの暦は既定へ（同梱の id を上書きしたプラグインなら、同梱の定義へ）
       closure: Array.isArray(c.closure) ? c.closure.map(x => ({ month: +x.month, days: [].concat(x.days || []).map(Number).filter(d => d >= 1 && d <= 31) })).filter(x => x.month >= 1 && x.month <= 12 && x.days.length) : [] };
   }
   const closureOf = (rules, y, m) => calendarOf(rules).closure.filter(x => x.month === m).flatMap(x => x.days).filter(d => d <= new Date(y, m, 0).getDate()).sort((a, b) => a - b);
   // その月の祝日と施設の休日: { holidays: 祝日＋施設の休日（月の設定の holidays に入れる形）, closure: 施設の休日だけ }
   function holidaysOf(rules, y, m) {
-    const src = CAL_BY_ID[calendarOf(rules).holidays] || CAL_BY_ID.none, closure = closureOf(rules, y, m);
+    const src = calendarDef(rules, calendarOf(rules).holidays) || calendarDef(rules, "none") || { holidays: () => [] }, closure = closureOf(rules, y, m); // 無効な定義の holidays() は呼ばない
     return { holidays: [...new Set([...src.holidays(y, m), ...closure])].sort((a, b) => a - b), closure };
   }
   function isOffDay(rules, y, m, d) { const w = new Date(y, m - 1, d).getDay(); return w === 0 || w === 6 || holidaysOf(rules, y, m).holidays.includes(d); }

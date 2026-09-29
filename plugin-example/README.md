@@ -60,7 +60,7 @@ cd toban-roster/webapp
 T.calendarExt.register({
   id: "local.<施設>.calendar",
   fixedTags: [{ label: "研修", shifts: ["day"] }, { label: "管理当直", shifts: ["day", "night"] }], // 固定欄の横に「印」の選択肢（month.fixed_tags に入る）
-  fields: [{ id: "local.<施設>.pref", label: "希望の種類", options: [["a", "A"], ["b", "B"]] }],     // 日ごとの欄を足す（P.personDay(id, 氏名, 日) で読む）
+  fields: [{ id: "local.<施設>.pref", label: "希望の種類", options: [["a", "A"], ["b", "B"]] }],     // 日ごとの欄を足す（P.personDay(id, 氏名, 日) で読む）。選択肢から外した値が月データに残っていれば、画面は「（現在は使わない値）」として残す（消すなら normalizeMonth で移す）
   hideDuties: true,  // 午前・午後の業務の欄を隠す（定期業務のない施設）
   paidLeave: true,   // 不可の選択肢に「有給」を出す（本体の休みの日数の規則を使っていなくても）
   dayHead: true,     // 日付の見出しに日ごとの予定と区分（入力側ではチェックで付け外し）

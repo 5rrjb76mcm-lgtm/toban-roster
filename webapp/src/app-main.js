@@ -21,6 +21,14 @@
     let l = null; try { l = localStorage.getItem(LANG_KEY); } catch (e) { }
     const nav = (navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en";
     T.setLang(l || (state.rules || {}).lang || nav);
+    const nav0 = nav;
+    langPaint = () => { // 言語の選択肢を作り直す（フォルダの訳のプラグインを読んだ後・フォルダを替えた後にも呼ぶ）
+      const codes = T.LANGS().map(([k]) => k); let want = null, changed = false; try { want = localStorage.getItem(LANG_KEY); } catch (e) { }
+      if (!codes.includes(T.lang())) { T.setLang(codes.includes((state.rules || {}).lang) ? state.rules.lang : nav0); changed = true; } // いまの言語が無くなった（その言語のないフォルダへ替えた）
+      else if (want && want !== T.lang() && codes.includes(want)) { T.setLang(want); changed = true; } // 選んでいた言語が、プラグインを読んで使えるようになった
+      for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (x) { x.innerHTML = opts(); x.value = T.lang(); } }
+      if (changed) { renderAll(); A.repaintStartGate(); }
+    };
     const opts = () => T.LANGS().map(([k, label]) => `<option value="${k}"${k === T.lang() ? " selected" : ""}>${label}</option>`).join("");
     // ヘッダーと開始画面の両方に言語の選択を置く（開始画面はヘッダーより前に出るので、そこで選べないと最初の画面が読めない）
     const change = async v => { // 共通の窓口を通す（計算中は断る・保存中は終わってから。同じ版の勤務表と説明資料が別の言語にならない）
@@ -33,6 +41,8 @@
     };
     for (const id of ["#langSel", "#startLang"]) { const x = $(id); if (!x) continue; x.innerHTML = opts(); x.addEventListener("change", () => change(x.value)); }
   }
+  let langPaint = () => { }; // initLang が中身を入れる
+  function renderLangs() { langPaint(); }
   function showTab(id) { const r = showTab0(id); T.applyI18n(); return r; }
   function showTab0(id) { const pane = id === "resultCal" ? "result" : id; /* 3-1 結果 と 3-2 医師別カレンダー は同じ #result の中の2画面 */ document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id)); document.querySelectorAll(".pane").forEach(p => p.hidden = p.id !== pane); if (pane === "result") A.renderResult(id === "resultCal" ? "resCal" : "resMain"); if (id === "settings") A.renderSettings(); if (id === "input") { A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); } }
 
@@ -72,5 +82,5 @@
   T.init = init; T.fromPrevious = A.fromPrevious; T.getState = () => state; T._cur = () => JSON.stringify({ rules: state.rules, month: state.month, result: state.result }); T._sig = A.sig; T._find = A.findMonthData; T._reconcile = A.reconcileWithFolder; T._dirty = A.isDirty;
   document.addEventListener("DOMContentLoaded", init);
 
-  Object.assign(A, { renderAll, showTab }); // 他のファイルから使う関数
+  Object.assign(A, { renderAll, showTab, renderLangs }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

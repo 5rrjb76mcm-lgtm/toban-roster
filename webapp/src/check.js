@@ -60,6 +60,7 @@
       const youngMissAllowed = jr && (P.isRole(w, "other") || P.ocNone(s, jr)) && ocCnt[jr] === 0 &&
         P.standbyRoleIds.every(sid => sid === jr || ocCnt[sid] === +(need[sid] || 0)) && ocs.length === total;
       if (!youngMissAllowed && (P.standbyRoleIds.some(sid => ocCnt[sid] !== +(need[sid] || 0)) || ocs.length !== total)) viol("SLOT_OC_MISMATCH", { slot: slab(s), worker: w, role: P.roleLabel(Tm[w]), oc: ocs.join("・") || "―" });
+      if (jr && P.ocNone(s, jr) && ocCnt[jr] > 0) viol("FIXED_OC_NONE", { slot: slab(s), role: P.roleLabel(jr), who: ocs.filter(n => Tm[n] === jr).join("・") }); // 「OC なし」の固定の枠に、その役割の OC がいる（解く側は 0 名に固定する。固定との不一致なので許容しない）
       if (new Set(ocs).size !== ocs.length) viol("SLOT_OC_DUP", { slot: slab(s), who: ocs.join("・") }); // 同じ人を重ねて数えない（構造の違反。固定でも許容しない）
       { const badOc = ocs.filter(n => !names.includes(n)); if (badOc.length) viol("SLOT_OC_UNKNOWN", { slot: slab(s), who: [...new Set(badOc)].join("・") }); } // 当番候補でない人（名簿に無い・配置しない）
       if (ocs.includes(w)) viol("SLOT_OC_SELF", { slot: slab(s), worker: w });
@@ -75,7 +76,8 @@
     }
     // 3 回数（予備の役割の登用。目安の範囲はプラグイン quota_range）
     for (const n of P.names) { if (!P.isRole(n, "reserve")) continue; const tot = P.slots.filter(s => A.worked(n, s)).length;
-      if (tot && (P.doctors[n].duty === "never" || !P.allowChief)) viol("RESERVE_ASSIGNED", { who: n, count: tot }, null, n); }
+      if (tot && (P.doctors[n].duty === "never" || !P.allowChief)) viol("RESERVE_ASSIGNED", { who: n, count: tot }, null, n);
+      else if (tot > 1) viol("RESERVE_OVER", { who: n, count: tot }); } // 登用を許した月でも月 1 回まで（解く側は固定があっても緩めないので、固定による許容にしない）
     // プラグインにした規則の検算（docs/rule-modules.md）。id を並べているのは、違反の並びを移す前と同じに保つため
     const cctx = T.rules.checkCtx(P, A, "check", viol);
     T.rules.runCheck(cctx, ["quota_range", "same_day_double", "consecutive_days", "run_length_max", "shift_sequence", "days_off_min", "days_off_pair", "composition"]);

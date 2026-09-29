@@ -1068,7 +1068,9 @@
     "別の施設のデータと分かったうえで取り込む": "Import anyway, knowing it is another facility's data",
     "前月の取り込みをやめました（別の施設のデータ）": "Import from the previous month was cancelled (another facility's data)",
     "別の切り替え（月・データ・フォルダ・表示言語）の処理中です。終わってからもう一度操作してください": "Another switch (month, data, folder or language) is in progress. Try again when it has finished",
-    "月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください": "Switching months was cancelled (the month or the save folder changed while reading). Choose the month again"
+    "月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください": "Switching months was cancelled (the month or the save folder changed while reading). Choose the month again",
+    "フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください": "Could not check {file} in the folder ({err}). Saving was stopped so that the other side's content is not overwritten. Your input is kept in the browser. Save again",
+    "フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません": "Could not check {file} in the folder ({err}). Continuing with the state in the browser, but nothing is saved until it can be checked"
   },
   "msg": {
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",
@@ -1288,7 +1290,9 @@
     "LINT_DAYS_OFF_PAID_OVER": "{who}: the required days off ({min} + {paid} paid) exceed the days in the month ({N})",
     "LINT_DAYS_OFF_PAID_OVER_HINT": "As a hard rule this has no solution. Reduce the paid days or the minimum, or set the rule to Penalty",
     "SLOT_OC_DUP": "{slot}: the same person is listed twice as on-call ({who})",
-    "SLOT_OC_UNKNOWN": "{slot}: on-call is not a duty candidate ({who})"
+    "SLOT_OC_UNKNOWN": "{slot}: on-call is not a duty candidate ({who})",
+    "FIXED_OC_NONE": "{slot}: fixed as no {role} on-call, but {who} is on-call",
+    "RESERVE_OVER": "{who}: a reserve member is on duty {count} times (at most once a month)"
   },
   "help": {
     "about": {

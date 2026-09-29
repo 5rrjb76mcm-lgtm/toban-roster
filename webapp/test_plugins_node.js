@@ -142,6 +142,22 @@ test("最初の beginFolder より前の load も、切替で外れる（baselin
   T2.plugins.beginFolder(); assert(!T2.rules.byId["local.early.test"], "切替で外れる"); assert.notStrictEqual(T2.MSG.LINT_PLUGIN_ERROR.ja, "早い上書き", "文面も戻る");
   assert(!T2.plugins.inventory().some(p => p.name === "rules/early.js"), "一覧にも残らない");
 });
+test("同梱の id を上書きした暦: そのプラグインを無効にすると下にあった定義に戻り、無効な定義の holidays() は呼ばれない", () => {
+  T.plugins.beginFolder(); globalThis.__calCalls = 0; const R = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8")); R.profile = Object.assign({}, R.profile, { calendar: { holidays: "jp", closure: [] } }); delete R.plugins_off;
+  const base = T.holidaysOf(R, 2026, 11).holidays; assert.deepStrictEqual(base, [3, 23], "同梱の jp");
+  const r1 = T.plugins.load("calendars", "calendars/jp_override.js", "T.calendars.register({ id: 'jp', label: 'x', holidays() { globalThis.__calCalls++; return [5]; } });"); assert(r1.ok, r1.error);
+  assert.deepStrictEqual(T.holidaysOf(R, 2026, 11).holidays, [5], "有効な間は上書きが効く"); const calls = globalThis.__calCalls; assert(calls >= 1);
+  R.plugins_off = ["calendars/jp_override.js"]; assert.deepStrictEqual(T.holidaysOf(R, 2026, 11).holidays, [3, 23], "無効にすると同梱の定義に戻る"); assert.strictEqual(globalThis.__calCalls, calls, "無効な定義は呼ばれない");
+  assert.deepStrictEqual(T.autoTargets ? T.holidaysOf(R, 2026, 5).holidays : [], [3, 4, 5, 6], "別の月も同梱の定義（2026 年 5 月）");
+  // none の上書きも同じ
+  const R2 = JSON.parse(JSON.stringify(R)); R2.profile.calendar.holidays = "none"; delete R2.plugins_off; const under = T.holidaysOf(R2, 2026, 11).holidays;
+  const r2 = T.plugins.load("calendars", "calendars/none_override.js", "T.calendars.register({ id: 'none', label: 'x', holidays() { globalThis.__calCalls++; return [7]; } });"); assert(r2.ok, r2.error);
+  assert.deepStrictEqual(T.holidaysOf(R2, 2026, 11).holidays, [7]); const c2 = globalThis.__calCalls; R2.plugins_off = ["calendars/none_override.js"]; assert.deepStrictEqual(T.holidaysOf(R2, 2026, 11).holidays, under, "無効にすると下の定義"); assert.strictEqual(globalThis.__calCalls, c2);
+  // 対照: 別の id の暦を無効にしたら既定（jp）へ
+  T.plugins.load("calendars", "calendars/f2.js", "T.calendars.register({ id: 'local.fac.cal2', label: 'x', holidays() { return [9]; } });"); const R3 = JSON.parse(JSON.stringify(R)); R3.profile.calendar.holidays = "local.fac.cal2"; delete R3.plugins_off; assert.deepStrictEqual(T.holidaysOf(R3, 2026, 11).holidays, [9]);
+  R3.plugins_off = ["calendars/f2.js", "calendars/jp_override.js"]; assert.deepStrictEqual(T.holidaysOf(R3, 2026, 11).holidays, [3, 23], "既定の jp（上書きも無効なので同梱の定義）");
+  T.plugins.beginFolder(); assert.deepStrictEqual(T.holidaysOf(R, 2026, 11).holidays, [3, 23], "フォルダを替えれば同梱の定義"); delete globalThis.__calCalls;
+});
 test("プラグインの規則の出どころ・登録し直し・重なり: 定義に source が付き、入力チェック（LINT_PLUGIN_OVERRIDE・LINT_RULE_OVERLAP）に出る", () => {
   const rd2 = (kind, name) => fs.readFileSync(path.join(PLUG, kind, name), "utf8"); T.setLang("ja");
   T.plugins.beginFolder();

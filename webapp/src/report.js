@@ -35,7 +35,7 @@
       const cls = P.isHoliday(d) ? (P.dow(d) === 5 && !P.holidaysExtra.has(d) ? "sat" : "sun") : "";
       // 最小変更で直したときは、前回の版と違う枠を赤字にする（info.baseAsg）
       const B = info.baseAsg || null; const bw = s => (B && B[`${s[0]}:${s[1]}`] ? (B[`${s[0]}:${s[1]}`].work || "") : ""), bo = s => (B && B[`${s[0]}:${s[1]}`] ? [...(B[`${s[0]}:${s[1]}`].oc || [])].sort().join("・") : "");
-      const cw = s => { const t = esc(A.workers(s).map(n => P.nameWithTag(s, n)).join("・")); return B && A.workText(s) !== [].concat(bw(s) || []).join("・") ? `<span class="chg">${t}</span>` : t; }; // 固定の印（研修など）は名前の後ろ
+      const cw = s => { const t = esc(A.workers(s).map(n => P.nameWithTag(s, n)).join("・")); return B && [...A.workers(s)].sort().join("・") !== [].concat(bw(s) || []).filter(Boolean).sort().join("・") ? `<span class="chg">${t}</span>` : t; }; // 固定の印（研修など）は名前の後ろ
       const co = s => { const t = esc(join(A.oc(s))); return B && [...A.oc(s)].sort().join("・") !== bo(s) ? `<span class="chg">${t}</span>` : t; };
       const dayCell = P.slotExists(d, "day") ? [cw([d, "day"]), co([d, "day"])] : ["―", "―"]; // 日勤枠がある日だけ（勤務帯の設定による）
       rows2.push([P.isHoliday(d) ? `<span class="${cls}">${esc(P.label(d))}</span>` : esc(P.label(d)), ...dayCell, cw([d, "night"]), co([d, "night"]), esc(unDay), esc(unNight), esc(avoidTxt)]);

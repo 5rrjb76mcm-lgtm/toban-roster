@@ -22,8 +22,9 @@ for (const lang of ["ja", "en"]) {
 }
 T.setLang("ja");
 // 疑似のフォルダ
-const dirOf = files => ({ getFileHandle: async n => { if (!(n in files)) throw new Error("nf"); return { getFile: async () => ({ text: async () => JSON.stringify(files[n]) }) }; }, getDirectoryHandle: async () => { throw new Error("nd"); } });
-const root = (sub, top = {}) => Object.assign(dirOf(top), { getDirectoryHandle: async n => { if (n in sub) return dirOf(sub[n]); throw new Error("nd"); } });
+const NF = () => Object.assign(new Error("not found"), { name: "NotFoundError" }); // 実物の File System Access API は、無いときに NotFoundError を投げる（アプリはそれだけを「無い」とみなす）
+const dirOf = files => ({ getFileHandle: async n => { if (!(n in files)) throw NF(); return { getFile: async () => ({ text: async () => JSON.stringify(files[n]) }) }; }, getDirectoryHandle: async () => { throw NF(); } });
+const root = (sub, top = {}) => Object.assign(dirOf(top), { getDirectoryHandle: async n => { if (n in sub) return dirOf(sub[n]); throw NF(); } });
 (async () => {
   A.monthDirs = ["202611"];
   A.dirHandle = root({ "202611": { "202611_data.json": { saved_at: "2026-10-05" } } });
@@ -32,5 +33,11 @@ const root = (sub, top = {}) => Object.assign(dirOf(top), { getDirectoryHandle: 
   f = await A.findMonthData("202611"); assert.strictEqual(f.where, "202611_data.json", "フォルダ直下も探す");
   A.dirHandle = root({ "202611": { "202611 当直表データ.json": { saved_at: "2026-10-05" } } });
   f = await A.findMonthData("202611"); assert.strictEqual(f.data, null, "以前の日本語の名前は読まない（公開前のため互換は持たない）");
+  // 無い（NotFoundError）のではなく確かめられない（権限・読取り障害）ときは、無いものとして扱わない
+  { const bad = name => Object.assign(new Error("unreadable"), { name });
+    A.dirHandle = Object.assign(root({}, { "202611_data.json": { saved_at: "2026-10-05" } }), { getDirectoryHandle: async () => { throw bad("NotAllowedError"); } });
+    f = await A.findMonthData("202611"); assert.strictEqual(f.data, null); assert.strictEqual(f.corrupt, "202611/", "月のフォルダを開けない"); assert.strictEqual(f.unreadable, true);
+    A.dirHandle = root({ "202611": Object.assign({}, { x: 1 }) }); const sub = await A.dirHandle.getDirectoryHandle("202611"); A.dirHandle.getDirectoryHandle = async () => Object.assign(sub, { getFileHandle: async () => { throw bad("NotReadableError"); } });
+    f = await A.findMonthData("202611"); assert.strictEqual(f.data, null); assert.strictEqual(f.corrupt, "202611/202611_data.json", "ファイルを確かめられない"); assert.strictEqual(f.unreadable, true); }
   console.log("保存するファイルの名前と月データの探し方 OK");
 })().catch(e => { console.log("FAIL", e.message); process.exitCode = 1; });

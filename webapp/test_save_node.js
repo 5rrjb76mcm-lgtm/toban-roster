@@ -238,5 +238,35 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     // (3) 対照: 何も替わらなければ開く
     fresh(); dir.getFileHandle = w0; assert.strictEqual(await A.openMonth("202612"), true); assert.strictEqual(+A.state.month.month, 12);
     dir.getFileHandle = w0; A.dirHandle = dir; delete globalThis.window.showDirectoryPicker; A.toast = t0; }
+  // 競合の確認で、ファイルや月のフォルダを「無い」のではなく「確かめられない」（権限・読取り障害）ときは、無いものとして上書きしない。書込み 0・相手の内容はそのまま・未保存のまま。無い（NotFoundError）ときは新規に保存する
+  { const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m)); A.renderHeader = () => { }; A.choose = async () => { throw new Error("確認は出ない"); };
+    const theirs = JSON.stringify({ rules: { profile: { id: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "newer-from-other-pc" }, result: null, saved_at: "2026-10-09T00:00:00Z" });
+    const fresh = () => { for (const k of Object.keys(files)) delete files[k]; files["202611_data.json"] = theirs; Object.assign(A.state, { rules: { profile: { id: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "mine-old" }, result: null, meta: null, base: null }); A.dirHandle = dir; A.monthDirs = ["202611"]; A.markSaved(undefined, "2026-10-01T00:00:00Z"); A.state.month.notes = "mine-edited"; writes.length = 0; toasts.length = 0; };
+    const f0 = dir.getFileHandle, d0 = dir.getDirectoryHandle, err = name => Object.assign(new Error("temporarily unreadable"), { name });
+    fresh(); let once = true; dir.getFileHandle = async (n, o) => { if (n === "202611_data.json" && !(o && o.create) && once) { once = false; throw err("NotReadableError"); } return f0(n, o); };
+    assert.strictEqual(await A.autosaveJson(), "skipped", "ファイルを確かめられなければ保存しない"); assert.strictEqual(writes.length, 0, "書込み 0"); assert.strictEqual(files["202611_data.json"], theirs, "相手の内容はそのまま"); assert.strictEqual(A.isDirty(), true, "未保存のまま"); assert.ok(toasts.some(x => /確かめられません/.test(x)), toasts.join("|"));
+    dir.getFileHandle = f0; fresh(); once = true; dir.getDirectoryHandle = async (n, o) => { if (n === "202611" && !(o && o.create) && once) { once = false; throw err("NotAllowedError"); } return d0(n, o); };
+    assert.strictEqual(await A.autosaveJson(), "skipped", "月のフォルダを確かめられなければ保存しない"); assert.strictEqual(writes.length, 0); assert.strictEqual(files["202611_data.json"], theirs); assert.strictEqual(A.isDirty(), true); assert.ok(toasts.some(x => /確かめられません/.test(x)));
+    // 対照: 無い（NotFoundError）ときは新規に保存する
+    dir.getDirectoryHandle = d0; fresh(); delete files["202611_data.json"]; assert.strictEqual(await A.autosaveJson(), "saved"); assert.strictEqual(JSON.parse(files["202611_data.json"]).month.notes, "mine-edited"); assert.strictEqual(A.isDirty(), false);
+    dir.getFileHandle = f0; dir.getDirectoryHandle = d0; A.toast = t0; A.choose = async () => null; }
+  // 起動時の自動の再接続（前回のフォルダに権限が残っている）も窓口の中で行う: 照合の読取りを待つ間の保存フォルダの変更は断り、前回のフォルダの応答を別のフォルダのデータとして当てない
+  { const toasts = []; const t0 = A.toast; A.toast = m => toasts.push(String(m)); A.showTab = () => { }; A.renderAll = () => { }; A.renderHeader = () => { }; A.renderFolderBar = () => { }; A.clearUndo = () => { }; A.save = () => { }; A.readAll = () => { };
+    const rules = { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, mkData = notes => JSON.stringify({ rules, month: { year: 2026, month: 11, notes }, result: null, saved_at: "2026-10-0" + (notes === "from A" ? 7 : 8) + "T00:00:00Z" });
+    const mkDir = (name, store) => { const h = { name, async *entries() { yield ["202611", { kind: "directory" }]; }, async getDirectoryHandle(n) { if (n === "plugins") throw Object.assign(new Error("nf"), { name: "NotFoundError" }); return h; },
+      async getFileHandle(n, opt) { if (!(opt && opt.create) && !(n in store)) throw Object.assign(new Error("nf"), { name: "NotFoundError" }); return { getFile: async () => { if (h.gate && n === "202611_data.json") await h.gate; return { text: async () => store[n] }; }, createWritable: async () => ({ write: async x => { store[n] = typeof x === "string" ? x : await x.text(); }, close: async () => { } }) }; }, async queryPermission() { return "granted"; }, async requestPermission() { return "granted"; } }; return h; };
+    const sA = { "202611_data.json": mkData("from A") }, sB = { "202611_data.json": mkData("from B") }, hA = mkDir("A", sA), hB = mkDir("B", sB); let release; hA.gate = new Promise(r => { release = r; });
+    const kv = { [A.DIR_KEY]: hA }, req = fill => { const r = {}; setTimeout(() => { fill(r); if (r.onsuccess) r.onsuccess(); }, 0); return r; };
+    globalThis.indexedDB = { open: () => req(r => { r.result = { createObjectStore() { }, transaction: () => ({ objectStore: () => ({ get: k => req(t => { t.result = kv[k]; }), put: (v, k) => req(() => { kv[k] = v; }) }) }) }; }) };
+    globalThis.window.showDirectoryPicker = async () => hB; globalThis.confirm = () => false; A.choose = async () => null;
+    Object.assign(A.state, { rules: JSON.parse(JSON.stringify(rules)), month: { year: 2026, month: 11, notes: "browser" }, result: null, meta: null, base: null }); A.dirHandle = null; A.markSaved(undefined, "2026-10-01T00:00:00Z"); A.state.meta.savedWhere = "フォルダ A";
+    const starting = A.restoreFolder(); await new Promise(r => setTimeout(r, 50)); assert.strictEqual(A.dirHandle, hA, "自動で A に再接続"); assert.strictEqual(A.switching, 1, "照合の間は切替の処理中");
+    assert.strictEqual(await A.openFolderUI(), false, "照合を待つ間のフォルダ変更は断る"); assert.ok(toasts.some(x => /別の切り替え/.test(x))); assert.strictEqual(A.dirHandle, hA);
+    release(); await starting; assert.strictEqual(A.dirHandle, hA); assert.strictEqual(A.state.month.notes, "from A", "A のデータを A のものとして読む"); assert.ok(/フォルダ A/.test(A.state.meta.savedWhere)); assert.strictEqual(JSON.parse(sB["202611_data.json"]).month.notes, "from B", "B は変わらない");
+    // 窓口を通らずに接続先が替わった場合（照合そのものの見張り）: 古い応答を捨てる
+    let release2; hA.gate = new Promise(r => { release2 = r; }); Object.assign(A.state, { month: { year: 2026, month: 11, notes: "browser" }, meta: null, base: null }); A.dirHandle = hA; A.dirGen++; A.monthDirs = ["202611"]; A.markSaved(undefined, "2026-10-01T00:00:00Z");
+    const rec = A.reconcileWithFolder(); await new Promise(r => setTimeout(r, 20)); delete hA.gate; A.dirHandle = hB; A.dirGen++; release2(); await rec;
+    assert.strictEqual(A.state.month.notes, "browser", "前のフォルダの応答は当てない"); assert.ok(!(A.state.meta && /フォルダ B/.test(A.state.meta.savedWhere || "") && A.state.month.notes === "from A"));
+    delete globalThis.indexedDB; delete globalThis.window.showDirectoryPicker; A.dirHandle = dir; A.toast = t0; }
   console.log("フォルダ保存の版の付け方（メモ・重み・表題・言語で版が増え、変更なし・時刻だけでは増えない）と保存状態の署名（名簿・曜日パターン・独自配列の並べ替えは未保存、集合の並べ替えは保存済みのまま）・生成中の編集は未保存・独自項目の空値・保存中の月切替と言語切替・出力前の検算と欠落の確認・保存中のフォルダ変更・共通の窓口（待機中の計算開始も断る）・保存の 3 段階（帳票だけの失敗でも月データは保存）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

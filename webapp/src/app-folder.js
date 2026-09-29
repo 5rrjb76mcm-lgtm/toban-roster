@@ -23,7 +23,7 @@
   // 3者統合を自動で行う（最後に保存した版を共通の元として、自分の変更と相手の変更を両方残す）。
   // 衝突（同じ項目を両方が変えた）がなければ確認なしで統合し、衝突があるときだけどちらを採るかを聞く。
   // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=統合できない（共通の元がない）
-  async function tryAutoMerge(f, ctx) {
+  async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
     const base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
@@ -46,6 +46,7 @@
       else if (mineCh) { const w = await A.choose(T.t("設定（名簿・規則・重み）が、このブラウザと別のPCの両方で変わっています。どちらの設定を使いますか。月の入力は自動で統合します。"),
         [{ label: T.t("相手の設定を使う"), sub: T.t("このブラウザで変えた設定は消えます"), value: "theirs", primary: true }, { label: T.t("自分の設定を使う"), sub: T.t("相手が変えた設定は消えます"), value: "mine" }, { label: T.t("何もしない（後で判断）"), value: null, cancel: true }]);
         if (!w) return false; rulesPick = w; } }
+    if (stale && stale()) return false;
     const r = T.mergeMonth(base, state.month, theirs, prefer);
     const theirResult = f.data.result, mineResult = state.result;
     state.month = r.merged; state.ui.doctor = 0;
@@ -61,7 +62,7 @@
   // 手元（設定と月）と相手（設定と月）に記録された施設 id が 1 つに揃っていなければ「別の施設」（設定と月の id が食い違っている状態も含む。自動統合・無確認の上書きの対象にしない）
   async function checkConflict() {
     const f = await findMonthData(A.tag());
-    if (!f.data && f.corrupt) { A.toast(T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
+    if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 施設の一致は保存時刻の一致より先に見る（別施設のファイルを複製した場合など、時刻が同じでも別のデータ）
@@ -123,7 +124,8 @@
       A.resetBrowserState(); location.reload(); return false; } };
     const openOther = { label: T.t("別のフォルダを開く"), run: async () => { await openFolderUI(); return !!A.dirHandle; } };
     if (A.storedHandle) {
-      try { if ((await A.storedHandle.queryPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); renderFolderBar(); return; } } catch (e) { A.dirHandle = null; A.toast(T.t("前回のフォルダに接続できませんでした: {err}", { err: e && e.message || e })); }
+      // 権限が残っているときの自動の再接続も、共通の窓口の中で行う（照合が終わるまで、画面からのフォルダの変更・月の切替を受け付けない）
+      try { if ((await A.storedHandle.queryPermission({ mode: "readwrite" })) === "granted") { await A.transition("folder", async () => { setDir(A.storedHandle); await refreshMonths(); A.toast(T.t("フォルダ「{name}」に接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); }); renderFolderBar(); if (A.dirHandle) return; } } catch (e) { A.dirHandle = null; A.toast(T.t("前回のフォルダに接続できませんでした: {err}", { err: e && e.message || e })); }
       await showStartGate(() => T.t("前回の保存フォルダ「{name}」に再接続してから始めます。\n「開始」を押すと、ブラウザがフォルダへの保存の許可を求めることがあります。許可してください。", { name: A.storedHandle.name }), [
         { label: () => T.t("開始（フォルダ「{name}」に再接続）", { name: A.storedHandle.name }), primary: true, run: () => A.transition("folder", async () => { try { if ((await A.storedHandle.requestPermission({ mode: "readwrite" })) === "granted") { setDir(A.storedHandle); await refreshMonths(); $("#startGate").hidden = true; A.toast(T.t("フォルダ「{name}」に再接続しました", { name: A.dirHandle.name })); await reconcileWithFolder(); return true; } } catch (e) { A.dirHandle = null; } A.toast(T.t("再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください")); return false; }) },
         Object.assign({}, openOther, { label: () => T.t("別のフォルダを開く") }), Object.assign({}, noFolder, { label: () => T.t("フォルダなしで続ける（保存はダウンロードになります。通常は使いません）") }), fresh,
@@ -167,8 +169,11 @@
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
   async function reconcileCore() {
     if (!A.dirHandle) return;
+    // 読み取りの前の接続先・月を覚え、読み終えた後と当てる直前に確かめる（待つ間に別のフォルダへ替わっていたら、前のフォルダの応答を今のフォルダのデータとして当てない）
+    const g = A.switchMark(), h0 = A.dirHandle, stale = () => A.switchStale(g) || A.dirHandle !== h0;
     const f = await findMonthData(A.tag());
-    if (!f.data && f.corrupt) { A.toast(T.t("フォルダの {file} が壊れていて読めません（{err}）。ブラウザ内の状態で続けますが、このままでは保存しません", { file: f.corrupt, err: f.error })); return; }
+    if (stale()) return;
+    if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません", { file: f.corrupt, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。ブラウザ内の状態で続けますが、このままでは保存しません", { file: f.corrupt, err: f.error })); return; }
     if (!f.data) {
       if (!A.monthDirs.length && state.meta && state.meta.savedAt && confirm(T.t("このフォルダには月データがありません。ブラウザ内に残っている {tag} の状態（保存 {at}）を捨てて、同梱のサンプルから始めますか？\n「キャンセル」＝ブラウザ内の状態をこのフォルダに保存して続けます", { tag: A.tag(), at: new Date(state.meta.savedAt).toLocaleString(T.dateLocale()) })))
         { A.resetBrowserState(); location.reload(); await new Promise(() => { }); } // 読み直すまで止める
@@ -181,11 +186,12 @@
     if (other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
       if (A.isDirty()) {
         // 未保存の変更がある: 共通の元があれば自動で統合し、統合結果をフォルダに書き戻す（別の施設なら統合しない）
-        const m = other ? null : await tryAutoMerge(f, T.t("開いたとき、"));
+        const m = other ? null : await tryAutoMerge(f, T.t("開いたとき、"), stale);
         if (m === true) { A.save(); return; } // 統合結果は自動保存の予約で書く（ここが保存の待ち行列の中から呼ばれることがあり、同じ行列を待つと止まる）
         if (m === false) return;
         const atTxt = fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明");
         const v = await A.choose((A.otherFacility(f) ? T.t("このフォルダの {tag} は別の施設（{id}）のデータです。", { tag: A.tag(), id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id }) : "") + T.t("フォルダにある {tag} のデータ（保存 {at}）は、このブラウザ内の状態より新しいか別のものです。ブラウザ内には未保存の変更があります。", { tag: A.tag(), at: atTxt }), [{ label: T.t("フォルダのデータを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。ブラウザ内の未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "file", primary: true }, { label: T.t("ブラウザ内の状態を保持する"), sub: T.t("次に保存するとフォルダ側を上書きします。例: フォルダの版が誤って保存された古い内容と分かっていて、このブラウザの入力が最新のとき"), value: null, cancel: true }]); if (v !== "file") return; }
+      if (stale()) return;
       applyLoaded(f.data, T.t("フォルダの {tag} データ（保存 {at}）を読み込みました", { tag: A.tag(), at: fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明") }));
     }
   }
@@ -200,8 +206,8 @@
     if (!root) return 0;
     if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return 0; } // 画面からは窓口（A.transition("plugins")）が先に断る。ここは保存処理の中からの接続など窓口を通らない経路の安全側
     T.plugins.beginFolder(); // 前のフォルダで読んだ分（規則・区分・拡張・暦・様式・文面・訳・プロファイル）を最初の写しへ戻す。保存データが参照する規則が無ければ入力チェック（LINT_PLUGIN_MISSING）が知らせる
-    const notFound = e => e && e.name === "NotFoundError"; // 無いのは正常。それ以外（権限・読取り障害）は読み込みの失敗として記録し、直るまで計算・帳票を止める
-    let pdir = null; try { pdir = await root.getDirectoryHandle("plugins"); } catch (e) { if (!notFound(e)) { T.plugins.fail("rules", "plugins/", e); A.toast(T.t("フォルダの plugins/ を開けません: {err}", { err: e && e.message || e })); } A.renderAll(); return 0; }
+    // plugins/ が無いのは正常（NotFoundError）。それ以外（権限・読取り障害）は読み込みの失敗として記録し、直るまで計算・帳票を止める
+    let pdir = null; try { pdir = await root.getDirectoryHandle("plugins"); } catch (e) { if (!notFound(e)) { T.plugins.fail("rules", "plugins/", e); A.toast(T.t("フォルダの plugins/ を開けません: {err}", { err: e && e.message || e })); } A.renderAll(); if (typeof A.renderLangs === "function") A.renderLangs(); return 0; }
     let n = 0; const errs = [];
     for (const kind of T.plugins.KINDS) {
       let kd = null; try { kd = await pdir.getDirectoryHandle(kind); } catch (e) { if (!notFound(e)) { T.plugins.fail(kind, `${kind}/`, e); errs.push(`${kind}/: ${e && e.message || e}`); n++; } continue; }
@@ -216,6 +222,7 @@
       A.toast((errs.length ? T.t("フォルダのプラグインを {n} 件読み込みました（うち {e} 件は読めませんでした。設定タブの管理者向けを確認）", { n, e: errs.length }) : T.t("フォルダのプラグインを {n} 件読み込みました", { n }))
         + (state.result && state.result.asg ? T.t("。いまの結果はこの規則を使っていないので、もう一度「計算する」を押してください") : "")); // 読み込んだ規則は既存の結果に入っていない
     }
+    if (typeof A.renderLangs === "function") A.renderLangs(); // 訳のプラグインで言語が増えた・減った（フォルダを替えた）ときに、言語の選択肢を作り直す
     return n;
   }
   function renderFolderBar() {
@@ -263,14 +270,16 @@
   async function findMonthData(t) {
     if (!A.dirHandle) return { data: null, tried: [] };
     const fname = A.FILES.data(t), tried = [];
-    const pick = async (dir, prefix) => { const o = await readJson(dir, fname); tried.push(prefix + fname); if (o && o.__corrupt) return { data: null, corrupt: prefix + fname, error: o.error, tried }; return o ? { data: o, where: prefix + fname, tried } : null; };
-    const dirsToTry = [t, ...A.monthDirs.filter(x => x !== t && x.startsWith(t))];
-    for (const dn of dirsToTry) { const dir = await A.dirHandle.getDirectoryHandle(dn).catch(() => null); if (!dir) { tried.push(`${dn}/`); continue; } const r = await pick(dir, `${dn}/`); if (r) return r; }
-    const r = await pick(A.dirHandle, ""); if (r) return r;
+    const pick = async (dir, prefix) => { const o = await readJson(dir, fname); tried.push(prefix + fname); if (o && o.__corrupt) return { data: null, corrupt: prefix + fname, unreadable: !!o.unreadable, error: o.error, tried }; return o ? { data: o, where: prefix + fname, tried } : null; };
+    const dirsToTry = [t, ...A.monthDirs.filter(x => x !== t && x.startsWith(t))], root = A.dirHandle;
+    for (const dn of dirsToTry) { let dir = null; try { dir = await root.getDirectoryHandle(dn); } catch (e) { if (!notFound(e) && e && e.name !== "TypeMismatchError") return { data: null, corrupt: `${dn}/`, unreadable: true, error: e && e.message || String(e), tried }; } // 月のフォルダを開けない（無いのではない）: 無いものとして新規保存しない
+      if (!dir) { tried.push(`${dn}/`); continue; } const r = await pick(dir, `${dn}/`); if (r) return r; }
+    const r = await pick(root, ""); if (r) return r;
     return { data: null, tried };
   }
-  // 無ければ null。あるのに読めない（壊れている）ときは { __corrupt: true, error } を返し、呼ぶ側は新規扱いで上書きしない
-  async function readJson(dir, name) { let fh; try { fh = await dir.getFileHandle(name); } catch (e) { return null; } try { const f = await fh.getFile(); return JSON.parse(await f.text()); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; } }
+  // 無ければ null（NotFoundError だけを「無い」とみなす）。あるのに読めない（壊れている）・あるかどうかを確かめられない（権限・読取り障害）ときは { __corrupt: true, error } を返し、呼ぶ側は新規扱いで上書きしない
+  const notFound = e => !!e && e.name === "NotFoundError";
+  async function readJson(dir, name) { let fh; try { fh = await dir.getFileHandle(name); } catch (e) { if (notFound(e)) return null; return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } try { const f = await fh.getFile(); return JSON.parse(await f.text()); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; } }
   async function writeFile(dir, name, blob) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(blob); await w.close(); }
   async function ensureFolder() {
     if (A.dirHandle) return true;

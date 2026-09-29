@@ -1046,6 +1046,8 @@ def check(P: Problem, asg: dict):
         young_miss_allowed = (T[w] == "A" or P.oc_none(s, "Y")) and cnt["Y"] == 0 and cnt["I"] == need["I"] and len(ocs) == cnt["I"]
         if not young_miss_allowed and (cnt["I"] != need["I"] or cnt["Y"] != need["Y"] or len(ocs) != cnt["I"] + cnt["Y"]):
             V.append(f"{slab(s)}: OC構成不一致 勤務者{w}({T[w]}) OC={ocs}")
+        if P.oc_none(s, "Y") and cnt["Y"] > 0:
+            V.append(f"{slab(s)}: 若手のOCなしの固定なのに、{'・'.join(n for n in ocs if T.get(n) == 'Y')} がOCに入っている")
         if w in ocs:
             V.append(f"{slab(s)}: 勤務者{w}がOCを兼ねている")
         for n in ocs:
@@ -1073,6 +1075,8 @@ def check(P: Problem, asg: dict):
         if T[n] == "C":
             if tot and (P.doctors[n].get("duty") == "never" or not P.allow_chief):
                 V.append(f"{n}: 部長が勤務に配置されている（{tot}回）")
+            elif tot > 1:
+                V.append(f"{n}: 部長の勤務が{tot}回（月1回まで）")
             continue
         fc = P.fixed_work_count(n)
         ub = max(q + P.tol, fc)  # 固定指定で目安+1を超える分は許容（固定指定により許容として表示）
