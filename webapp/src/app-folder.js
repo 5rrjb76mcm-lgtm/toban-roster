@@ -427,24 +427,29 @@
   // 勤務表・説明資料だけが書けなかったときは版の記録を足さずに月データを保存する（月データが書けなければ例外＝保存失敗）
   async function writeSave(root, prep) {
     const dir = await root.getDirectoryHandle(prep.S.tag, { create: true });
-    let prevVers = []; // 保存先にいまある月データの版の記録（同じ番号で別の内容の帳票がこのフォルダにあるかを、これで見る）
-    try { const prev = await readJson(dir, A.FILES.data(prep.S.tag)); if (prev && !prev.__corrupt) { await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); if (prev.month && Array.isArray(prev.month.doc_versions)) prevVers = prev.month.doc_versions.filter(v => v && typeof v === "object"); } } catch (e) { } // 誤操作や統合の取り違えからの復元用
-    // 版の番号の衝突: 保存先の記録に同じ番号で別の署名の版があれば、その番号の帳票は別の内容（別のフォルダから持ち込んだ月データなど）。上書きせず、双方の記録より大きい番号を付け直す
-    const clash = ver => prevVers.some(v => +v.ver === ver && v.sig !== prep.vsig), nextVer = () => Math.max(0, ...prevVers.map(v => +v.ver || 0), ...(prep.S.month.doc_versions || []).map(v => +v.ver || 0)) + 1;
-    if (prep.docs.length && prep.version && clash(prep.version.ver)) {
-      try { const old = prep.version.ver, ver = nextVer(); prep.docs = await makeDocs(prep.S, prep.P, ver, prep.label); prep.version = Object.assign({}, prep.version, { ver, docx: prep.docs[0].name, html: prep.docs[1].name }); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容なので上書きしていません）", { v: ver, old }); }
+    // 保存先にいまある月データの版の記録（同じ番号で別の内容の帳票がこのフォルダにあるかを、これで見る）。退避の書込みとは切り離して先に読む（退避に失敗しても記録は使う）
+    let prev = null, prevVers = []; try { prev = await readJson(dir, A.FILES.data(prep.S.tag)); } catch (e) { prev = null; }
+    if (prev && !prev.__corrupt && prev.month && Array.isArray(prev.month.doc_versions)) prevVers = prev.month.doc_versions.filter(v => v && typeof v === "object");
+    try { if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { } // 誤操作や統合の取り違えからの復元用
+    // 版の番号: 保存先の記録に同じ番号で別の署名の版があれば、その番号の帳票は別の内容（別のフォルダから持ち込んだ月データなど）。同じ名前の帳票が片方でもあるのに記録で「この番号＝この内容」と確かめられないときも同じ。
+    // どちらも上書きせず、記録にも帳票にも無い番号を付け直す
+    const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { return false; } }, namesOf = (ver, label) => [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)];
+    const clash = ver => prevVers.some(v => +v.ver === ver && v.sig !== prep.vsig), verified = ver => prevVers.some(v => +v.ver === ver && v.sig === prep.vsig);
+    const anyExists = async (ver, label) => { for (const n of namesOf(ver, label)) if (await exists(n)) return true; return false; }, allExist = async (ver, label) => { for (const n of namesOf(ver, label)) if (!(await exists(n))) return false; return true; };
+    const taken = async (ver, label) => clash(ver) || (!verified(ver) && await anyExists(ver, label)); // この番号は別の内容の帳票に使われている（かもしれない）
+    const freeVer = async label => { let v = Math.max(0, ...prevVers.map(x => +x.ver || 0), ...(prep.S.month.doc_versions || []).map(x => +x.ver || 0)) + 1; while (await taken(v, label)) v++; return v; };
+    if (prep.docs.length && prep.version && await taken(prep.version.ver, prep.label)) {
+      try { const old = prep.version.ver, ver = await freeVer(prep.label); prep.docs = await makeDocs(prep.S, prep.P, ver, prep.label); prep.version = Object.assign({}, prep.version, { ver, docx: prep.docs[0].name, html: prep.docs[1].name }); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容なので上書きしていません）", { v: ver, old }); }
       catch (e) { prep.docs = []; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
     if (prep.docs.length) {
       try { for (const f of prep.docs) await writeFile(dir, f.name, f.blob); prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); }
       catch (e) { prep.docsWritten = false; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
-    } else if (prep.reuse) { // 同じ版でも、保存先（別のフォルダに移した・消した）に勤務表か説明資料が無ければ、同じ内容・同じ版で書き直す。保存先の記録で同じ番号が別の内容なら（または記録が無く同じ名前の帳票だけがある）、その帳票は再利用せず新しい番号で書く
-      const { ver, label, P } = prep.reuse, docNames = [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)];
-      const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { return false; } };
-      const have = (await exists(docNames[0])) && (await exists(docNames[1])), verified = prevVers.some(v => +v.ver === ver && v.sig === prep.vsig); // 保存先の記録が「この番号＝この内容」と言っているときだけ再利用
-      if (have && !verified) {
-        try { const nv = nextVer(), docs = await makeDocs(prep.S, P, nv, label); for (const f of docs) await writeFile(dir, f.name, f.blob); prep.version = { ver: nv, at: prep.at, label, sig: prep.vsig, docx: docs[0].name, html: docs[1].name }; prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容の可能性があるので上書きしていません）", { v: nv, old: ver }); }
+    } else if (prep.reuse) { // 同じ版でも、保存先（別のフォルダに移した・消した）に勤務表か説明資料が無ければ、同じ内容・同じ版で書き直す。その番号が別の内容の帳票に使われている（かもしれない）なら、再利用も上書きもせず新しい番号で書く
+      const { ver, label, P } = prep.reuse;
+      if (await taken(ver, label)) {
+        try { const nv = await freeVer(label), docs = await makeDocs(prep.S, P, nv, label); for (const f of docs) await writeFile(dir, f.name, f.blob); prep.version = { ver: nv, at: prep.at, label, sig: prep.vsig, docx: docs[0].name, html: docs[1].name }; prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容の可能性があるので上書きしていません）", { v: nv, old: ver }); }
         catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
-      else if (!have) {
+      else if (!(await allExist(ver, label))) {
         try { for (const f of await makeDocs(prep.S, P, ver, label)) await writeFile(dir, f.name, f.blob); prep.note = T.t("（勤務表 v{v} がこのフォルダに無かったので書き直しました）", { v: ver }); }
         catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
     }
@@ -478,23 +483,30 @@
     applyLoaded(o, T.t("読み込みました"), { fromFolder: false });
   }
   // 「前月のデータから作成」: 同じく当てる直前に保存の確認
+  // 読み込む JSON の形の検証（「JSONを読込」と「前月のデータから作成」で共用）: 勤務表データ（year / month を持つ月。{rules, month, result} の形か月そのもの）で、設定があれば名簿の要素が氏名を持つ物であること。問題があれば理由の文を返す
+  function loadedShape(o) {
+    if (!o || typeof o !== "object" || Array.isArray(o)) return { error: T.t("勤務表データではありません（year / month がありません）") };
+    let month, rules = null, result = null;
+    if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return { error: T.t("勤務表データではありません（year / month がありません）") };
+    if (rules && (typeof rules !== "object" || !Array.isArray(rules.doctors))) return { error: T.t("勤務表データの設定（rules）に{person}一覧がありません") };
+    if (rules && !rules.doctors.every(d => d && typeof d === "object" && typeof d.name === "string" && d.name)) return { error: T.t("勤務表データの設定（rules）の{person}一覧に、氏名の無い要素があります") };
+    if (result !== null && typeof result !== "object") result = null;
+    return { month, rules, result };
+  }
   async function createFromPrevFile(f) {
     if (!f) return; if (!(await saveBeforeSwitch())) return;
-    let o; try { o = JSON.parse(await f.text()); if (!o.month) throw new Error(T.t("勤務表データJSONではありません")); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); }
+    let o; try { o = JSON.parse(await f.text()); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); }
+    const shape = loadedShape(o); if (shape.error) return alert(T.t("読み込み失敗: {err}", { err: shape.error }));
     if (!(await saveBeforeSwitch())) return;
-    let month2, rules2 = null; try { const clone = x => JSON.parse(JSON.stringify(x)); if (o.rules) { if (typeof o.rules !== "object" || !Array.isArray(o.rules.doctors)) throw new Error(T.t("勤務表データの設定（rules）に{person}一覧がありません")); rules2 = clone(o.rules); T.fillDefaultRules(rules2); }
-      const R0 = state.rules; if (rules2) state.rules = rules2; try { month2 = A.fromPrevious(o); } finally { state.rules = R0; } } // fromPrevious は state.rules を見る: 複製の設定で作り、失敗したら元の設定に戻す
+    let month2, rules2 = null; try { const clone = x => JSON.parse(JSON.stringify(x)); if (shape.rules) { rules2 = clone(shape.rules); T.fillDefaultRules(rules2); }
+      const R0 = state.rules; if (rules2) state.rules = rules2; try { month2 = A.fromPrevious({ rules: shape.rules, month: shape.month, result: shape.result }); } finally { state.rules = R0; } // fromPrevious は state.rules を見る: 複製の設定で作り、失敗したら元の設定に戻す
+      if (!A.isMonthObj(month2)) throw new Error(T.t("勤務表データではありません（year / month がありません）")); T.normalizeMonth(month2, rules2 || state.rules); } // 作った月も採用する前に確かめる
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     state.renames = []; if (rules2) state.rules = rules2; state.meta = null; state.base = null; state.baseRules = null; state.month = month2; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input");
     A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month }));
   }
   function applyLoaded(o, msg, opts = {}) {
-    const fromDir = opts.fromFolder !== false; let month, rules = null, result = null;
-    if (!o || typeof o !== "object") return alert(T.t("勤務表データではありません（year / month がありません）"));
-    if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return alert(T.t("勤務表データではありません（year / month がありません）"));
-    if (rules && (typeof rules !== "object" || !Array.isArray(rules.doctors))) return alert(T.t("勤務表データの設定（rules）に{person}一覧がありません"));
-    if (rules && !rules.doctors.every(d => d && typeof d === "object" && typeof d.name === "string")) return alert(T.t("勤務表データの設定（rules）の{person}一覧に、氏名の無い要素があります"));
-    if (result !== null && typeof result !== "object") result = null;
+    const fromDir = opts.fromFolder !== false; const shape = loadedShape(o); if (shape.error) return alert(shape.error); const { month, rules, result } = shape;
     // 型検査・既定値の補完・月の整形は複製の上で済ませ、成功したときだけ状態をまとめて差し替える（途中で失敗しても、読み込む前の設定・月・結果・改名の記録・統合の基準は変わらない）
     let month2, rules2; try { const clone = x => JSON.parse(JSON.stringify(x)); rules2 = clone(rules || state.rules); T.fillDefaultRules(rules2); month2 = clone(month); T.normalizeMonth(month2, rules2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }

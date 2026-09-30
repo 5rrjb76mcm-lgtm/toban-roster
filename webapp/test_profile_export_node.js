@@ -6,7 +6,7 @@ globalThis.location = { pathname: "/x/toban.html", protocol: "file:", href: "fil
 globalThis.document = { querySelector: () => null, querySelectorAll: () => [], addEventListener: () => { } }; globalThis.window = globalThis;
 globalThis.localStorage = { getItem: () => null, setItem: () => { }, removeItem: () => { } };
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "app-core.js", "app-settings.js", "app-month.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js", "app-core.js", "app-folder.js", "app-settings.js", "app-month.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 T.setLang("ja");
@@ -246,4 +246,11 @@ assert.ok(!("toban_profile" in A.state.rules));
       const next = A.fromPrevious({ rules: r, month: pm, result: { asg, status: "Optimal" } }); assert.deepStrictEqual(next.prev_month.last_days.map(e => e.date), [N - 2, N - 1, N], `${y}/${mo}: 末尾から 3 日`); assert.strictEqual([].concat(next.prev_month.last_days[0].night).includes(A_) || [].concat(next.prev_month.last_days[0].day || []).includes(A_), true, "29 日の勤務者が入る");
       next.fixed.night[1] = A_; const P2 = new T.Problem(r, next), a2 = {}; for (const sl of P2.slots) a2[`${sl[0]}:${sl[1]}`] = { work: sl[0] === 1 && sl[1] === "night" ? A_ : sl[0] % 2 ? B_ : C_, oc: [] }; const it = T.penalty(P2, a2).items || T.penalty(P2, a2);
       assert.strictEqual(it.work_gap_2, (1 + N % 2) * r.weights.work_gap_2, `${y}/${mo}: A の末尾から 3 日目 → 翌月 1 日が中 2 日 1 組（月の日数が奇数なら B の前月末 → 3 日の 1 組も。末尾の 3 日目を取り込まなければ A の分が無い）: ` + JSON.stringify(it)); } }
+  // 「前月のデータから作成」の型検査: {"month":{}}（年月なし）・有効な年月＋名簿の要素に氏名なし → 知らせて、設定・月・結果・同期の基準・改名の記録は不変（NaN 年 NaN 月や氏名なし 1 名の名簿に置き換えない）
+  { const r = JSON.parse(before); T.fillDefaultRules(r); const m = T.normalizeMonth({ year: 2026, month: 11, notes: "keep" }, r); Object.assign(A.state, { rules: r, month: m, result: { asg: { "1:night": { work: A_, oc: [] } } }, base: null, baseRules: null, renames: [[A_, "Review Dr Z"]] }); A.dirHandle = null; A.markSaved("ダウンロード", "2026-10-01T00:00:00Z"); A.state.renames = [[A_, "Review Dr Z"]];
+    const snap = () => JSON.stringify([A.state.rules, A.state.month, A.state.result, A.state.meta, A.state.base, A.state.renames]), before0 = snap(), alerts = [], a0 = globalThis.alert; globalThis.alert = x => alerts.push(String(x)); A.save = () => { }; A.showTab = () => { }; A.renderAll = () => { }; A.clearUndo = () => { };
+    const bad = [{ month: {} }, { month: { year: 2026, month: 10 }, rules: { doctors: [{}] } }, { month: { year: 2026, month: 10 }, rules: { doctors: [null] } }, { month: { year: 2026, month: 10 }, rules: { doctors: "x" } }, "text", null, [1]];
+    for (const o of bad) { await A.createFromPrevFile({ text: async () => JSON.stringify(o) }); assert.strictEqual(snap(), before0, "不変: " + JSON.stringify(o)); assert.strictEqual(A.tag(), "202611"); }
+    assert.strictEqual(alerts.length, bad.length, "知らせる: " + alerts.join("|")); globalThis.alert = a0;
+    await A.createFromPrevFile({ text: async () => JSON.stringify({ month: { year: 2026, month: 10 }, rules: r }) }); assert.strictEqual(A.tag(), "202611", "正常な前月からは作れる（10 月 → 11 月）"); assert.notStrictEqual(A.state.month.notes, "keep", "新しい月（前月の取り込みの注記が入る）"); assert.deepStrictEqual(A.state.renames, []); }
 })().then(() => { console.log("施設プロファイルの書き出し（共有用の匿名化・残存の警告・名簿外の記録・share・名簿込み・元データ非変更）と独自データのフック（normalize・normalizeMonth・rename。失敗時は元のまま）OK"); }).catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });
