@@ -50,18 +50,23 @@
     let mine = state.month;
     // ren のうち、名簿から外した人（印の付いた氏名への対応）と、改名は分けて扱う。同期の後に足した人（共通の元に対応する人がいない）は newFolk
     const baseNames = state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null, renamed = ren.filter(([, n]) => !String(n).startsWith(T.GONE)), removed = ren.filter(([, n]) => String(n).startsWith(T.GONE)).map(([o]) => o), newFolk = baseNames ? T.newPersons(state.renames, baseNames, [...myRoster]) : [];
-    const marked = m => Object.entries(T.flattenMonth(m)).filter(([k, v]) => k.includes("\u0000") || String(v).includes("\u0000")).sort().map(x => x.join("=")).join("\n"); // 印の付いた氏名に関わる項目
+    // 内部の印（NUL）の検出: 展開した項目の値は JSON 文字列なので、NUL は「\\u0000」の 6 文字になる。キーは生の文字列。JSON 化する前の物は再帰で見る
+    const NUL = "\u0000", markedStr = x => typeof x === "string" && (x.includes(NUL) || x.includes("\\u0000")), hasMark = v => Array.isArray(v) ? v.some(hasMark) : v && typeof v === "object" ? Object.entries(v).some(([k, x]) => markedStr(k) || hasMark(x)) : markedStr(v);
+    const marked = m => Object.entries(T.flattenMonth(m)).filter(([k, v]) => markedStr(k) || markedStr(v)).sort().map(x => x.join("=")).join("\n"); // 印の付いた氏名に関わる項目
+    // 順序: 先に、足した人・外した人の当月の入力を、元の氏名で識別できるうちに印の付いた氏名へ移す。その後で通常の改名をまとめて当てる（改名の先が、足した人・外した人の氏名と同じでも、別人の入力を上書きしない）
     if (ren.length || newFolk.length) { try {
-      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; T.renameAll(tr, theirs, renamed); T.renameAll(br, base, renamed); // まとめて当てる（空いた氏名の再利用・入れ替えでも、別の人の項目を上書きしない）
+      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null;
         // 手元で名簿から外した人: 相手の版と共通の元で、その人の当月の入力（記録は除く）に印を付けて比べる。相手がその人の入力を変えていなければ、印の付いた入力を両方から除いて統合する（手元の削除が通る）。変えていれば自動では統合しない（確認に戻る）
         for (const d of removed) { T.renameMonthName(theirs, d, T.GONE + d, { inputsOnly: true }); T.renameMonthName(base, d, T.GONE + d, { inputsOnly: true }); }
+        T.renameAll(tr, theirs, renamed); T.renameAll(br, base, renamed); // まとめて当てる（空いた氏名の再利用・入れ替えでも、別の人の項目を上書きしない）
         if (removed.length) { if (marked(theirs) !== marked(base)) return null; T.purgeMonthNames(theirs, removed.map(d => T.GONE + d)); T.purgeMonthNames(base, removed.map(d => T.GONE + d)); } }
-      else { mine = clone(state.month); const mr = clone(state.rules); T.renameAll(mr, mine, renamed.map(([o, n]) => [n, o]));
+      else { mine = clone(state.month); const mr = clone(state.rules);
         for (const n of newFolk) T.renameMonthName(mine, n, T.NEW + n, { inputsOnly: true }); // 同期の後に足した人は相手の名簿に対応する人がいない: 印を付けて、相手の同じ氏名の人と混ぜない（入力があれば名簿外の氏名として確認に戻る）
-        if (removed.length) { base = clone(base); for (const d of removed) { T.renameMonthName(theirs, d, T.GONE + d, { inputsOnly: true }); T.renameMonthName(base, d, T.GONE + d, { inputsOnly: true }); } } } // 手元で外した人（相手の名簿にはいる）: 相手がその人の入力を変えていれば印が残って確認に戻る。変えていなければ手元の削除が通る // 同期の後に足した人は相手の名簿に対応する人がいない: 印を付けて、相手の同じ氏名の人と混ぜない（入力があれば名簿外の氏名として確認に戻る）
+        T.renameAll(mr, mine, renamed.map(([o, n]) => [n, o]));
+        if (removed.length) { base = clone(base); for (const d of removed) { T.renameMonthName(theirs, d, T.GONE + d, { inputsOnly: true }); T.renameMonthName(base, d, T.GONE + d, { inputsOnly: true }); } } } // 手元で外した人（相手の名簿にはいる）: 相手がその人の入力を変えていれば印が残って確認に戻る。変えていなければ手元の削除が通る
     } catch (e) { A.toast(T.t("別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください", { err: e && e.message || e })); return false; } }
     // 採用する名簿にいない氏名が、統合で新しく月データに入るなら自動では統合しない（両方が同じ人を別の氏名に変えたときなど、氏名の対応を推測しない。読み込むか上書きするかを利用者が選ぶ）
-    const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n)).concat(JSON.stringify(m).includes("\u0000") ? ["\u0000"] : []); // 内部の印（外した人・足した人）が残る結果も採らない
+    const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n)).concat(hasMark(m) ? [NUL] : []); // 内部の印（外した人・足した人）が残る結果も採らない
     let pre; try { pre = T.mergeMonth(base, mine, theirs); } catch (e) { return null; }
     if (strangers(pre.merged).length) return null;
     let prefer = "theirs";
