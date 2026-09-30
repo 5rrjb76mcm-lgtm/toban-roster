@@ -493,17 +493,28 @@
     if (result !== null && typeof result !== "object") result = null;
     return { month, rules, result };
   }
+  // 前月のデータから新しい月を作る（「前月のデータから作成」のファイル選択と、ヘッダーの「…のデータから引き継いで作成」で共用）:
+  // 形の検査（loadedShape）→ 複製の設定で変換（fromPrevious は state.rules を見るので一時的に差し替え、必ず戻す）→ 作った月の検査。成功したときだけ { month, rules } を返し、失敗は { error }（状態には触れない）
+  function buildFromPrevious(o, ny, nm) {
+    const shape = loadedShape(o); if (shape.error) return { error: shape.error };
+    try { const clone = x => JSON.parse(JSON.stringify(x)); let rules2 = null, month2; if (shape.rules) { rules2 = clone(shape.rules); T.fillDefaultRules(rules2); }
+      const R0 = state.rules; if (rules2) state.rules = rules2; try { month2 = A.fromPrevious({ rules: shape.rules, month: shape.month, result: shape.result }, ny, nm); } finally { state.rules = R0; }
+      if (!A.isMonthObj(month2)) throw new Error(T.t("勤務表データではありません（year / month がありません）")); T.normalizeMonth(month2, rules2 || state.rules); // 作った月も採用する前に確かめる
+      return { month: month2, rules: rules2 }; }
+    catch (e) { return { error: e && e.message || String(e) }; }
+  }
+  // 作った月を採用する（設定・月・結果・同期の基準・改名の記録をまとめて置き換える。buildFromPrevious が成功したときだけ）
+  function adoptNewMonth(b) {
+    state.renames = []; if (b.rules) state.rules = b.rules; state.meta = null; state.base = null; state.baseRules = null; state.month = b.month; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input");
+    A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month }));
+  }
   async function createFromPrevFile(f) {
     if (!f) return; if (!(await saveBeforeSwitch())) return;
     let o; try { o = JSON.parse(await f.text()); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e })); }
     const shape = loadedShape(o); if (shape.error) return alert(T.t("読み込み失敗: {err}", { err: shape.error }));
     if (!(await saveBeforeSwitch())) return;
-    let month2, rules2 = null; try { const clone = x => JSON.parse(JSON.stringify(x)); if (shape.rules) { rules2 = clone(shape.rules); T.fillDefaultRules(rules2); }
-      const R0 = state.rules; if (rules2) state.rules = rules2; try { month2 = A.fromPrevious({ rules: shape.rules, month: shape.month, result: shape.result }); } finally { state.rules = R0; } // fromPrevious は state.rules を見る: 複製の設定で作り、失敗したら元の設定に戻す
-      if (!A.isMonthObj(month2)) throw new Error(T.t("勤務表データではありません（year / month がありません）")); T.normalizeMonth(month2, rules2 || state.rules); } // 作った月も採用する前に確かめる
-    catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
-    state.renames = []; if (rules2) state.rules = rules2; state.meta = null; state.base = null; state.baseRules = null; state.month = month2; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input");
-    A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: state.month.year, m: state.month.month }));
+    const b = buildFromPrevious(o); if (b.error) return alert(T.t("読み込み失敗: {err}", { err: b.error }));
+    adoptNewMonth(b);
   }
   function applyLoaded(o, msg, opts = {}) {
     const fromDir = opts.fromFolder !== false; const shape = loadedShape(o); if (shape.error) return alert(shape.error); const { month, rules, result } = shape;
@@ -517,5 +528,5 @@
     if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); if (typeof A.renderLangs === "function") A.renderLangs(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
   }
 
-  Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded }); // 他のファイルから使う関数
+  Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded, buildFromPrevious, adoptNewMonth }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

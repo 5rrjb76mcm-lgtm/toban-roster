@@ -121,7 +121,7 @@
           { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
           { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
         if (v && !(await again())) return;
-        if (v === "prev") { if (o2.rules) state.rules = o2.rules; state.meta = null; state.base = null; state.month = fromPrevious(o2, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); return; }
+        if (v === "prev") { const b = A.buildFromPrevious(o2, ny, nm); if (b.error) { alert(T.t("{y}年{m}月 のデータから作れません: {err}", { y: c.slice(0, 4), m: +c.slice(4), err: b.error })); A.renderSettingsMonth(); return; } A.adoptNewMonth(b); return; } // 検査 → 複製上で変換 → 成功時だけ一括採用（ファイル選択の経路と同じ）
         if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); return; }
         A.renderSettingsMonth(); return;
       }

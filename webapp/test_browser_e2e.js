@@ -430,6 +430,16 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.strictEqual(await page.evaluate(n => { const A = T.app; A.state.month.fixed_tags = { [`7:night|${n}`]: "古い印" }; const P = new T.Problem(A.state.rules, A.state.month); return P.nameWithTag([7, "night"], n); }, who), who, "固定に結び付かない印は表示に使わない");
     await ctx.close();
   });
+  await test("ヘッダー経由の引き継ぎ: 保存フォルダの 12 月の名簿が [{}] のとき、翌年 1 月を「12 月のデータから引き継いで作成」しても採用せず知らせる（設定・月・保存した JSON は不変）", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const dec = JSON.parse(fs.text("A/202611/202611_data.json")); dec.month.year = 2026; dec.month.month = 12; dec.rules.doctors = [{}]; dec.saved_at = "2026-10-05T00:00:00Z"; fs.write("A/202612/202612_data.json", Buffer.from(JSON.stringify(dec)));
+    const snap = () => page.evaluate(() => JSON.stringify([T.app.canon(T.app.state.rules), T.app.canon(T.app.state.month), T.app.state.meta])), before = await snap(), nov = fs.text("A/202611/202611_data.json"); // 画面の読み戻しが補う空値（allow_chief_duty: false・notes: null）は差にしない
+    await page.evaluate(() => { const q = ["2027", "1"]; window.prompt = () => q.shift(); }); await page.selectOption("#monthSel", "__other__");
+    const b = page.locator("#modalBtns button", { hasText: "引き継いで作成" }); await b.first().waitFor({ timeout: 10000 }); await b.first().click(); await page.waitForFunction(() => (window.__alerts || []).length > 0, null, { timeout: 10000 });
+    assert.ok((await page.evaluate(() => window.__alerts.join("|"))).includes("作れません"), "知らせる"); assert.strictEqual(await snap(), before, "設定・月・同期の基準は不変"); assert.strictEqual(await page.evaluate(() => T.app.tag()), "202611");
+    await page.waitForTimeout(1500); assert.strictEqual(fs.text("A/202611/202611_data.json"), nov, "11 月のファイルは不変"); assert.strictEqual(fs.text("A/202701/202701_data.json"), null, "1 月は作られない");
+    await ctx.close();
+  });
   await test("結果の職員別カレンダーの休みの日数: 検算と同じ数え方（OC だけの日は休み。明けの扱いは設定に従う）", async () => {
     const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
     const asg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "data/js_assignment.json"), "utf8"));
