@@ -15,7 +15,7 @@ let chromium; try { ({ chromium } = require(path.join(process.env.HOME, ".toban-
 if (!fs.existsSync("/Applications/Google Chrome.app")) { console.log("--  実ブラウザの通し試験は省略（Google Chrome が無い）"); process.exit(0); }
 if (!fs.existsSync(HTML)) { console.log(`FAIL ${HTML} がありません（build.py で組み立ててから）`); process.exit(1); }
 const PLUGIN = `T.rules.register({ id: "local.e2e.rule", api: 1, order: 999, group: "basic", label: "通し試験の規則", states: ["hard", "off"], def: "hard", messages: { E2E_X: { en: "x", ja: "x" } }, solve() { }, check() { }, penalty() { } });`;
-let fails = 0; const ok = m => console.log("ok   " + m), fail = m => { fails++; console.log("FAIL " + m); };
+let fails = 0, passed = 0; const ok = m => { passed++; console.log("ok   " + m); }, fail = m => { fails++; console.log("FAIL " + m); };
 async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`${name}\n      ${(e && e.stack || e).toString().split("\n").slice(0, 3).join("\n      ")}`); } }
 (async () => {
   const srv = http.createServer((req, res) => { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(fs.readFileSync(HTML)); });
@@ -385,6 +385,51 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     assert.strictEqual(await page.evaluate(n => { const A = T.app; delete A.state.rules.doctors.find(d => d.name === n).duty; A.save(); A.renderAll(); return new T.Problem(A.state.rules, A.state.month).targets[n]; }, who), 0, "当番に戻すと目標 0 回が効く");
     await ctx.close();
   });
+  await test("名簿の氏名を空にする: 名簿から外れず、元の氏名に戻って知らせる（不可日・隠れた個人の条件・改名の記録は不変）。空白だけでも同じ", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]');
+    const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = R.doctors[R.doctors.length - 1].name; R.friday_night_min = { [n]: 2 }; R.rule_states.friday_night_min = "off"; (A.state.month.unavailable_night[n] ||= []).push(9); A.renderSettings(); return n; });
+    const n0 = await page.evaluate(() => T.app.state.rules.doctors.length), snap = () => page.evaluate(() => JSON.stringify([T.app.state.rules.doctors.map(d => d.name), T.app.state.rules.friday_night_min, T.app.state.month.unavailable_night, T.app.state.renames])); const before = await snap();
+    for (const v of ["", "   "]) { const inp = page.locator(`#doctorTable tr[data-i="${n0 - 1}"] [data-f="name"]`); await inp.fill(v); await inp.dispatchEvent("change");
+      assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), n0, "名簿から消えない: " + JSON.stringify(v)); assert.strictEqual(await snap(), before, "名簿・条件・不可日・記録は不変: " + (await snap()) + " / " + before); assert.ok((await page.evaluate(() => window.__toasts.slice(-2).join("|"))).includes("空にできません"), "知らせる");
+      assert.strictEqual(await page.locator(`#doctorTable tr[data-i="${n0 - 1}"] [data-f="name"]`).inputValue(), who, "欄も元の氏名に戻る"); }
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")); assert.ok(saved.rules.doctors.some(d => d.name === who), "保存した名簿にも残る"); assert.ok((saved.month.unavailable_night[who] || []).includes(9), "不可日も保存される");
+    await ctx.close();
+  });
+  await test("職員別カレンダー: 日勤を行う日の設定を「休日だけ」に変えても、画面に出ない平日の日勤の固定と日勤希望は別の日の編集で消えない。設定を戻せば見える。欄を出している日を空にしたときだけ消える", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = A.dutyNames()[0]; A.state.ui.doctor = A.names().indexOf(n); R.rule_states.wish_day = "soft"; (R.profile ||= {}).shifts = [{ id: "day", label: "日勤", on: "all" }, { id: "night", label: "夜勤", on: "all" }]; T.fillDefaultRules(R);
+      const m = A.state.month; (m.fixed.day ||= {})[2] = n; ((m.wishes ||= {}).day_on ||= {})[n] = [2]; (m.wishes.night_on ||= {})[n] = [3]; A.renderDoctor(); return n; }); // 2026-11-02（月）: 日勤の固定と日勤希望
+    assert.strictEqual(await page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]').inputValue(), "day", "毎日日勤のときは平日にも日勤の欄"); assert.ok(await page.locator('#doctorPane [data-cal="wishday"][data-d="2"]').isChecked());
+    await page.evaluate(() => { const A = T.app; A.state.rules.profile.shifts[0].on = "off_days"; T.fillDefaultRules(A.state.rules); A.renderDoctor(); }); assert.strictEqual(await page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]').count(), 0, "休日だけなら平日の日勤の欄は出ない"); assert.strictEqual(await page.locator('#doctorPane [data-cal="wishday"][data-d="2"]').count(), 0);
+    await page.check('#doctorPane [data-cal="wish"][data-d="10"]'); // 別の日の夜勤希望を変える（読み戻しが走る）
+    let st = await page.evaluate(() => ({ fd: T.app.state.month.fixed.day, wd: T.app.state.month.wishes.day_on, wn: T.app.state.month.wishes.night_on })); assert.strictEqual(st.fd[2], who, "出ていない日の日勤の固定が残る"); assert.deepStrictEqual(st.wd[who], [2], "出ていない日の日勤希望が残る"); assert.deepStrictEqual(st.wn[who], [3, 10]);
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")).month; assert.strictEqual(saved.fixed.day["2"], who, "保存した JSON にも残る"); assert.deepStrictEqual(saved.wishes.day_on[who], [2]);
+    await page.evaluate(() => { const A = T.app; A.state.rules.profile.shifts[0].on = "all"; T.fillDefaultRules(A.state.rules); A.renderDoctor(); }); assert.strictEqual(await page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]').inputValue(), "day", "設定を戻せば見える"); assert.ok(await page.locator('#doctorPane [data-cal="wishday"][data-d="2"]').isChecked());
+    await page.selectOption('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]', ""); await page.uncheck('#doctorPane [data-cal="wishday"][data-d="2"]'); st = await page.evaluate(() => ({ fd: T.app.state.month.fixed.day, wd: T.app.state.month.wishes.day_on })); assert.strictEqual(st.fd[2], undefined, "欄を出している日を空にすれば消える"); assert.strictEqual((st.wd || {})[who], undefined);
+    await ctx.close();
+  });
+  await test("前月末の接続: 前月が複数名の配置（勤務者が配列）で当月が 1 名の配置でも、月別の設定で別の欄を変えたときに前月末の勤務者が消えない（保存した JSON まで）", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const [a, b] = await page.evaluate(() => { const A = T.app, ns = A.dutyNames(); A.state.month.prev_month = { last_days: [{ date: 30, night: [ns[0], ns[1]], night_oc: [] }, { date: 31, night: [ns[2], ns[3]], night_oc: [] }], last_weekend_charge: null, prev_weekend_charge: null }; A.save(); A.renderAll(); return [ns[0], ns[1]]; });
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="monthSettings"]');
+    const cell = page.locator('#monthSettings tr[data-ld] input[data-f="night"][data-multi]').first(); assert.ok(await cell.count(), "複数名の欄で出す"); assert.ok((await cell.inputValue()).includes(a) && (await cell.inputValue()).includes(b), "両名が見える");
+    const ta = page.locator('#monthSettings textarea[data-path="notes"], textarea[data-path="notes"]').first(); await ta.fill("prev-multi"); await ta.dispatchEvent("change"); // 別の欄を変える（読み戻しが走る）
+    const ld = await page.evaluate(() => T.app.state.month.prev_month.last_days); assert.deepStrictEqual([].concat(ld.find(e => +e.date === 30).night), [a, b], "前月末の 2 名が残る"); assert.strictEqual(ld.length, 2);
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")).month.prev_month.last_days; assert.deepStrictEqual([].concat(saved.find(e => +e.date === 30).night), [a, b], "保存した JSON にも残る");
+    await ctx.close();
+  });
+  await test("固定の印: 「固定をすべて消去」で印も消え、1 名の欄で固定を外した人の印も消える（保存した JSON まで）。後の割当で同じ人が同じ枠に入っても古い印は出ない", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = A.dutyNames()[0]; (R.profile ||= {}).fixed_tags = ["研修"]; T.fillDefaultRules(R); const m = A.state.month; m.fixed.night[7] = n; m.fixed.night[9] = n; m.fixed_tags = { [`7:night|${n}`]: "研修", [`9:night|${n}`]: "会議" }; A.save(); A.renderAll(); return n; });
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="fixedPane"]');
+    await page.selectOption('#fixedPane select[data-fx="night"][data-d="9"]', ""); let tags = await page.evaluate(() => T.app.state.month.fixed_tags); assert.strictEqual(tags[`9:night|${who}`], undefined, "1 名の欄で外した人の印は消える"); assert.strictEqual(tags[`7:night|${who}`], "研修", "ほかの印は残る");
+    await page.evaluate(() => { window.confirm = () => true; }); await page.click('#fixedPane [data-act="fxClear"]'); tags = await page.evaluate(() => T.app.state.month.fixed_tags); assert.deepStrictEqual(tags, {}, "全消去で印も消える"); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.fixed.night), {});
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")).month; assert.deepStrictEqual(saved.fixed_tags || {}, {}, "保存した JSON にも印は残らない");
+    assert.strictEqual(await page.evaluate(n => { const A = T.app; A.state.month.fixed_tags = { [`7:night|${n}`]: "古い印" }; const P = new T.Problem(A.state.rules, A.state.month); return P.nameWithTag([7, "night"], n); }, who), who, "固定に結び付かない印は表示に使わない");
+    await ctx.close();
+  });
   await test("結果の職員別カレンダーの休みの日数: 検算と同じ数え方（OC だけの日は休み。明けの扱いは設定に従う）", async () => {
     const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
     const asg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "data/js_assignment.json"), "utf8"));
@@ -397,5 +442,5 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await ctx.close();
   });
   closing = true; await browser.close(); srv.close();
-  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log("実ブラウザの通し試験 24 本 OK");
+  if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log(`実ブラウザの通し試験 ${passed} 本 OK`);
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

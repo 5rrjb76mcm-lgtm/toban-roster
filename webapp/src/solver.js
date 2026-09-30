@@ -135,9 +135,9 @@
         const sum = LP.sum((P.byRole[sid] || []).map(n => oc[k + "|" + n]));
         if (sid !== jr) { lp.add(sum, "=", needOf(sid)); continue; }
         // 固定「若手OCなし」の枠は置かず、勤務者の役割に関わらず missY で吸収する（減点 missing_young_oc）
-        const noneY = P.ocNone(s, sid);
-        const missY = lp.aux("missY"); lp.add(sum, "=", LP.sub(needOf(sid), missY));
-        if (noneY) lp.add(sum, "=", 0); else lp.add(missY, "<=", isRoleE[P.refId("other")] || LP.E(0)); // 省略できるのは「もう一方の専門」の勤務のときだけ
+        const noneY = P.ocNone(s, sid), maxY = Math.max(0, ...P.roleIds.map(t => +((req[t] || {})[sid] || 0))); // 必要人数の最大（不足は 0〜必要数の整数。必要 2 名で 1 名しか置けない枠も、1 名分の減点で許す。検算・減点と同じ数え方）
+        const missY = maxY > 1 ? lp.auxInt("missY", 0, maxY) : lp.aux("missY"); lp.add(sum, "=", LP.sub(needOf(sid), missY));
+        if (noneY) lp.add(sum, "=", 0); else lp.add(missY, "<=", LP.addTo(LP.E(), isRoleE[P.refId("other")] || LP.E(0), maxY || 1)); // 省略できるのは「もう一方の専門」の勤務のときだけ
         lp.objAdd(W.missing_young_oc, missY);
       }
       for (const n of names) { if (!P.isStandby(n)) lp.add(oc[k + "|" + n], "=", 0); lp.add(E(work[k + "|" + n], oc[k + "|" + n]), "<=", 1); }

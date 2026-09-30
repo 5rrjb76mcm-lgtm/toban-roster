@@ -542,7 +542,7 @@
     ocNone(s, team) { const x = this.fixedOcNone[`${s[0]}:${s[1]}`]; return !!(x && x.has(team)); } // その枠で team の OC を置かない固定があるか
     nextFixedWorks(n) { const x = this.nextFixed; return x.day.includes(n) || x.night.includes(n); }
     fixedWorkersOf(s) { return (s[1] === "night" ? this.fixedNight : this.fixedDay)[s[0]] || []; } // その枠に固定した勤務者（配列）
-    fixedTag(s, n) { return this.fixedTags[`${s[0]}:${s[1]}|${n}`] || ""; } // 固定の印（研修・会議など）
+    fixedTag(s, n) { const k = `${s[0]}:${s[1]}|${n}`; return this.fixedEngKeys.has(k) ? this.fixedTags[k] || "" : ""; } // 固定の印（研修・会議など）。実際にその枠に固定されている人の印だけ（固定を外した後に残った印を、後の割当で同じ枠に入った人に付けない）
     dayHas(d, id) { return (this.dayFlags[d] || []).includes(id); } // その日に区分 id が付いているか
     daysWith(id) { return Object.keys(this.dayFlags).map(Number).filter(d => this.dayHas(d, id)).sort((a, b) => a - b); }
     dayNote(d) { return this.dayNotes[d] || ""; }

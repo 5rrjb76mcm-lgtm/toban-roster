@@ -164,8 +164,9 @@ for d in args.plugins:
         print(f"--plugins: {pdir.name}: 知らないサブフォルダは無視します: {', '.join(unknown)}（使えるのは {', '.join(PLUGIN_KINDS)}）")
     if not found:
         print(f"--plugins: {pdir.name}: 部品が見つかりません（rules/ calendars/ docx/ lang/ profiles/ の下に置きます）")
-    ptext = "".join(q.read_text(encoding="utf-8") for kind in PLUGIN_KINDS for q in (sorted((pdir / kind).glob(PLUGIN_KINDS[kind])) if (pdir / kind).is_dir() else []))
-    plugin_info.append({"dir": pdir.name, "files": found, "hash": hashlib.sha256(ptext.encode("utf-8")).hexdigest()[:12]})  # hash: 中身の印（T.plugins.stamp に入り、別の組み立てで開いたときに計算結果と帳票の同一性を見る）
+    # hash: 部品の印（T.plugins.stamp に入り、別の組み立てで開いたときに計算結果と帳票の同一性を見る）。中身だけでなく「種類/ファイル名」と読み込む順も含める（本文を変えずに改名した部品は plugins_off の対応が変わる。同じ id を定義する部品の順は有効な定義を変える）
+    manifest = "\n".join(f"{kind}/{q.name}\t{hashlib.sha256(q.read_text(encoding='utf-8').encode('utf-8')).hexdigest()}" for kind in PLUGIN_KINDS for q in (sorted((pdir / kind).glob(PLUGIN_KINDS[kind])) if (pdir / kind).is_dir() else []))
+    plugin_info.append({"dir": pdir.name, "files": found, "hash": hashlib.sha256(manifest.encode("utf-8")).hexdigest()[:12]})
 def plugin_src(kind):
     return "".join(f"\n// ============================================================\n// [部品 {name}]\n// ============================================================\nT.pluginSource = {json.dumps(kind + '/' + q.name, ensure_ascii=False)};\n" + q.read_text(encoding="utf-8") + "\n;T.pluginSource = null;\n" for name, q in plugin_files[kind])  # 出どころ（実行時の読み込みと同じ「種類/ファイル名」）
 def with_plugins(f, code):  # 本体のファイル f の後ろに、同じ種類の部品を続ける

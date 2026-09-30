@@ -75,7 +75,7 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     { x.A.state.rules.rule_states["local.review.missing"] = "hard"; x.A.renderResult(); const h = x.el("#result").innerHTML; assert.ok(/検算未完了/.test(h) && !/検算: 違反なし/.test(h), "欠落時は未完了: " + h.slice(0, 400)); delete x.A.state.rules.rule_states["local.review.missing"]; }
     // 切替の処理中は計算を始めない
     { x.A.switching = 1; const n0 = x.stat.solverCalls; await x.A.runSolve(); assert.strictEqual(x.stat.solverCalls, n0, "切替中は計算しない"); assert.ok(x.stat.toasts.some(t => /切り替えの処理中/.test(t))); x.A.switching = 0; }
-    x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:site#h1"), "組み立て時のプラグインの印も結果に残す: " + JSON.stringify(x.A.state.result.plugins) + " log=" + x.log().slice(-300)); x.T.PLUGINS = [];
+    x.T.PLUGINS = [{ dir: "site", files: {}, hash: "h1" }]; await x.A.runSolve(); assert.ok(x.A.state.result.plugins.includes("build:0:site#h1"), "組み立て時のプラグインの印も結果に残す: " + JSON.stringify(x.A.state.result.plugins) + " log=" + x.log().slice(-300)); x.T.PLUGINS = [];
   }
   { // 計算中の月の切替・プラグインの読み直しの受付（A.solving）
     const x = context(); let during = null; x.T.solveWithAvoidRef = async () => { during = x.A.solving; return { asg: {}, status: "Optimal", seconds: 0, objective: 0, vars: 0, cons: 0 }; };

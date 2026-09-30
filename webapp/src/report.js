@@ -121,7 +121,7 @@
     const soft = [];
     const rctx = T.rules.checkCtx(P, A, "report", x => soft.push(x), { avoidRef: info.avoidRef });
     T.rules.runReport(rctx);
-    { const jr = P.refId("junior"); const my = !jr ? [] : P.slots.filter(s => !A.oc(s).some(n => P.isRole(n, "junior")) && +((P.ocReqAt(s)[Tm[A.work(s)]] || {})[jr] || 0) > 0).map(s => `${P.label(s[0])}${P.shiftLabel(s[1])}（${A.work(s)}${P.ocNone(s, jr) ? L("。固定で{junior}OCなし") : ""}）`); soft.push(L(tv("{junior}OCを置かなかった枠（減点 missing_young_oc）: {slots}", { slots: my.join(T.listSep()) || tx("なし") }))); }
+    { const jr = P.refId("junior"); const my = !jr ? [] : P.slots.filter(s => A.oc(s).filter(n => P.isRole(n, "junior")).length < +((P.ocReqAt(s)[Tm[A.work(s)]] || {})[jr] || 0)).map(s => { const got = A.oc(s).filter(n => P.isRole(n, "junior")).length, need = +((P.ocReqAt(s)[Tm[A.work(s)]] || {})[jr] || 0); return `${P.label(s[0])}${P.shiftLabel(s[1])}（${A.work(s)}${got ? ` ${got}/${need}` : ""}${P.ocNone(s, jr) ? L("。固定で{junior}OCなし") : ""}）`; }); /* 必要数に足りない枠（一部だけ置けた枠は 置けた数/必要数） */ soft.push(L(tv("{junior}OCを置かなかった枠（減点 missing_young_oc）: {slots}", { slots: my.join(T.listSep()) || tx("なし") }))); }
     S.push({ id: "s9", title: tx("9 調整目標の達成状況"), html: `<ul>${(soft.length ? soft : [tx("特記なし")]).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` });
     // 10 月末
     const l10 = [];

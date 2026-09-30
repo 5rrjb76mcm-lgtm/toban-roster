@@ -51,6 +51,19 @@ test("build.py --plugins で組み立てた HTML にプラグインが入る", (
   for (const s of [RID, 'id: "us"', '"day_list"', "example-clinic", '"dir": "plugin-example"']) assert(html.includes(s), "入っていない: " + s);
   assert(!fs.readFileSync(path.join(__dirname, "toban.html"), "utf8").includes(RID), "プラグインなしの toban.html には入らない");
 });
+test("組み立て時のプラグインの印: --plugins の順の逆転と、本文を変えない改名で印が変わる（同じ id を定義する部品の順・plugins_off の対応が変わるため）", () => {
+  const py = path.join(__dirname, "../tools/.venv/bin/python"); if (!fs.existsSync(py)) { console.log("      （tools/.venv が無いので組み立ては省略）"); return; }
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "toban_stamp_")), mk = (dir, name, body) => { fs.mkdirSync(path.join(base, dir, "rules"), { recursive: true }); fs.writeFileSync(path.join(base, dir, "rules", name), body); return path.join(base, dir); };
+  const body = 'T.rules.register({ id: "local.stamp.x", api: 1, states: ["hard", "off"], def: "off", label: "x", solve() { }, check() { }, penalty() { } });';
+  const pA = mk("pA", "x.js", body), pB = mk("pB", "x.js", body.replace('label: "x"', 'label: "y"')), pA2 = mk("pA2", "renamed.js", body);
+  const stampOf = (args, tag) => { const out = path.join(base, tag + ".html"); execFileSync(py, ["build.py", ...args.flatMap(d => ["--plugins", d]), "--out", out], { cwd: __dirname, encoding: "utf8" }); const html = fs.readFileSync(out, "utf8"), m = html.match(/T\.PLUGINS = (\[.*?\]); \/\/ 組み立て時/); assert(m, "T.PLUGINS が埋まっていない"); return JSON.parse(m[1]).map(p => `${p.dir}#${p.hash}`); };
+  const ab = stampOf([pA, pB], "ab"), ba = stampOf([pB, pA], "ba"), a2 = stampOf([pA2], "a2"), a = stampOf([pA], "a");
+  assert.deepStrictEqual(ab.slice().sort(), ba.slice().sort(), "同じ部品なら各部品の印は同じ"); assert.notDeepStrictEqual(ab, ba, "順は一覧に残る");
+  assert.notStrictEqual(a[0].split("#")[1], a2[0].split("#")[1], "本文が同じでもファイル名が違えば印が違う");
+  const rt = list => { const p0 = T.PLUGINS; T.PLUGINS = list; try { return T.plugins.stamp().filter(x => x.startsWith("build:")).join("|"); } finally { T.PLUGINS = p0; } };
+  const [dA, hA] = ab[0].split("#"), [dB, hB] = ab[1].split("#"); assert.notStrictEqual(rt([{ dir: dA, hash: hA }, { dir: dB, hash: hB }]), rt([{ dir: dB, hash: hB }, { dir: dA, hash: hA }]), "実行時の印（T.plugins.stamp）も順を消さない");
+  fs.rmSync(base, { recursive: true, force: true });
+});
 test("実行時の読み込み口 T.plugins.load: 5 種類を文字列から登録し、失敗は記録に残って入力チェックに出る", () => {
   const rd2 = (kind, name) => fs.readFileSync(path.join(PLUG, kind, name), "utf8");
   T.calendars.register({ id: "none", label: "build-time override", holidays() { return [5]; } }); // 組み立て時のプラグインによる同梱 id の上書き（最初の load・beginFolder より前＝切替の戻し先に入る）

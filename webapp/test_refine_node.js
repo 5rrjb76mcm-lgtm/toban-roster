@@ -15,9 +15,10 @@ const highsPath = process.argv[2];
 let passed = 0;
 const test = (name, fn) => { try { fn(); passed++; console.log("ok  ", name); } catch (e) { console.log("FAIL", name, "\n     ", e && e.message || e); process.exitCode = 1; } };
 
-test("前月から取り込む日数（T.prevLookback）は、勤務帯ごとの連続の上限（shift_run_max）が必要とする日数も採る", () => {
+test("前月から取り込む日数（T.prevLookback）は、勤務帯ごとの連続の上限（shift_run_max）と実勤務の間隔（work_gap: 中 2 日を見るので 3 日）が必要とする日数も採る", () => {
   const rules = clone(T.DEFAULT_RULES); T.fillDefaultRules(rules); rules.rule_states.run_length_max = "off"; rules.rule_states.run_length_min = "off";
-  rules.rule_states.shift_run_max = "off"; assert.strictEqual(T.prevLookback(rules), 2, "連続の規則が無ければ 2 日");
+  rules.rule_states.shift_run_max = "off"; rules.rule_states.work_gap = "off"; assert.strictEqual(T.prevLookback(rules), 2, "連続の規則が無ければ 2 日");
+  rules.rule_states.work_gap = "soft"; assert.strictEqual(T.prevLookback(rules), 3, "work_gap（中 2 日）は前月末の 3 日が要る"); rules.rule_states.work_gap = "off";
   rules.rule_states.shift_run_max = "hard"; rules.shift_run_max = { day: 3 }; assert.strictEqual(T.prevLookback(rules), 4, "日勤は連続 3 日までなら 4 日");
   rules.shift_run_max = { day: 3, night: 6 }; assert.strictEqual(T.prevLookback(rules), 7); rules.rule_states.run_length_max = "hard"; rules.run_length = { max: 5 }; assert.strictEqual(T.prevLookback(rules), 7, "全体の連勤（5+2）より大きい方");
 });
@@ -684,7 +685,7 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     for (const d of [10, 11]) assert(!["day", "night"].some(k => A.worked("Ns01", [d, k])), `有給の ${d}日 に勤務`);
   });
   test("看護師 2 交代: 前月末は連勤の上限＋2 日（5 日）取り込み、前月末の 3 連勤に当月 1 日をつなげない。複数名の枠の勤務者は配列で持つ", () => {
-    const r = nurse(); assert.strictEqual(T.prevLookback(r), 5); assert.strictEqual(T.prevLookback(T.DEFAULT_RULES), 2, "連勤の規則を使わない施設は 2 日");
+    const r = nurse(); assert.strictEqual(T.prevLookback(r), 5); { const d0 = clone(T.DEFAULT_RULES); T.fillDefaultRules(d0); d0.rule_states.work_gap = "off"; assert.strictEqual(T.prevLookback(d0), 2, "連勤・間隔の規則を使わない施設は 2 日"); }
     const m = nurseMonth(r), others = r.doctors.map(d => d.name).filter(n => n !== "Ns01");
     m.prev_month.last_days = [27, 28, 29, 30, 31].map((date, i) => ({ date, day: i >= 2 ? ["Ns01"].concat(others.slice(i, i + 11)) : others.slice(i, i + 12), night: others.slice(20 + i % 4, 24 + i % 4) }));
     // 前月 31 日は Ns01 が日勤（29〜31 日の 3 連勤）。31 日の夜勤は Ns01 以外

@@ -499,12 +499,13 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             return sum(int((P.oc_req.get(t) or P.oc_req["C"]).get(kind, 0)) * v for t, v in (("I", isI[s]), ("A", isA[s]), ("Y", isY[s]), ("C", isC)))
         M.Add(sum(oc[s, n] for n in P.I) == need_of("I"))
         # 若手OC: I勤務→必須。A勤務→原則必須だが、置けないときは大幅減点で許容
-        miss_y = M.NewBoolVar(f"missY_{s[0]}_{s[1]}")
+        max_y = max([int((P.oc_req.get(t) or {}).get("Y", 0)) for t in P.oc_req] + [0])  # 必要人数の最大（不足は 0〜必要数の整数。JS の missY と同じ）
+        miss_y = M.NewIntVar(0, max(1, max_y), f"missY_{s[0]}_{s[1]}")
         M.Add(sum(oc[s, n] for n in P.Y) == need_of("Y") - miss_y)
         if P.oc_none(s, "Y"):  # 固定「若手OCなし」: 若手OCを置かず、勤務者のチームに関わらず miss_y で吸収（減点）
             M.Add(sum(oc[s, n] for n in P.Y) == 0)
         else:
-            M.Add(miss_y <= isA[s])
+            M.Add(miss_y <= max(1, max_y) * isA[s])
         obj.append((P.rules.get("weights") or {}).get("missing_young_oc", 3) * miss_y)
         for n in names:
             if n not in P.I and n not in P.Y:
@@ -1063,7 +1064,7 @@ def check(P: Problem, asg: dict):
         need = P.oc_req.get(T[w]) or P.oc_req["C"]
         cnt = {"I": sum(1 for n in ocs if T.get(n) == "I"), "Y": sum(1 for n in ocs if T.get(n) == "Y")}
         # A勤務で若手OCが置けない（Y=0）は必須違反ではなく減点（第9節に出す）
-        young_miss_allowed = (T[w] == "A" or P.oc_none(s, "Y")) and cnt["Y"] == 0 and cnt["I"] == need["I"] and len(ocs) == cnt["I"]
+        young_miss_allowed = (T[w] == "A" or P.oc_none(s, "Y")) and cnt["Y"] < int(need["Y"]) and cnt["I"] == need["I"] and len(ocs) == cnt["I"] + cnt["Y"]  # 不足は 0 名に限らない（JS の検算と同じ）
         if not young_miss_allowed and (cnt["I"] != need["I"] or cnt["Y"] != need["Y"] or len(ocs) != cnt["I"] + cnt["Y"]):
             V.append(f"{slab(s)}: OC構成不一致 勤務者{w}({T[w]}) OC={ocs}")
         if P.oc_none(s, "Y") and cnt["Y"] > 0:
@@ -1488,7 +1489,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     for n, days in P.wish_night.items():
         for d in days:
             soft.append(f"- {n} の{P.label(d)}当直希望: {'反映' if A.worked(n,(d,'night')) else '未反映'}")
-    my = [f"{P.label(s[0])}{'日勤' if s[1] == 'day' else '夜勤'}（{A.work(s)}）" for s in P.slots if T[A.work(s)] == "A" and not any(T.get(n) == "Y" for n in A.oc(s))]
+    my = [f"{P.label(s[0])}{'日勤' if s[1] == 'day' else '夜勤'}（{A.work(s)}）" for s in P.slots if T[A.work(s)] == "A" and sum(1 for n in A.oc(s) if T.get(n) == "Y") < int((P.oc_req.get("A") or {}).get("Y", 0))]  # 必要数に足りない枠
     soft.append(f"- 副担当医師の勤務で若手OCを置けなかった枠（減点 missing_young_oc）: {'、'.join(my) if my else 'なし'}")
     for n in P.duty_names:
         av = P.avoid_slots(n)

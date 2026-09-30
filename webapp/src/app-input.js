@@ -66,7 +66,7 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
 <p>${esc(T.t("午後外勤後の夜勤・夜間OCを「間に合う」と確認した件"))}: ${(m.confirmed_pm_external_night || []).map((x, i) => `<span class="chip">${esc(T.t("{d}日", { d: x.day }))} ${esc(x.name)} <button data-del="pmext" data-i="${i}">×</button></span>`).join("") || esc(T.t("なし"))}　${esc(T.t("日"))} <input type="number" id="pmExtDay" style="width:4em"> ${A.nameSel("", 'id="pmExtName"')} <button id="pmExtAdd">${esc(T.t("追加"))}</button></p></div>`);
     const pm = m.prev_month || {}, ld = pm.last_days || [];
     // 取り込む日数は連勤の規則で決まる（T.prevLookback）。1 枠に複数名の施設は、勤務者を「・」区切りで書く
-    const LB = Math.max(T.prevLookback(R), ld.length), multi = T.isMultiWork(R), ocOn = on("oncall");
+    const LB = Math.max(T.prevLookback(R), ld.length), multi = T.isMultiWork(R) || ld.some(e => e && ["day", "night"].some(k => Array.isArray(e[k]) && e[k].length > 1)), ocOn = on("oncall"); // 前月が複数名の配置なら、当月が 1 名でも複数名の欄で見せる（1 名の欄に配列を渡すと空になり、読み戻しで消える）
     const who = (v, f) => multi ? `<input data-f="${f}" data-multi value="${esc([].concat(v || []).join("・"))}" style="width:14em">` : A.nameSel(v, `data-f="${f}"`);
     const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}"><td><input type="number" data-f="date" value="${e.date ?? ""}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
       (ocOn ? `<td><input data-f="day_oc" value="${esc((e.day_oc || []).join("・"))}" style="width:8em"></td>` : "") + `<td>${who(e.night, "night")}</td>` +
@@ -176,9 +176,9 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const tagSel = (d, k) => { const opts = ext.fixedTags.filter(t => t.shifts.includes(k)).map(t => t.label); if (!opts.length) return ""; // 固定の印の選択肢（施設のプラグインが登録）
       const cur = (m.fixed_tags || {})[`${d}:${k}|${n}`] || ""; return A.sel([["", T.t("印なし")], ...[...new Set(cur ? opts.concat([cur]) : opts)].map(x => [x, x])], cur, `data-cal="ftag" data-d="${d}" data-k="${k}" title="${esc(T.t("固定の印"))}"`); };
     const fixedSel = (d, holiday) => {
-      const night = A.sel([["", "―"], ["night", shiftLabel(R, "night")], ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])], fixedNightVal(d), `data-cal="fixed" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night");
+      const night = A.sel([["", "―"], ["night", shiftLabel(R, "night")], ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])], fixedNightVal(d), `data-cal="fixed" data-k="night" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night");
       if (!holiday) return night;
-      const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-d="${d}" data-shown="${esc(fixedDayVal(d))}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
+      const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(fixedDayVal(d))}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
     // 施設のプラグインが足した日ごとの欄。いまの選択肢に無い値（プラグインの更新で外れた値）は「（現在は使わない値）」として残す（空欄を選んだときだけ消える）
@@ -248,14 +248,14 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       const wishes = []; root.querySelectorAll('[data-cal="wish"]').forEach(el => { if (el.checked) wishes.push(+el.dataset.d); });
       m.wishes.night_on = m.wishes.night_on || {};
       if (wishes.length) m.wishes.night_on[n] = wishes; else delete m.wishes.night_on[n];
-      if (root.querySelector('[data-cal="wishday"]')) { const wishesDay = []; root.querySelectorAll('[data-cal="wishday"]').forEach(el => { if (el.checked) wishesDay.push(+el.dataset.d); }); // 日勤の希望（規則 wish_day を使う施設。欄を出していないときは前の値のまま）
-        m.wishes.day_on = m.wishes.day_on || {}; if (wishesDay.length) m.wishes.day_on[n] = wishesDay; else delete m.wishes.day_on[n]; }
+      if (root.querySelector('[data-cal="wishday"]')) { const shown = new Set(), wishesDay = []; root.querySelectorAll('[data-cal="wishday"]').forEach(el => { shown.add(+el.dataset.d); if (el.checked) wishesDay.push(+el.dataset.d); }); // 日勤の希望（規則 wish_day を使う施設。欄を出していないときは前の値のまま）
+        m.wishes.day_on = m.wishes.day_on || {}; const all = ((m.wishes.day_on[n] || []).map(Number).filter(d => !shown.has(d))).concat(wishesDay).sort((a, b) => a - b); if (all.length) m.wishes.day_on[n] = all; else delete m.wishes.day_on[n]; } // 欄を出していない日（日勤の枠が無い日）の希望は残す
       const wk = new Set(m.wishes.weekend_dayshift || []); const cb = $("#wkwish"); if (cb) { if (cb.checked) wk.add(n); else wk.delete(n); } m.wishes.weekend_dayshift = A.names().filter(x => wk.has(x));
-      // 固定: この医師の分をいったん外してから、カレンダーの選択で入れ直す
-      const fx = m.fixed; const dropIn = tbl => { for (const d of Object.keys(tbl || {})) if (tbl[d] === n) delete tbl[d]; }; const dropArr = tbl => { for (const d of Object.keys(tbl || {})) { tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; } };
-      const dropWork = tbl => { for (const d of Object.keys(tbl || {})) { const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; } }; // 勤務者の固定（文字列か配列）から自分を外す
+      // 固定: 欄を出している日・勤務帯の分だけ、この医師の固定をいったん外してから、カレンダーの選択で入れ直す（欄を出していない日・勤務帯の固定は残す: 日勤を休日だけにした設定で平日の日勤の固定を持っていても、別の日の編集で消えない）
+      const fx = m.fixed; const dropArr = (tbl, d) => { if (!tbl[d]) return; tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; };
+      const dropWork = (tbl, d) => { if (!tbl || tbl[d] === undefined) return; const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; }; // 勤務者の固定（文字列か配列）から自分を外す
       const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|")[1] === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
-      dropWork(fx.day); dropWork(fx.night); dropArr(fx.day_oc ||= {}); dropArr(fx.night_oc ||= {});
+      fx.day_oc ||= {}; fx.night_oc ||= {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d; if (el.dataset.k === "day") { dropWork(fx.day, d); dropArr(fx.day_oc, d); } else { dropWork(fx.night, d); dropArr(fx.night_oc, d); } });
       { // 期間責任者の固定: この欄が「期間責任者」として出していた日だけ読み戻す（日勤と両方固定で日勤を出していた日は、この欄では表現していないので変えない）
         const selOf = {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) selOf[+el.dataset.d] = el; });
         for (const d of Object.keys(fx.weekend_charge || {})) if (fx.weekend_charge[d] === n) { const el = selOf[+d]; if (el && el.dataset.shown === "charge") delete fx.weekend_charge[d]; } }
@@ -367,6 +367,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         for (const [n, tg] of parts) if (n && tg) tags[`${d}:${k}|${n}`] = tg;
         if (ns.length) fx[k][d] = ns.length === 1 ? ns[0] : ns; } else if (k === "charge") fx.weekend_charge[d] = v;
     });
+    for (const key of Object.keys(tags)) { const [sl, who] = key.split("|"), [dd, kk] = sl.split(":"); if (!(fx[kk] && [].concat(fx[kk][+dd] || []).includes(who))) delete tags[key]; } // 実際の固定と結び付かない印は残さない（1 名の欄で外した人の印・全消去の後の印）
     m.fixed = fx; m.fixed_tags = tags;
     root.querySelectorAll("[data-extras]").forEach(el => { const [tbl, d] = el.dataset.extras.split(":"), k = tbl === "day_oc" ? "day" : "night", val = x => (root.querySelector(`select[data-fx="${k}${x}"][data-d="${d}"]`) || {}).value || ""; el.textContent = extrasText(fx[tbl][+d], [val("I"), val("Y")]); }); // 欄の横の「＋名前」も、読み戻した結果に合わせる
     A.save();
@@ -374,7 +375,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
   function bindFixed() {
     const root = $("#fixedPane");
     root.addEventListener("change", () => readFixed());
-    root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; A.save(); renderFixed(); });
+    root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
   }
 
   Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数

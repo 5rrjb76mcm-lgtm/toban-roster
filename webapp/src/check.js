@@ -57,8 +57,8 @@
       const ocCnt = {}; for (const sid of P.standbyRoleIds) ocCnt[sid] = ocs.filter(n => Tm[n] === sid).length;
       const total = Object.values(ocCnt).reduce((a, b) => a + b, 0);
       // 「対になる役割」の勤務で補助の役割のOCが置けないのは必須違反ではなく減点（結果の第9節に出す）。固定「若手OCなし」の枠も同様
-      const youngMissAllowed = jr && (P.isRole(w, "other") || P.ocNone(s, jr)) && ocCnt[jr] === 0 &&
-        P.standbyRoleIds.every(sid => sid === jr || ocCnt[sid] === +(need[sid] || 0)) && ocs.length === total;
+      const youngMissAllowed = jr && (P.isRole(w, "other") || P.ocNone(s, jr)) && ocCnt[jr] < +(need[jr] || 0) &&
+        P.standbyRoleIds.every(sid => sid === jr || ocCnt[sid] === +(need[sid] || 0)) && ocs.length === total; // 不足は 0 名に限らない（必要 2 名で 1 名も、解く側と同じく減点で許容）
       if (!youngMissAllowed && (P.standbyRoleIds.some(sid => ocCnt[sid] !== +(need[sid] || 0)) || ocs.length !== total)) viol("SLOT_OC_MISMATCH", { slot: slab(s), worker: w, role: P.roleLabel(Tm[w]), oc: ocs.join("・") || "―" });
       if (jr && P.ocNone(s, jr) && ocCnt[jr] > 0) viol("FIXED_OC_NONE", { slot: slab(s), role: P.roleLabel(jr), who: ocs.filter(n => Tm[n] === jr).join("・") }); // 「OC なし」の固定の枠に、その役割の OC がいる（解く側は 0 名に固定する。固定との不一致なので許容しない）
       if (new Set(ocs).size !== ocs.length) viol("SLOT_OC_DUP", { slot: slab(s), who: ocs.join("・") }); // 同じ人を重ねて数えない（構造の違反。固定でも許容しない）

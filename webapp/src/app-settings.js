@@ -12,7 +12,7 @@
     wish_night: "当直希望の未反映",
     chief_duty: "{reserve}を勤務に登用する（1回あたり。月1回まで。例外的な登用のときだけ）",
     fixed_conflict: "固定指定が連続禁止などと競合したまま配置（1件あたり）",
-    missing_young_oc: "{other}の勤務で{junior}OCを置けない（1枠あたり）",
+    missing_young_oc: "{other}の勤務で{junior}OCを置けない（不足 1 名あたり）",
     avoid_day: "できれば避けたい日への配置（1枠あたり）",
     avoid_no_reduction: "避けたい日を申告した人の勤務回数が参照解（避けたい日を無視した計算）を下回る分（1回あたり。実質禁止）",
     wish_weekend_dayshift: "土日日勤の希望の未反映",
@@ -347,7 +347,9 @@
     // (2) 改名の追随（名簿の欄の rename と規則の rename）を複製で試し、失敗する改名は取り消す (3) 行を読む（土台は現在の職員。名前は確定した新しい名前）
     // (4) 読んだ後の設定・月に改名を適用する（プラグインの追随が、画面に残っていた古い値を読んだ後に効くように。失敗したら読み戻し全体を取り消す）
     const backup = JSON.parse(JSON.stringify({ rules: R, month: state.month, result: state.result, base: state.base, baseRules: state.baseRules, renames: state.renames || [] })); // 改名は結果・統合の基準にも及ぶので、取り消すときは全部戻す
-    const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`); const raw = g("name").value.trim(); if (!raw) return; rows.push({ tr, g, old: oldNames[+tr.dataset.i], name: raw }); });
+    // 氏名を空にした行は入力不備として元の氏名に戻す（名簿から外す操作ではない: 外すのは「削除」ボタンで、確認・条件の掃除・記録を通す。空欄で読み飛ばすと、確認なしで名簿から消えて個人の条件だけが残る）
+    const blank = []; const rows = []; document.querySelectorAll("#doctorTable tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`), old = oldNames[+tr.dataset.i]; let raw = g("name").value.trim(); if (!raw) { if (old === undefined) return; blank.push(old); raw = old; g("name").value = old; } rows.push({ tr, g, old, name: raw }); });
+    if (blank.length) A.toast(T.t("氏名は空にできません（{who} の氏名を元に戻しました）。名簿から外すには行の「削除」ボタンを使ってください", { who: blank.join(T.nameSep()) }));
     const taken = new Set(rows.filter(r => r.old && r.old === r.name).map(r => r.name));
     // プラグインが欠けている・読めない・変換に失敗している間は改名を確定しない（欠けたプラグインの独自データを追随させられず、復帰後にその人の条件が旧名に残る）。
     // 計算用の欠落判定（「なし」の規則は除く）とは別に、設定が参照する施設のプラグインの規則（id が local. で始まる）は「なし」でも登録が無ければ欠けているとみなす（独自データはその規則が持つ）

@@ -27,17 +27,22 @@ const dirOf = files => ({ getFileHandle: async n => { if (!(n in files)) throw N
 const root = (sub, top = {}) => Object.assign(dirOf(top), { getDirectoryHandle: async n => { if (n in sub) return dirOf(sub[n]); throw NF(); } });
 (async () => {
   A.monthDirs = ["202611"];
-  A.dirHandle = root({ "202611": { "202611_data.json": { saved_at: "2026-10-05" } } });
+  const D = (y = 2026, m = 11) => ({ month: { year: y, month: m }, saved_at: "2026-10-05" });
+  A.dirHandle = root({ "202611": { "202611_data.json": D() } });
   let f = await A.findMonthData("202611"); assert.strictEqual(f.where, "202611/202611_data.json", "月のフォルダの中を読む");
-  A.dirHandle = root({}, { "202611_data.json": { saved_at: "2026-10-05" } });
+  A.dirHandle = root({}, { "202611_data.json": D() });
   f = await A.findMonthData("202611"); assert.strictEqual(f.where, "202611_data.json", "フォルダ直下も探す");
-  A.dirHandle = root({ "202611": { "202611 当直表データ.json": { saved_at: "2026-10-05" } } });
+  A.dirHandle = root({ "202611": { "202611 当直表データ.json": D() } });
   f = await A.findMonthData("202611"); assert.strictEqual(f.data, null, "以前の日本語の名前は読まない（公開前のため互換は持たない）");
   // 無い（NotFoundError）のではなく確かめられない（権限・読取り障害）ときは、無いものとして扱わない
   { const bad = name => Object.assign(new Error("unreadable"), { name });
-    A.dirHandle = Object.assign(root({}, { "202611_data.json": { saved_at: "2026-10-05" } }), { getDirectoryHandle: async () => { throw bad("NotAllowedError"); } });
+    A.dirHandle = Object.assign(root({}, { "202611_data.json": D() }), { getDirectoryHandle: async () => { throw bad("NotAllowedError"); } });
     f = await A.findMonthData("202611"); assert.strictEqual(f.data, null); assert.strictEqual(f.corrupt, "202611/", "月のフォルダを開けない"); assert.strictEqual(f.unreadable, true);
     A.dirHandle = root({ "202611": Object.assign({}, { x: 1 }) }); const sub = await A.dirHandle.getDirectoryHandle("202611"); A.dirHandle.getDirectoryHandle = async () => Object.assign(sub, { getFileHandle: async () => { throw bad("NotReadableError"); } });
     f = await A.findMonthData("202611"); assert.strictEqual(f.data, null); assert.strictEqual(f.corrupt, "202611/202611_data.json", "ファイルを確かめられない"); assert.strictEqual(f.unreadable, true); }
+  // 中身の検査: 別の月の中身（コピーや改名の誤り）・勤務表データでない中身・JSON として有効な null / false / 0 / "" / 配列は「無い」でも「その月のデータ」でもない（壊れている扱い: 新規扱いで上書きしない・自動で統合しない）
+  A.dirHandle = root({ "202611": { "202611_data.json": D(2026, 12) } }); f = await A.findMonthData("202611"); assert.strictEqual(f.data, null); assert.strictEqual(f.corrupt, "202611/202611_data.json", "中身が別の月"); assert.strictEqual(f.mismatch, true); assert.ok(/12月/.test(f.error), f.error); assert.ok(!f.unreadable);
+  A.dirHandle = root({ "202611": { "202611_data.json": { year: 2026, month: 11 } } }); f = await A.findMonthData("202611"); assert.ok(f.data, "月そのもの（rules を持たない古い形）は読む");
+  for (const v of [null, false, 0, "", [], { saved_at: "2026-10-05" }, { month: { year: 2026 } }]) { A.dirHandle = root({ "202611": { "202611_data.json": v } }); f = await A.findMonthData("202611"); assert.strictEqual(f.data, null, JSON.stringify(v)); assert.strictEqual(f.corrupt, "202611/202611_data.json", "勤務表データでない中身は「無い」ではない: " + JSON.stringify(v)); assert.ok(!f.unreadable); }
   console.log("保存するファイルの名前と月データの探し方 OK");
 })().catch(e => { console.log("FAIL", e.message); process.exitCode = 1; });

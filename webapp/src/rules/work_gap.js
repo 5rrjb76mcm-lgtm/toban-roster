@@ -4,6 +4,7 @@ T.rules.register({
   id: "work_gap", api: 1, order: 970, group: "combo",
   label: "実勤務の間隔が短い組を避ける（中1日・中2日。当直の間隔向け。毎日勤務する 2 交代では使わない）", states: ["soft", "off"], def: "soft",
   weight: "work_gap_1", w0: 20, sub: ["work_gap_2"],
+  lookback() { return 3; }, // 前月から取り込む日数: 中 2 日（29 日勤務 → 30・31 休み → 翌月 1 日）を見るには前月末の 3 日が要る
   solve(ctx) {
     const { P, lp, LP, E, W } = ctx;
     for (const n of ctx.names) { if (P.isRole(n, "reserve")) continue;

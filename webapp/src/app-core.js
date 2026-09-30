@@ -33,7 +33,7 @@
   function canon(v, path = []) {
     if (Array.isArray(v)) { const a = v.map((x, i) => canon(x, path.concat(String(i)))); return isSetPath(path) ? a.sort(cmpJson) : a; }
     if (v && typeof v === "object") { const keepOf = k => LOCAL_KEY.test(path.length ? path[0] : k); const o = {}; // プラグインの項目（根の直下の local_… / local.…）では空値も JSON のまま区別する（統合と同じ。未指定と null・[]・{} は別）
-      for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; o[k] = canon(x, path.concat(k)); } return o; }
+      for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || x === false || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; o[k] = canon(x, path.concat(k)); } return o; } // false も「無い」と同じ（統合の展開と同じ扱い。統合が補った false で署名・版が変わらない）
     return v;
   }
   const LOCAL_KEY = /^local[_.]/; // 施設のプラグインが月データ・設定の根の直下に置く項目の名前（plugin-example/README.md）
