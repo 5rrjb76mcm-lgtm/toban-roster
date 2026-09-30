@@ -50,9 +50,10 @@
     let mine = state.month;
     // ren のうち、名簿から外した人（印の付いた氏名への対応）と、改名は分けて扱う。同期の後に足した人（共通の元に対応する人がいない）は newFolk
     const baseNames = state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null, renamed = ren.filter(([, n]) => !String(n).startsWith(T.GONE)), removed = ren.filter(([, n]) => String(n).startsWith(T.GONE)).map(([o]) => o), newFolk = baseNames ? T.newPersons(state.renames, baseNames, [...myRoster]) : [];
-    // 内部の印（NUL）の検出: 展開した項目の値は JSON 文字列なので、NUL は「\\u0000」の 6 文字になる。キーは生の文字列。JSON 化する前の物は再帰で見る
-    const NUL = "\u0000", markedStr = x => typeof x === "string" && (x.includes(NUL) || x.includes("\\u0000")), hasMark = v => Array.isArray(v) ? v.some(hasMark) : v && typeof v === "object" ? Object.entries(v).some(([k, x]) => markedStr(k) || hasMark(x)) : markedStr(v);
-    const marked = m => Object.entries(T.flattenMonth(m)).filter(([k, v]) => markedStr(k) || markedStr(v)).sort().map(x => x.join("=")).join("\n"); // 印の付いた氏名に関わる項目
+    // 内部の印（NUL）の検出: 生の NUL 文字だけを印とする（メモに書いた「\\u0000」の 6 文字は印ではない）。展開した項目の値は JSON 文字列なので、JSON として戻してから見る。キーは生の文字列。JSON 化する前の物は再帰で見る
+    const NUL = "\u0000", markedStr = x => typeof x === "string" && x.includes(NUL), hasMark = v => Array.isArray(v) ? v.some(hasMark) : v && typeof v === "object" ? Object.entries(v).some(([k, x]) => markedStr(k) || hasMark(x)) : markedStr(v);
+    const markedVal = s => { try { return hasMark(JSON.parse(s)); } catch (e) { return markedStr(s); } };
+    const marked = m => Object.entries(T.flattenMonth(m)).filter(([k, v]) => markedStr(k) || markedVal(v)).sort().map(x => x.join("=")).join("\n"); // 印の付いた氏名に関わる項目
     // 順序: 先に、足した人・外した人の当月の入力を、元の氏名で識別できるうちに印の付いた氏名へ移す。その後で通常の改名をまとめて当てる（改名の先が、足した人・外した人の氏名と同じでも、別人の入力を上書きしない）
     if (ren.length || newFolk.length) { try {
       if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null;
