@@ -494,7 +494,9 @@
     const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
     const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name)) !== JSON.stringify((state.rules.doctors || []).map(d => d.name));
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
-    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name); if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); }); } // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
+    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name);
+      if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); });
+      else { for (const n of old) if (!cur.includes(n)) noteRename(T.GONE + n, n); for (const n of cur) if (!old.includes(n)) noteRename(n, T.GONE + n); } } // 名簿から外した人が戻る・足した人が消えることも記録する（外した後の改名を追える） // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
     state.rules = o.rules;
     if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();

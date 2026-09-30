@@ -48,12 +48,20 @@
     // 元から名簿の外だった氏名（名簿から外した人の入力など。手元・相手それぞれの名簿に対して）。氏名を揃える前に数える: 揃えた結果として本人が分からなくなった入力を、元からの名簿外と取り違えない
     const known = new Set([...Object.keys(T.monthNameRefs(state.month)).filter(n => !myRoster.has(n)), ...Object.keys(T.monthNameRefs(theirs)).filter(n => !theirRoster.has(n))]);
     let mine = state.month;
-    if (ren.length) { try {
-      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; T.renameAll(tr, theirs, ren); T.renameAll(br, base, ren); } // まとめて当てる（空いた氏名の再利用・入れ替えでも、別の人の項目を上書きしない）
-      else { mine = clone(state.month); const mr = clone(state.rules); T.renameAll(mr, mine, ren.map(([o, n]) => [n, o])); }
+    // ren のうち、名簿から外した人（印の付いた氏名への対応）と、改名は分けて扱う。同期の後に足した人（共通の元に対応する人がいない）は newFolk
+    const baseNames = state.baseRules && Array.isArray(state.baseRules.doctors) ? state.baseRules.doctors.map(d => d.name) : null, renamed = ren.filter(([, n]) => !String(n).startsWith(T.GONE)), removed = ren.filter(([, n]) => String(n).startsWith(T.GONE)).map(([o]) => o), newFolk = baseNames ? T.newPersons(state.renames, baseNames, [...myRoster]) : [];
+    const marked = m => Object.entries(T.flattenMonth(m)).filter(([k, v]) => k.includes("\u0000") || String(v).includes("\u0000")).sort().map(x => x.join("=")).join("\n"); // 印の付いた氏名に関わる項目
+    if (ren.length || newFolk.length) { try {
+      if (rulesPick === "mine") { base = clone(base); const tr = f.data.rules ? clone(f.data.rules) : null, br = state.baseRules ? clone(state.baseRules) : null; T.renameAll(tr, theirs, renamed); T.renameAll(br, base, renamed); // まとめて当てる（空いた氏名の再利用・入れ替えでも、別の人の項目を上書きしない）
+        // 手元で名簿から外した人: 相手の版と共通の元で、その人の当月の入力（記録は除く）に印を付けて比べる。相手がその人の入力を変えていなければ、印の付いた入力を両方から除いて統合する（手元の削除が通る）。変えていれば自動では統合しない（確認に戻る）
+        for (const d of removed) { T.renameMonthName(theirs, d, T.GONE + d, { inputsOnly: true }); T.renameMonthName(base, d, T.GONE + d, { inputsOnly: true }); }
+        if (removed.length) { if (marked(theirs) !== marked(base)) return null; T.purgeMonthNames(theirs, removed.map(d => T.GONE + d)); T.purgeMonthNames(base, removed.map(d => T.GONE + d)); } }
+      else { mine = clone(state.month); const mr = clone(state.rules); T.renameAll(mr, mine, renamed.map(([o, n]) => [n, o]));
+        for (const n of newFolk) T.renameMonthName(mine, n, T.NEW + n, { inputsOnly: true }); // 同期の後に足した人は相手の名簿に対応する人がいない: 印を付けて、相手の同じ氏名の人と混ぜない（入力があれば名簿外の氏名として確認に戻る）
+        if (removed.length) { base = clone(base); for (const d of removed) { T.renameMonthName(theirs, d, T.GONE + d, { inputsOnly: true }); T.renameMonthName(base, d, T.GONE + d, { inputsOnly: true }); } } } // 手元で外した人（相手の名簿にはいる）: 相手がその人の入力を変えていれば印が残って確認に戻る。変えていなければ手元の削除が通る // 同期の後に足した人は相手の名簿に対応する人がいない: 印を付けて、相手の同じ氏名の人と混ぜない（入力があれば名簿外の氏名として確認に戻る）
     } catch (e) { A.toast(T.t("別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください", { err: e && e.message || e })); return false; } }
     // 採用する名簿にいない氏名が、統合で新しく月データに入るなら自動では統合しない（両方が同じ人を別の氏名に変えたときなど、氏名の対応を推測しない。読み込むか上書きするかを利用者が選ぶ）
-    const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n));
+    const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n)).concat(JSON.stringify(m).includes("\u0000") ? ["\u0000"] : []); // 内部の印（外した人・足した人）が残る結果も採らない
     let pre; try { pre = T.mergeMonth(base, mine, theirs); } catch (e) { return null; }
     if (strangers(pre.merged).length) return null;
     let prefer = "theirs";
@@ -74,6 +82,7 @@
     const fit = (res, origin, map) => { if (!res) return null; const rn = x => map.get(x) || x, seen = new Set(); for (const a of [res.asg, res.base_asg]) for (const v of Object.values(a || {})) { for (const n of [].concat((v && v.work) || [])) if (n) seen.add(n); for (const n of (v && v.oc) || []) seen.add(n); } for (const n of Object.keys(res.avoid_ref || {})) seen.add(n);
       for (const n of seen) if (origin.has(n) && !roster.has(rn(n))) return null; if (![...seen].some(n => rn(n) !== n)) return res;
       const out = clone(res), fix = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = Array.isArray(v.work) ? v.work.map(rn) : rn(v.work); if (v && v.oc) v.oc = v.oc.map(rn); } }; fix(out.asg); fix(out.base_asg); if (out.avoid_ref) out.avoid_ref = Object.fromEntries(Object.entries(out.avoid_ref).map(([k, v]) => [rn(k), v])); return out; };
+    for (const n of newFolk) back.set(n, T.NEW + n); // 足した人は相手の名簿の同じ氏名の人ではない
     const theirFit = fit(theirResult, theirRoster, rulesPick === "mine" ? fwd : new Map()), mineFit = fit(mineResult, myRoster, rulesPick === "theirs" ? back : new Map()), theirsNewer = theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""));
     const lostResult = !!(theirResult || mineResult) && !theirFit && !mineFit;
     state.month = r.merged; state.ui.doctor = 0;

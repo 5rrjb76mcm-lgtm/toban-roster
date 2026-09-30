@@ -665,10 +665,10 @@
     return c;
   }
   // 月データの中の氏名を置き換える（手元の月・統合のときの相手の月と共通の元に同じ変換を当てる）
-  function renameMonthName(m, oldN, newN) {
+  function renameMonthName(m, oldN, newN, opts = {}) { // opts.inputsOnly: 当月の入力だけ（履歴・前月末の接続は記録なので触らない。名簿から外した人の印を付けるときに使う）
     const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
-    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance);
+    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); if (!opts.inputsOnly) { mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance); }
     for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
     if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, who] = key.split("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印
     (m.unavailable_other || []).forEach(u => { if (u.name === oldN) u.name = newN; }); (m.confirmed_pm_external_night || []).forEach(u => { if (u.name === oldN) u.name = newN; });
@@ -677,6 +677,7 @@
     for (const d of Object.keys(m.fixed?.weekend_charge || {})) if (m.fixed.weekend_charge[d] === oldN) m.fixed.weekend_charge[d] = newN;
     for (const k of ["day_oc", "night_oc"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = [].concat(m.fixed[k][d] || []).map(x => x === oldN ? newN : x);
     (m.avoid || []).forEach(u => { if (u.name === oldN) u.name = newN; });
+    if (opts.inputsOnly) return m;
     const pm = m.prev_month || {}; for (const e of pm.last_days || []) { for (const k of ["day", "night"]) if (e[k] !== undefined) e[k] = ren1(e[k]); for (const k of ["day_oc", "night_oc"]) if (e[k]) e[k] = e[k].map(x => x === oldN ? newN : x); }
     for (const k of ["last_weekend_charge", "prev_weekend_charge"]) if (pm[k] === oldN) pm[k] = newN;
     return m;
@@ -686,7 +687,10 @@
   // その保存が成功した後の名簿（写しの名簿）に対して読めるようにするため: 写しに初めて入った人を保存中に改名しても、保存の後は「共通の元にいた人の改名」として効く。
   // 続けて変えた分はつなぎ（A→B→C は A→C）、元に戻した分は消える。旧い氏名がいまの名簿にあっても（空いた氏名を、別の人の改名や新しく足した人が使った）、対応は生きている
   // 記録を人ごとの連なりにする: [旧, 新] の「旧」がいまの氏名の人がいればその人の氏名が変わり、いなければ新しい連なり（同じ「新規」から始まる人が何人いても、別々の連なりになる）
-  const GONE = "\u0000gone:"; // 名簿から外した人の印（外した人は、この印の付いた氏名への改名として記録する）
+  const GONE = "\u0000gone:", NEW = "\u0000new:"; // 名簿から外した人の印（外した人は、この印の付いた氏名への改名として記録する）と、同期の後に足した人の印（相手の名簿に合わせるときに付け、同じ氏名の別人と混ぜない）
+  // 記録から、同期の後に足した人（共通の元に対応する人がいない）のいまの氏名を出す（いまの名簿にいる人だけ）
+  function newPersons(list, baseNames, curNames) { const base = new Set(baseNames || []), cur = new Set(curNames || []), es = renameChains(list), seen = new Set(), out = [];
+    for (const e of es) { const first = !seen.has(e.from); seen.add(e.from); if ((!first || !base.has(e.from)) && cur.has(e.cur) && !String(e.cur).startsWith(GONE)) out.push(e.cur); } return out; }
   const renameChains = list => { const es = []; for (const [o, n] of list || []) { const e = es.find(x => x.cur === o); if (e) e.cur = n; else es.push({ from: o, cur: n }); } return es; };
   // baseNames: 共通の元の名簿（分からなければ絞らない）。curNames: いまの名簿（外した人が取り消しで戻っているかを見る）
   function effectiveRenames(list, baseNames, curNames) {
@@ -712,7 +716,7 @@
     for (const d of RULE_DEFS) if (typeof d.rename === "function") d.rename(R || {}, m || {}, oldN, newN);
     if (m) renameMonthName(m, oldN, newN);
   }
-  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameOrigin = renameOrigin; T.GONE = GONE; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
+  T.renameMonthName = renameMonthName; T.effectiveRenames = effectiveRenames; T.renameOrigin = renameOrigin; T.GONE = GONE; T.NEW = NEW; T.newPersons = newPersons; T.renameEverywhere = renameEverywhere; T.renameAll = renameAll;
   T.monthNameRefs = monthNameRefs; T.purgeMonthNames = purgeMonthNames; T.purgeRulesNames = purgeRulesNames; T.pruneRosterRefs = pruneRosterRefs;
   T.calendars = { defs: CAL_DEFS, byId: CAL_BY_ID, register: registerCalendar, unregister: unregisterCalendar, restore: restoreCalendar };
   // 日ごとの区分（month.day_flags = {日: [id]}）の種類。施設のプラグインが登録する（例: 行事の日）。月別条件タブに日ごとの表として出て、予定の文（month.day_notes = {日: 文}）と並ぶ
