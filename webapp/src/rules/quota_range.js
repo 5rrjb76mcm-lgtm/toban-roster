@@ -32,7 +32,10 @@ T.rules.register({
     for (const [n, ds] of Object.entries(ctx.fixedWork())) { if (P.isExempt(n)) continue; const q = P.quota(n); if (ds.length > q + prm.tol) ctx.push("LINT_FIXED_OVER_QUOTA", { who: n, count: ds.length, quota: q, tol: prm.tol }); }
     if (!P.isHard("quota_range")) return;
     { // 全体の枠数と勤務回数の合計（新しい施設で最初に合わないのがここ。個別の条件より先に指摘する）
-      const need = P.slots.reduce((a, s) => a + P.countOf(s), 0); // 延べ人数（1枠1名なら枠の数）
+      // 不足は最小人数、超過は最大人数と比較する。理想人数は必須条件ではない。
+      // 最小人数を超えて実勤務を固定した枠は、その固定人数が必須（OC・翌月・不存在枠は含めない）。
+      const needMin = P.slots.reduce((a, s) => a + Math.max(P.countMinOf(s), P.dutyNames.filter(n => P.isFixedWork(s, n)).length), 0);
+      const needMax = P.slots.reduce((a, s) => a + P.countOf(s), 0);
       // 固定限定者は実在する当月の固定実勤務だけ。規則「なし」でも目安は免除なので、上限は全枠数まで見込む。
       // 予備の月0〜1回の上限は固定限定者にも適用する。OC・翌月・存在しない枠の固定は実勤務容量に加えない。
       const bounds = P.dutyNames.map(n => {
@@ -42,8 +45,8 @@ T.rules.register({
         if (P.isRole(n, "reserve")) return [0, +P.workAllowed(n)];
         return [Math.max(0, P.quota(n) - prm.tol), Math.max(P.quota(n) + prm.tol, P.fixedWorkCount(n))]; });
       const lo = bounds.reduce((a, b) => a + b[0], 0), hi = bounds.reduce((a, b) => a + b[1], 0);
-      if (hi < need) ctx.push("LINT_CAPACITY_HIGH", { need, total: hi, tol: prm.tol });
-      if (lo > need) ctx.push("LINT_CAPACITY_LOW", { need, total: lo, tol: prm.tol }); }
+      if (hi < needMin) ctx.push("LINT_CAPACITY_HIGH", { need: needMin, total: hi, tol: prm.tol });
+      if (lo > needMax) ctx.push("LINT_CAPACITY_LOW", { need: needMax, total: lo, tol: prm.tol }); }
     for (const n of P.dutyNames) { if (P.isExempt(n)) continue; const q = P.quota(n); const c = P.slots.filter(s => ctx.canWork(n, s)).length; if (c < q - prm.tol) ctx.push("LINT_PERSON_TOO_FEW_SLOTS", { who: n, count: c, quota: q, tol: prm.tol }); }
   },
   python: true,
