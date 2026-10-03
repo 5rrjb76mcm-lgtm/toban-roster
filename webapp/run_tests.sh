@@ -29,10 +29,12 @@ run test_refine_node.js "$HP"
 run test_merge_node.js
 run test_profile_export_node.js
 run test_settings_import_node.js
+run test_undo_roster_order_node.js
 run test_numeric_validation_node.js "$HP"
 run test_save_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
+run test_save_peer_update_node.js
 run test_import_previous_node.js
 run test_solve_guard_node.js
 run test_absent_assignment_node.js

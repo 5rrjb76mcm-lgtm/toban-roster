@@ -1085,6 +1085,7 @@
     "別の切り替え（月・データ・フォルダ・表示言語）の処理中です。終わってからもう一度操作してください": "Another switch (month, data, folder or language) is in progress. Try again when it has finished",
     "月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください": "Switching months was cancelled (the month or the save folder changed while reading). Choose the month again",
     "フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください": "Could not check {file} in the folder ({err}). Saving was stopped so that the other side's content is not overwritten. Your input is kept in the browser. Save again",
+    "保存の確認後にフォルダの月データが変わったか、読めなくなりました。上書きしないよう保存を止めました。もう一度保存して内容を確認してください": "The monthly data changed or became unreadable after the save check. Saving was stopped to avoid overwriting it. Save again to review the current contents.",
     "フォルダの {file} を確かめられません（{err}）。ブラウザ内の状態で続けますが、確かめられるまで保存しません": "Could not check {file} in the folder ({err}). Continuing with the state in the browser, but nothing is saved until it can be checked",
     "平日 {w}・休日 {h}": "Weekdays {w} / days off {h}",
     "日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します": "The head count differs by kind of day. To change it, edit the settings JSON (for administrators)",
