@@ -746,8 +746,9 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
   test("入力チェック: 枠数と勤務回数の合計が合わないときに先に指摘する", () => {
     const rules = clone(real.rules); for (const d of rules.doctors) if (d.quota) d.quota = 1;
     const month = T.normalizeMonth(clone(real.month), rules);
-    const msgs = T.lint(new T.Problem(rules, month)).map(x => x.msg);
-    assert(msgs.some(m => /枠が \d+ なのに、勤務回数の上限の合計/.test(m)), "指摘が出る: " + msgs.slice(0, 3).join(" / "));
+    const it = T.lint(new T.Problem(rules, month)).find(x => x.code === "LINT_CAPACITY_HIGH");
+    assert(it, "勤務容量の不足を診断コードで確認する");
+    assert(it.args.total < it.args.need, "勤務回数の上限合計が必要人数に足りない");
   });
   test("規則の状態: 実勤務の連続を「なし」にすると連日の勤務が出ても違反にならない", () => {
     const rules = clone(real.rules); rules.rule_states = Object.assign({}, rules.rule_states, { consecutive_days: "off", same_day_double: "off" });
