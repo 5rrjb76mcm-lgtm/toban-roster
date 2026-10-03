@@ -49,14 +49,14 @@ ${on("cath_requirement") ? `<br><span class="note">${esc(T.t("専門業務の配
 ${on("weekend_balance") ? `<label>${esc(T.t("週末担当の許容差（組。空欄＝共通ルール {v}）", { v: R.weekend_balance_max_diff }))} <input type="number" data-path="exceptions.weekend_balance_max_diff" value="${m.exceptions?.weekend_balance_max_diff ?? ""}" style="width:4em"></label>` : ""}
 ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.allow_chief_duty ? "checked" : ""}> ${esc(L(T.t("{reserve}（原則配置しない）を当番候補に含める")))}</label>` : ""}</div>`);
     let at = null, P0 = null; try { at = T.autoTargets(R, m); P0 = new T.Problem(R, m); } catch (e) { }
-    const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share";
+    const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share", workerNames = A.workNames();
     const quotaOf = n => P0 ? P0.quota(n) : (R.doctors.find(d => d.name === n) || {}).quota;
     h.push(`<div class="box"><h3>${esc(T.t("当月の勤務目標"))}</h3>
 <p class="note">${at ? esc(at.lines[0]) : ""}　${share ? esc(T.t("目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。", { need: P0.shareInfo.need, w: P0.shareInfo.W })) + " " : ""}${esc(T.t("目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）±1します。空欄＝目安どおり。", { tol: R.quota_tolerance ?? 1 }))}</p>
-<table class="grid"><tr><th></th>${A.dutyNames().map(n => `<th>${esc(n)}</th>`).join("")}</tr>
-<tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${A.dutyNames().map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
-<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${A.dutyNames().map(n => `<td><input type="number" data-bal="${esc(n)}" value="${bal[n] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("当月の目標"))}</th>${A.dutyNames().map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr></table>
+<table class="grid"><tr><th></th>${workerNames.map(n => `<th>${esc(n)}</th>`).join("")}</tr>
+<tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
+<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${bal[n] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr></table>
 <p><button id="btnAutoTargets">${esc(T.t("自動調整"))}</button> <button id="btnClearTargets">${esc(T.t("目安どおりに戻す"))}</button>　<span class="note">${esc(T.t("自動調整の案"))}: ${at ? esc(at.lines.slice(1).join(T.listSep())) : ""}</span></p></div>`);
     const fx = m.fixed || {};
     const fixedRows = [];
@@ -129,7 +129,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    root.addEventListener("change", ev => { readSettingsMonth(); if (ev.target.dataset.path === "holidays" || ev.target.dataset.bal) renderSettingsMonth(); });
+    root.addEventListener("change", ev => { readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
       readSettingsMonth(); const m = state.month; const id = b.id, del = b.dataset.del;
@@ -158,7 +158,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const hol = new Set((m.holidays || []).map(Number));
     const doc = state.rules.doctors.find(d => d.name === n);
     const isDuty = true; // 部長も同じ欄を出す（当直候補でない間はソルバーが無視する）
-    const isCand = A.dutyNames().includes(n);
+    const isCand = A.dutyNames().includes(n), monthlyWorkExcluded = isCand && !A.workNames().includes(n); // 予備の月許可は実勤務だけ。OC候補・従来の記録用入力とは分ける
     const dd = m.duty_days[n] || {};
     const kindSel = (d, part) => A.sel([["", "―"], ...kindOpts()], (dd[d] || {})[part] || "", `data-cal="duty" data-d="${d}" data-part="${part}"`);
     const R = state.rules, chargeId = roleOf(R, "charge"), juniorId = roleOf(R, "junior");
@@ -169,6 +169,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const dflags = ext.dayHead && T.dayFlags ? T.dayFlags.activeFor(R) : []; // 日付の見出しで付け外しする日ごとの区分（その日の全員に効く）
     const dayHead = d => !ext.dayHead ? "" : `<div class="calhead">${dflags.map(f => `<label class="calflag" title="${esc(T.t("その日の全員に効きます"))}"><input type="checkbox" data-cal="dflag" data-id="${esc(f.id)}" data-d="${d}" ${[].concat((m.day_flags || {})[d] || []).includes(f.id) ? "checked" : ""}>${esc(T.dayFlags.labelOf(R, f.id))}</label>`).join("")}${(m.day_notes || {})[d] ? `<span class="calnote">${esc(m.day_notes[d])}</span>` : ""}</div>`;
     const fx = m.fixed || {}, isOC = standbyIds(R).includes(doc.team), isI = !!chargeId && doc.team === chargeId;
+    const monthlyOCEligible = isCand && isOC && T.ruleState(R, "oncall") !== "off" && T.normalizeShiftsOf(R).some(sh => sh.on !== "none" && sh.oncall !== false);
     // 固定: 休日は日勤帯（日勤・日勤OC・期間責任者）と夜間（夜勤・夜間OC）を別々に選べる。平日は夜間だけ
     const inFx = (tbl, d) => [].concat(tbl?.[d] || []).includes(n); // 勤務者の固定は 1 枠に複数名（文字列か配列）
     const fixedDayVal = d => inFx(fx.day, d) ? "day" : (fx.day_oc?.[d] || []).includes(n) ? "dayoc" : fx.weekend_charge?.[d] === n ? "charge" : "";
@@ -176,9 +177,12 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const tagSel = (d, k) => { const opts = ext.fixedTags.filter(t => t.shifts.includes(k)).map(t => t.label); if (!opts.length) return ""; // 固定の印の選択肢（施設のプラグインが登録）
       const cur = (m.fixed_tags || {})[`${d}:${k}|${n}`] || ""; return A.sel([["", T.t("印なし")], ...[...new Set(cur ? opts.concat([cur]) : opts)].map(x => [x, x])], cur, `data-cal="ftag" data-d="${d}" data-k="${k}" title="${esc(T.t("固定の印"))}"`); };
     const fixedSel = (d, holiday) => {
-      const night = A.sel([["", "―"], ["night", shiftLabel(R, "night")], ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])], fixedNightVal(d), `data-cal="fixed" data-k="night" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night");
+      // 月未許可の予備は現月の実勤務を新規に選ばない。入力済みの固定は値として残し、空欄にしたときだけ外す。翌月1日は接続の記録なので現月の許可では絞らない。
+      const workOption = (k, val) => !monthlyWorkExcluded || d > N ? [[k, shiftLabel(R, k)]] : val === k ? [[k, shiftLabel(R, k) + T.t("（現在は使わない値）")]] : [];
+      const nightVal = fixedNightVal(d), dayVal = fixedDayVal(d);
+      const night = A.sel([["", "―"], ...workOption("night", nightVal), ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])], nightVal, `data-cal="fixed" data-k="night" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night");
       if (!holiday) return night;
-      const day = A.sel([["", "―"], ["day", shiftLabel(R, "day")], ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], fixedDayVal(d), `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(fixedDayVal(d))}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
+      const day = A.sel([["", "―"], ...workOption("day", dayVal), ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], dayVal, `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(dayVal)}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
     // 施設のプラグインが足した日ごとの欄。いまの選択肢に無い値（プラグインの更新で外れた値）は「（現在は使わない値）」として残す（空欄を選んだときだけ消える）
@@ -213,7 +217,7 @@ ${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m
     $("#doctorPane").dataset.doctor = n;
     $("#doctorPane").innerHTML = `<div class="box">
 <div class="docnav"><button id="docPrev">◀ ${esc(T.t("前の{person}"))}</button> ${A.sel(list.map((x, i) => [i, x]), state.ui.doctor, 'id="docSel"')} <button id="docNext">${esc(T.t("次の{person}"))} ▶</button>
-　<span class="note">${esc((T.roleLabels(R) || {})[doc.team] || doc.team)}${(R.profile || {}).quota_mode === "share" ? `　${esc(T.t("比重 {n}", { n: doc.share ?? 1 }))}` : doc.quota ? `　${esc(T.t("目安 {n} 回", { n: doc.quota }))}` : ""}${doc.cath ? `　${esc(T.term(T.t("専門業務（{role}）", { role: doc.cath === "I" ? "{charge}" : "{other}" }), R))}` : ""}${!isCand ? `　<b>${esc(T.t(doc.duty === "never" ? "当番は配置禁止" : "当番は原則配置しない"))}</b>${esc(T.t("（不可・希望・固定は記録のみ"))}${doc.duty === "no_unless_needed" ? esc(T.t("。月の設定で候補に含めると有効")) : ""}${esc(T.t("）"))}` : ""}</span>
+　<span class="note">${esc((T.roleLabels(R) || {})[doc.team] || doc.team)}${(R.profile || {}).quota_mode === "share" ? `　${esc(T.t("比重 {n}", { n: doc.share ?? 1 }))}` : doc.quota ? `　${esc(T.t("目安 {n} 回", { n: doc.quota }))}` : ""}${doc.cath ? `　${esc(T.term(T.t("専門業務（{role}）", { role: doc.cath === "I" ? "{charge}" : "{other}" }), R))}` : ""}${monthlyWorkExcluded ? `　<b>${esc(T.t("今月の実勤務は候補外です（月の設定で予備の登用を許可できます）。固定・希望の記録は保持します。"))}</b>${monthlyOCEligible ? ` ${esc(T.t("OC は候補のままです。"))}` : ""}` : !isCand ? `　<b>${esc(T.t(doc.duty === "never" ? "当番は配置禁止" : "当番は原則配置しない"))}</b>${esc(T.t("（不可・希望・固定は記録のみ"))}${doc.duty === "no_unless_needed" ? esc(T.t("。月の設定で候補に含めると有効")) : ""}${esc(T.t("）"))}` : ""}</span>
 　${isDuty && T.ruleState(R, "wish_weekend_dayshift") !== "off" ? `<label><input type="checkbox" id="wkwish" ${(m.wishes?.weekend_dayshift || []).includes(n) ? "checked" : ""}> ${esc(T.t("休日のいずれかの日勤（できれば）"))}</label>` : ""}</div>
 <table class="calendar"><tr><th class="sun">${esc(dowJa(6))}</th>${[0, 1, 2, 3, 4].map(i => `<th>${esc(dowJa(i))}</th>`).join("")}<th class="sat">${esc(dowJa(5))}</th></tr><tr>${cells.join("")}</tr></table>
 <p class="note">${esc(T.t("（1 枠に複数名の施設や平日にも日勤がある施設では、固定と不可の選択肢は勤務帯と枠の人数の設定に従います。）"))} ${esc(T.t("午前・午後: 外来・病棟番・外勤を置く。「不在」＝長期休暇・出張などでその時間帯に勤務しない申告（専門業務の候補から除外。夜勤・OCの翌日制約や不可には影響しないので、夜勤も無理なら不可を別に申告）。不可・避の欄: 「日夜両方」＝その日の日勤・夜勤とそのOCの不可（前夜からの担当は含めない。未明から不可なら前日も不可にする）、「日勤帯」＝日勤とそのOCのみ不可、「夜勤」＝その日から始まる夜勤・夜間OCの不可（日付だけの申告はこれ）。希望＝その日の夜勤の希望。固定＝その日の枠にこの人を必ず置く（作成責任者の指定。休日は日勤帯と夜間を別々に固定でき、日勤＋夜間OC のような組合せも指定できる。同じ枠に2人は置けない）。「避：…」＝できれば避けたい日（調整目標。その時間帯の勤務・OCを減点で避けるが、申告した人の勤務回数が参照解（避けたい日を無視した計算）の回数を下回る分には大きな減点が付き、申告で負担は減らない。曜日の希望、例えば「平日夜勤は水曜に」は、他の曜日の夜勤を「避：夜勤」にする。曜日パターンの「避：…」は平日だけに展開し、土日祝はここで個別に指定する。平日は夜勤だけ選べる。平日の日中の不在は午前・午後の「不在」で申告する）"))}</p>
@@ -313,13 +317,13 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     const y = +m.year, mo = +m.month, N = A.daysIn(y, mo), hol = new Set((m.holidays || []).map(Number));
     const fx = m.fixed, R = state.rules;
     const chargeId = roleOf(R, "charge"), juniorId = roleOf(R, "junior");
-    const cand = A.dutyNames(), iN = chargeId ? R.doctors.filter(d => d.team === chargeId).map(d => d.name) : [], yN = juniorId ? R.doctors.filter(d => d.team === juniorId).map(d => d.name) : [];
+    const cand = A.workNames(), nextCand = A.dutyNames(), iN = chargeId ? R.doctors.filter(d => d.team === chargeId).map(d => d.name) : [], yN = juniorId ? R.doctors.filter(d => d.team === juniorId).map(d => d.name) : [];
     let P0 = null; try { P0 = new T.Problem(R, m); } catch (e) { } // 日勤の欄は「休日か」ではなく「その日に日勤の枠があるか」（2 交代は平日にもある）
     const teamOf = n => (R.doctors.find(d => d.name === n) || {}).team;
     const pick = (arr, team) => (arr || []).find(n => teamOf(n) === team) || "";
     // 欄は役割ごとに 1 人しか出せない。同じ役割の 2 人目以降と、欄の無い役割の OC は、名前を横に見せて保持する（読み戻しで消さない）
     const extras = (arr, shown, key) => ` <small class="note" data-extras="${key}" title="${esc(T.t("この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します"))}">${esc(extrasText(arr, shown))}</small>`;
-    const nameOpts = [["", "―"], ...cand.map(n => [n, n])], iOpts = [["", "―"], ...iN.map(n => [n, n])], yOpts = [["", T.t("―（自動）")], ...yN.map(n => [n, n]), [NONE_Y, T.term(T.t("{junior}OCなし（追加しない）"), R)]];
+    const nameOpts = [["", "―"], ...cand.map(n => [n, n])], nextNameOpts = [["", "―"], ...nextCand.map(n => [n, n])], iOpts = [["", "―"], ...iN.map(n => [n, n])], yOpts = [["", T.t("―（自動）")], ...yN.map(n => [n, n]), [NONE_Y, T.term(T.t("{junior}OCなし（追加しない）"), R)]];
     const rows = [];
     for (let d = 1; d <= N + 1; d++) {
       const next = d > N, w = next ? (A.dowOf(y, mo, N) + 1) % 7 : A.dowOf(y, mo, d);
@@ -329,7 +333,9 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       const S = (opts, val, k) => A.sel(opts, val, `data-fx="${k}" data-d="${d}" data-shown="${esc(val)}"`); // data-shown: 描いたときの値（OC の欄は、変えたときだけ、出していた人を置き換える）
       const multi = T.isMultiWork(R); // 1 枠に複数名の施設は、勤務者を「・」区切りで書く（前月末の接続と同じ）
       const tagOf = (k, n) => (m.fixed_tags || {})[`${d}:${k}|${n}`] || "";
-      const SW = (val, k) => multi ? `<input data-fx="${k}" data-d="${d}" data-multi value="${esc([].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep()))}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">` : S(nameOpts, [].concat(val || [])[0] || "", k);
+      const SW = (val, k) => { if (multi) return `<input data-fx="${k}" data-d="${d}" data-multi value="${esc([].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep()))}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">`;
+        const cur = [].concat(val || [])[0] || "", opts = next ? nextNameOpts : nameOpts;
+        return S(cur && !opts.some(o => o[0] === cur) ? opts.concat([[cur, cur + T.t("（現在は使わない値）")]]) : opts, cur, k); }; // 候補から外れても既存の固定は消さない（明示的に空欄を選ぶまで保持）
       const yVal = tbl => (juniorId && (fx[tbl + "_none"]?.[d] || []).includes(juniorId)) ? NONE_Y : pick(fx[tbl]?.[d], juniorId);
       const daySlot = next ? (P0 ? P0.nextSlotExists("day") : holiday) : (P0 ? P0.slotExists(d, "day") : holiday);
       const ocCells = tbl => { const arr = fx[tbl]?.[d] || [], i1 = pick(arr, chargeId), y1 = yVal(tbl); return `<td>${S(iOpts, i1, tbl === "day_oc" ? "dayI" : "nightI")}</td><td>${S(yOpts, y1, tbl === "day_oc" ? "dayY" : "nightY")}${extras(arr, [i1, y1], `${tbl}:${d}`)}</td>`; };

@@ -29,15 +29,16 @@ T.rules.register({
   // 入力チェック: 固定指定が目安を超える人、全体の枠数と目安の合計、入れる枠が目安に足りない人
   lint(ctx, prm) {
     const { P } = ctx;
-    for (const [n, ds] of Object.entries(ctx.fixedWork())) { const q = P.quota(n); if (ds.length > q + prm.tol) ctx.push("LINT_FIXED_OVER_QUOTA", { who: n, count: ds.length, quota: q, tol: prm.tol }); }
+    for (const [n, ds] of Object.entries(ctx.fixedWork())) { if (P.isRole(n, "reserve")) continue; const q = P.quota(n); if (ds.length > q + prm.tol) ctx.push("LINT_FIXED_OVER_QUOTA", { who: n, count: ds.length, quota: q, tol: prm.tol }); }
     if (!P.isHard("quota_range")) return;
     { // 全体の枠数と勤務回数の合計（新しい施設で最初に合わないのがここ。個別の条件より先に指摘する）
       const need = P.slots.reduce((a, s) => a + P.countOf(s), 0); // 延べ人数（1枠1名なら枠の数）
-      const lo = P.dutyNames.reduce((a, n) => a + Math.max(0, P.quota(n) - prm.tol), 0);
-      const hi = P.dutyNames.reduce((a, n) => a + Math.max(P.quota(n) + prm.tol, P.fixedWorkCount(n)), 0);
+      // 予備は目安の対象外。許可した月だけ0〜1勤務でき、固定指定でも上限は増えない。
+      const lo = P.dutyNames.reduce((a, n) => a + (P.isRole(n, "reserve") ? 0 : Math.max(0, P.quota(n) - prm.tol)), 0);
+      const hi = P.dutyNames.reduce((a, n) => a + (P.isRole(n, "reserve") ? +P.workAllowed(n) : Math.max(P.quota(n) + prm.tol, P.fixedWorkCount(n))), 0);
       if (hi < need) ctx.push("LINT_CAPACITY_HIGH", { need, total: hi, tol: prm.tol });
       if (lo > need) ctx.push("LINT_CAPACITY_LOW", { need, total: lo, tol: prm.tol }); }
-    for (const n of P.dutyNames) { const q = P.quota(n); const c = P.slots.filter(s => ctx.canWork(n, s)).length; if (c < q - prm.tol) ctx.push("LINT_PERSON_TOO_FEW_SLOTS", { who: n, count: c, quota: q, tol: prm.tol }); }
+    for (const n of P.dutyNames) { if (P.isRole(n, "reserve")) continue; const q = P.quota(n); const c = P.slots.filter(s => ctx.canWork(n, s)).length; if (c < q - prm.tol) ctx.push("LINT_PERSON_TOO_FEW_SLOTS", { who: n, count: c, quota: q, tol: prm.tol }); }
   },
   python: true,
 });

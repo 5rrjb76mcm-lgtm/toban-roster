@@ -110,6 +110,8 @@
   // ---------- ヘルパー ----------
   const names = () => state.rules.doctors.map(d => d.name);
   const dutyNames = () => state.rules.doctors.filter(d => T.isDutyCandidate(d, !!(state.month && state.month.allow_chief_duty))).map(d => d.name);
+  const workNames = () => { let reserve = null; try { reserve = (T.normalizeRolesOf(state.rules).find(r => r.refs.includes("reserve")) || {}).id || null; } catch (e) { }
+    return state.rules.doctors.filter(d => T.isWorkCandidate(d, !!(state.month && state.month.allow_chief_duty), reserve)).map(d => d.name); };
   const refreshNameOrder = R => { R.name_order = R.doctors.filter(d => T.isDutyCandidate(d, false)).map(d => d.name); }; // 表示順（docx・結果）は通常の当直候補の並び
   // 期間責任者になれる役割の人（識別子が施設ごとに違うので、役割の機能 charge から引く）
   const iNames = () => { let id = null; try { id = (T.normalizeRolesOf(state.rules).find(r => r.refs.includes("charge")) || {}).id || null; } catch (e) { } return id ? state.rules.doctors.filter(d => d.team === id).map(d => d.name) : []; };
@@ -141,5 +143,5 @@
   const switchStale = g => tag() !== g.tag || (g.connected && (A.dirGen !== g.dirGen || !A.dirHandle));
   const facilityIds = (rules, month) => [((rules || {}).profile || {}).id, (month || {}).profile_id].filter(Boolean);
   const otherFacility = f => new Set(facilityIds(state.rules, state.month).concat(facilityIds(f.data.rules, f.data.month))).size > 1;
-  Object.assign(A, { switchMark, switchStale, facilityIds, otherFacility, DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
+  Object.assign(A, { switchMark, switchStale, facilityIds, otherFacility, DIR_KEY, sigOf, sigOfState, sig, isDirty, persist, resetBrowserState, serialized, awaitSaves, transition, snapshot, inputSig, rulesSig, canon, save, markSaved, payloadJson, isMonthObj, load, ensureMonth, download, tag, dataFileName, FILES, names, dutyNames, workNames, refreshNameOrder, iNames, parseDays, sel, nameSel, daysIn, dowOf, choose, toast }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

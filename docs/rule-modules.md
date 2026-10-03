@@ -158,7 +158,7 @@ ctx.limit(id, expr, "<=", rhs, { fixed: false, ub: 10 });
 | `limit(id, value, sense, rhs, {fixed, code, args, days, names})` | 3 状態の仕掛け。`check` では必須の違反（`fixed` を渡せば許容の可否もそれに従う。解く側と同じ範囲）、`penalty` では減点の点になる | 新設 |
 | `provide` / `use` | 事実の受け渡し | 新設 |
 | `unN(n, d)`, `unO(n, d)` | 夜間の不可、日中の不可（`"allday"` / 半日） | `lint` 向け |
-| `canWork(n, s)` | 不可と日中の業務（規則 `duty_conflicts` を使うときだけ）を見て、その枠に入れるか | `lint` 向け（`canWork`） |
+| `canWork(n, s)` | 名簿の配置設定・予備の月許可・不可・日中の業務（規則 `duty_conflicts` を使うときだけ）を見て、その枠の実勤務に入れるか。OCの候補判定には使わない | `lint` 向け（`canWork`） |
 | `fixedWork()` | 固定指定した勤務の日（人 → 日の並び。名簿の人で枠がある分だけ） | `lint` 向け |
 | `push(code, args, hintArgs)` | 入力チェックの指摘を積む（`lint` のとき）。直し方は `messages` の `<code>_HINT` | `push` |
 

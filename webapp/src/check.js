@@ -226,7 +226,7 @@
       if (new Set(ns).size !== ns.length) push("LINT_FIXED_DUP", { day: lab(d), slot: sl.night, who: ns.join("・") });
       if (ns.length > P.countOf([d, "night"])) push("LINT_FIXED_OVER_COUNT", { day: lab(d), slot: sl.night, who: ns.join("・"), n: ns.length, count: P.countOf([d, "night"]) }); // 枠の人数より多く固定している
       for (const n of ns) {
-        if (!P.dutyNames.includes(n)) { push("LINT_FIXED_NOT_CANDIDATE", { day: lab(d), slot: sl.night, who: n }); continue; }
+        if (!P.workAllowed(n)) { push("LINT_FIXED_NOT_CANDIDATE", { day: lab(d), slot: sl.night, who: n }); continue; }
         if (unN(n, d)) push("LINT_FIXED_VS_UNAVAIL", { day: lab(d), slot: sl.night, who: n, scope: P.msg("SCOPE_NIGHT") });
         if (unO(n, d) === "allday") push("LINT_FIXED_VS_UNAVAIL", { day: lab(d), slot: sl.night, who: n, scope: P.msg("SCOPE_ALLDAY") }); } }
     for (const [ds, ns] of Object.entries(P.fixedDay)) { const d = +ds;
@@ -234,7 +234,7 @@
       if (new Set(ns).size !== ns.length) push("LINT_FIXED_DUP", { day: lab(d), slot: sl.day, who: ns.join("・") });
       if (ns.length > P.countOf([d, "day"])) push("LINT_FIXED_OVER_COUNT", { day: lab(d), slot: sl.day, who: ns.join("・"), n: ns.length, count: P.countOf([d, "day"]) });
       for (const n of ns) {
-        if (!P.dutyNames.includes(n)) { push("LINT_FIXED_NOT_CANDIDATE", { day: lab(d), slot: sl.day, who: n }); continue; }
+        if (!P.workAllowed(n)) { push("LINT_FIXED_NOT_CANDIDATE", { day: lab(d), slot: sl.day, who: n }); continue; }
         if (unO(n, d)) push("LINT_FIXED_VS_UNAVAIL", { day: lab(d), slot: sl.day, who: n, scope: P.msg(unO(n, d) === "allday" ? "SCOPE_ALLDAY" : "SCOPE_DAY") }); } }
     // 待機（オンコール）の固定
     for (const [kind, table] of [["day", P.fixedDayOc], ["night", P.fixedNightOc]]) for (const [ds, ns] of Object.entries(table)) {

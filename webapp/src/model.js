@@ -178,8 +178,10 @@
   }
   // HTML エスケープ（report / app で共通。docx は XML 用に別途 制御文字も落とす）
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  // 当直の候補か（規則の duty: never=候補外, no_unless_needed=月の設定で許可したときだけ）。画面（app-core.js の dutyNames）と Problem が同じ判定を使う
+  // 勤務・OC共通の候補か（duty: never=候補外, no_unless_needed=月の設定で許可したときだけ）。画面と Problem が同じ判定を使う
   const isDutyCandidate = (doc, allowChief) => doc.duty !== "never" && (doc.duty !== "no_unless_needed" || !!allowChief);
+  // 実勤務の候補。予備の月許可は勤務だけに追加で適用し、OCの候補は変えない。
+  const isWorkCandidate = (doc, allowChief, reserveRoleId) => !!doc && isDutyCandidate(doc, allowChief) && (!reserveRoleId || doc.team !== reserveRoleId || !!allowChief);
 
   function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
   // 「避：…」の曜日パターンを日付に展開する（平日のみ。土日祝の避けたい日はカレンダーで個別に申告する）。Problem と expandAvoid の両方が使う
@@ -355,6 +357,7 @@
     }
 
     dutyAllowed(n) { return isDutyCandidate(this.doctors[n], this.allowChief); }
+    workAllowed(n) { return isWorkCandidate(this.doctors[n], this.allowChief, this.refId("reserve")); }
     // 履歴込み週末担当の上限（整数変数の範囲に使う。履歴は組数なので日数換算で2倍）
     histWeekendBound() { const h = Object.values(this.histWeekend).map(Number).filter(x => !isNaN(x)); return 2 * Math.max(0, ...h) + 2 * (this.periods || []).length + 4; }
     date(d) { return new Date(this.year, this.month - 1, d); }
@@ -911,7 +914,7 @@
     const m = Object.assign({}, month); delete m.targets;
     const P = new Problem(rules, m);
     const bal = (month.history && month.history.work_balance) || {};
-    const docs = P.dutyNames.filter(n => P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) }));
+    const docs = P.dutyNames.filter(n => !P.isRole(n, "reserve") && P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) })); // 予備は月0〜1回で目標の対象外。任意の目安で通常職員の目標を動かさない
     const S = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0), Q = docs.reduce((a, d) => a + d.q, 0); // 必要な延べ人数（按分と同じ基準: 枠ごとの人数。幅があるときは理想値）
     const targets = {}; docs.forEach(d => targets[d.n] = d.q);
     const lines = [T.t("必要枠 {slots}、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
@@ -988,7 +991,7 @@
   T.rulesSummary = rulesSummary;
   T.RULE_GROUPS = RULE_GROUPS; T.term = term; T.ruleLabel = (rules, def) => term(T.t ? T.t(def.label) : def.label, rules); T.minDaysOff = minDaysOff;
   T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets;
-  T.esc = esc; T.isDutyCandidate = isDutyCandidate;
+  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate;
   T.kindJa = k => KINDS[k] || k; // 互換（日本語固定）
   T.kindLabel = k => (T.t ? T.t(KINDS[k] || k) : (KINDS[k] || k)); // 表示言語で読む
 })(globalThis.T = globalThis.T || {});

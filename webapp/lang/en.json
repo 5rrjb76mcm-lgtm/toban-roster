@@ -443,6 +443,8 @@
     "専門業務（{role}）": "specialty duty ({role})",
     "当番は配置禁止": "never assigned to duty",
     "当番は原則配置しない": "normally not assigned to duty",
+    "今月の実勤務は候補外です（月の設定で予備の登用を許可できます）。固定・希望の記録は保持します。": "Not eligible for work shifts this month (allow the reserve role in the month settings to include this person). Existing fixed assignments and wishes are kept.",
+    "OC は候補のままです。": "Still eligible for on-call assignments.",
     "（不可・希望・固定は記録のみ": " (unavailability, wishes and fixed assignments are recorded only",
     "。月の設定で候補に含めると有効": "; they take effect once included as a candidate on the month tab",
     "）": ")",
