@@ -46,6 +46,8 @@ run test_avoid_reference_node.js "$HP"
 run test_reserve_permission_node.js "$HP"
 run test_reserve_lint_node.js "$HP"
 run test_reserve_targets_node.js
+run test_fixed_only_lint_node.js "$HP"
+run test_fixed_only_targets_node.js "$HP"
 run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
 run test_spec_examples_node.js

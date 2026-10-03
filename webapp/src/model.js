@@ -889,13 +889,21 @@
   }
   T.normalizeMonth = normalizeMonth;
 
-  // 相対の目安: その月の必要な延べ人数（枠ごとの人数。幅があるときは理想値、無ければ上限）を、当番に入る人（予備の役割を除く）の比重で按分する。
+  // 目標配分の対象人数。固定配置専用の人は目安の適用外なので、必須の実勤務固定を各枠から差し引く。
+  // 規則 fixed_only が off でも固定自体は必須。未固定枠への追加勤務は予測しない。OC・翌月の接続・存在しない勤務帯は含めない。
+  function targetWorkNeed(P) {
+    const workers = P.dutyNames.filter(n => P.workAllowed(n));
+    const fixedOnly = workers.filter(n => P.isFixedOnly(n)), people = workers.filter(n => !P.isExempt(n));
+    return P.slots.reduce((a, s) => a + Math.max(people.filter(n => P.isFixedWork(s, n)).length,
+      (P.countIdealOf(s) ?? P.countOf(s)) - fixedOnly.filter(n => P.isFixedWork(s, n)).length), 0); // 目標対象者自身の必須固定を下回らない
+  }
+  // 相対の目安: 目標配分の対象人数（枠ごとの人数。幅があるときは理想値、無ければ上限）を、目安が適用される人の比重で按分する。
   // 整数にするのは最大剰余法（端数の大きい人から 1 ずつ）。端数が同じなら累計の過不足（history.work_balance）が少ない人 → 年数の短い人 → 名簿の順。
   // 比重 0 の人は 0 回。比重の合計が 0 なら全員 0（入力チェックが人数の不足を知らせる）
   function shareQuotas(P) {
-    const people = P.dutyNames.filter(n => !P.isRole(n, "reserve")), w = {}; let W = 0;
+    const people = P.dutyNames.filter(n => !P.isExempt(n)), w = {}; let W = 0;
     for (const n of people) { const s = Math.max(0, +((P.doctors[n] || {}).share ?? 1) || 0); w[n] = s; W += s; }
-    const need = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0);
+    const need = targetWorkNeed(P);
     const out = {}; for (const n of P.names) out[n] = 0;
     P.shareInfo = { need, W };
     if (!W) return out;
@@ -914,10 +922,10 @@
     const m = Object.assign({}, month); delete m.targets;
     const P = new Problem(rules, m);
     const bal = (month.history && month.history.work_balance) || {};
-    const docs = P.dutyNames.filter(n => !P.isRole(n, "reserve") && P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) })); // 予備は月0〜1回で目標の対象外。任意の目安で通常職員の目標を動かさない
-    const S = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0), Q = docs.reduce((a, d) => a + d.q, 0); // 必要な延べ人数（按分と同じ基準: 枠ごとの人数。幅があるときは理想値）
+    const docs = P.dutyNames.filter(n => !P.isExempt(n) && P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) })); // 予備・固定配置専用の任意の目安で通常職員の目標を動かさない
+    const S = targetWorkNeed(P), Q = docs.reduce((a, d) => a + d.q, 0); // 按分と同じ対象人数
     const targets = {}; docs.forEach(d => targets[d.n] = d.q);
-    const lines = [T.t("必要枠 {slots}、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
+    const lines = [T.t("目標配分の対象 {slots} 枠、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
     let diff = S - Q;
     const tol = P.tol;
     if (diff < 0) {
