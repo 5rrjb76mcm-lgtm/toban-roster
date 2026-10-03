@@ -178,8 +178,10 @@
   }
   // HTML エスケープ（report / app で共通。docx は XML 用に別途 制御文字も落とす）
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  // 当直の候補か（規則の duty: never=候補外, no_unless_needed=月の設定で許可したときだけ）。画面（app-core.js の dutyNames）と Problem が同じ判定を使う
+  // 勤務・OC共通の候補か（duty: never=候補外, no_unless_needed=月の設定で許可したときだけ）。画面と Problem が同じ判定を使う
   const isDutyCandidate = (doc, allowChief) => doc.duty !== "never" && (doc.duty !== "no_unless_needed" || !!allowChief);
+  // 実勤務の候補。予備の月許可は勤務だけに追加で適用し、OCの候補は変えない。
+  const isWorkCandidate = (doc, allowChief, reserveRoleId) => !!doc && isDutyCandidate(doc, allowChief) && (!reserveRoleId || doc.team !== reserveRoleId || !!allowChief);
 
   function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
   // 「避：…」の曜日パターンを日付に展開する（平日のみ。土日祝の避けたい日はカレンダーで個別に申告する）。Problem と expandAvoid の両方が使う
@@ -355,6 +357,7 @@
     }
 
     dutyAllowed(n) { return isDutyCandidate(this.doctors[n], this.allowChief); }
+    workAllowed(n) { return isWorkCandidate(this.doctors[n], this.allowChief, this.refId("reserve")); }
     // 履歴込み週末担当の上限（整数変数の範囲に使う。履歴は組数なので日数換算で2倍）
     histWeekendBound() { const h = Object.values(this.histWeekend).map(Number).filter(x => !isNaN(x)); return 2 * Math.max(0, ...h) + 2 * (this.periods || []).length + 4; }
     date(d) { return new Date(this.year, this.month - 1, d); }
@@ -404,8 +407,8 @@
     // 構成の規則の条件に合う人か（経験年数は「何年目か」。資格は名簿の quals）
     compMatch(c, n) { const d = this.doctors[n] || {}, y = +(d.years || 0), q = [].concat(d.quals || []);
       return (c.ymin == null || y >= c.ymin) && (c.ymax == null || y <= c.ymax) && (!c.quals.length || c.quals.some(x => q.includes(x))) && !c.notQuals.some(x => q.includes(x)); }
-    // その勤務帯に入りうる人か（構成の規則で、すべての日に「最大 0 人」とされた条件に当たる人は入れない）。回数の偏りはこの人たちの間で見る
-    shiftEligible(n, kind) { return this.ruleStates.composition === "off" || !this.comp.some(c => c.max === 0 && c.days === "all" && (c.shift === "all" || c.shift === kind) && this.compMatch(c, n)); }
+    // その勤務帯に入りうる人か（構成が必須で、すべての日に「最大 0 人」とされた条件に当たる人は入れない）。減点なら配置できるので、回数の偏りと勤務日容量の対象に含める
+    shiftEligible(n, kind) { return this.ruleStates.composition !== "hard" || !this.comp.some(c => c.max === 0 && c.days === "all" && (c.shift === "all" || c.shift === kind) && this.compMatch(c, n)); }
     compOn(c, s) { return (c.shift === "all" || c.shift === s[1]) && (c.days === "all" || (/^flag:/.test(c.days) ? this.dayHas(s[0], c.days.slice(5)) : (c.days === "weekdays") === !this.isHoliday(s[0]))); } // 勤務帯と日（すべて／平日だけ／土日祝だけ／日ごとの区分が付いた日） // 勤務帯と日の種別（すべて／平日だけ／土日祝だけ）
     // 構成の規則の条件を文にする（名前を付けていればその名前）
     compLabel(c) {
@@ -886,13 +889,21 @@
   }
   T.normalizeMonth = normalizeMonth;
 
-  // 相対の目安: その月の必要な延べ人数（枠ごとの人数。幅があるときは理想値、無ければ上限）を、当番に入る人（予備の役割を除く）の比重で按分する。
+  // 目標配分の対象人数。固定配置専用の人は目安の適用外なので、必須の実勤務固定を各枠から差し引く。
+  // 規則 fixed_only が off でも固定自体は必須。未固定枠への追加勤務は予測しない。OC・翌月の接続・存在しない勤務帯は含めない。
+  function targetWorkNeed(P) {
+    const workers = P.dutyNames.filter(n => P.workAllowed(n));
+    const fixedOnly = workers.filter(n => P.isFixedOnly(n)), people = workers.filter(n => !P.isExempt(n));
+    return P.slots.reduce((a, s) => a + Math.max(people.filter(n => P.isFixedWork(s, n)).length,
+      (P.countIdealOf(s) ?? P.countOf(s)) - fixedOnly.filter(n => P.isFixedWork(s, n)).length), 0); // 目標対象者自身の必須固定を下回らない
+  }
+  // 相対の目安: 目標配分の対象人数（枠ごとの人数。幅があるときは理想値、無ければ上限）を、目安が適用される人の比重で按分する。
   // 整数にするのは最大剰余法（端数の大きい人から 1 ずつ）。端数が同じなら累計の過不足（history.work_balance）が少ない人 → 年数の短い人 → 名簿の順。
   // 比重 0 の人は 0 回。比重の合計が 0 なら全員 0（入力チェックが人数の不足を知らせる）
   function shareQuotas(P) {
-    const people = P.dutyNames.filter(n => !P.isRole(n, "reserve")), w = {}; let W = 0;
+    const people = P.dutyNames.filter(n => !P.isExempt(n)), w = {}; let W = 0;
     for (const n of people) { const s = Math.max(0, +((P.doctors[n] || {}).share ?? 1) || 0); w[n] = s; W += s; }
-    const need = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0);
+    const need = targetWorkNeed(P);
     const out = {}; for (const n of P.names) out[n] = 0;
     P.shareInfo = { need, W };
     if (!W) return out;
@@ -911,10 +922,10 @@
     const m = Object.assign({}, month); delete m.targets;
     const P = new Problem(rules, m);
     const bal = (month.history && month.history.work_balance) || {};
-    const docs = P.dutyNames.filter(n => P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) }));
-    const S = P.slots.reduce((a, s) => a + (P.countIdealOf(s) ?? P.countOf(s)), 0), Q = docs.reduce((a, d) => a + d.q, 0); // 必要な延べ人数（按分と同じ基準: 枠ごとの人数。幅があるときは理想値）
+    const docs = P.dutyNames.filter(n => !P.isExempt(n) && P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) })); // 予備・固定配置専用の任意の目安で通常職員の目標を動かさない
+    const S = targetWorkNeed(P), Q = docs.reduce((a, d) => a + d.q, 0); // 按分と同じ対象人数
     const targets = {}; docs.forEach(d => targets[d.n] = d.q);
-    const lines = [T.t("必要枠 {slots}、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
+    const lines = [T.t("目標配分の対象 {slots} 枠、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
     let diff = S - Q;
     const tol = P.tol;
     if (diff < 0) {
@@ -988,7 +999,7 @@
   T.rulesSummary = rulesSummary;
   T.RULE_GROUPS = RULE_GROUPS; T.term = term; T.ruleLabel = (rules, def) => term(T.t ? T.t(def.label) : def.label, rules); T.minDaysOff = minDaysOff;
   T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets;
-  T.esc = esc; T.isDutyCandidate = isDutyCandidate;
+  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate;
   T.kindJa = k => KINDS[k] || k; // 互換（日本語固定）
   T.kindLabel = k => (T.t ? T.t(KINDS[k] || k) : (KINDS[k] || k)); // 表示言語で読む
 })(globalThis.T = globalThis.T || {});

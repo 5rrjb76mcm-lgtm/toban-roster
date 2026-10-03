@@ -81,7 +81,7 @@
       else if (p[0] === "fd" || p[0] === "fn") { const tbl = p[0] === "fd" ? m.fixed.day : m.fixed.night, cur = [].concat(tbl[+p[1]] || []); cur.push(p[2]); tbl[+p[1]] = cur.length === 1 ? cur[0] : cur; } // 1 名なら文字列、複数なら配列（保存形）
       else if (p[0] === "fc") m.fixed.weekend_charge[+p[1]] = v;
       else if (p[0] === "ftag") (m.fixed_tags ||= {})[`${+p[1]}:${p[2]}|${p[3]}`] = v;
-      else if (p[0] === "dflag") ((m.day_flags ||= {})[+p[1]] ||= []).push(p[2]); else if (p[0] === "dnote") (m.day_notes ||= {})[+p[1]] = v;
+      else if (p[0] === "dflag") ((m.day_flags ||= {})[+p[1]] ||= []).push(p.slice(2).join(":")); else if (p[0] === "dnote") (m.day_notes ||= {})[+p[1]] = v;
       else if (p[0] === "pday") (((m.person_days ||= {})[p[1]] ||= {})[p[2]] ||= {})[+p[3]] = v;
       else if (p[0] === "fdo") (m.fixed.day_oc[+p[1]] ||= []).push(p[2]); else if (p[0] === "fno") (m.fixed.night_oc[+p[1]] ||= []).push(p[2]);
       else if (p[0] === "fdon") (m.fixed.day_oc_none[+p[1]] ||= []).push(p[2]); else if (p[0] === "fnon") (m.fixed.night_oc_none[+p[1]] ||= []).push(p[2]);
@@ -109,7 +109,7 @@
       case "target": return `${p[1]} の当月目標`; case "duty": return `${p[1]} ${day(p[2])} ${p[3] === "am" ? "午前" : "午後"}の業務`;
       case "cal": return `${p[1]} ${day(p[2])} の不可・避`;
       case "wkwish": return `${p[1]} の土日日勤希望`; case "wish": return `${p[1]} ${day(p[2])} の当直希望`; case "wishd": return `${p[1]} ${day(p[2])} の日勤希望`;
-      case "fd": return `${day(p[1])} 日勤の固定 ${p[2]}`; case "fn": return `${day(p[1])} 夜勤の固定 ${p[2]}`; case "ftag": return `${day(p[1])} 固定の印 ${p[3]}`; case "dflag": return `${day(p[1])} 日の区分 ${p[2]}`; case "dnote": return `${day(p[1])} 日の予定`; case "pday": return `${p[2]} ${day(p[3])} ${p[1]}`; case "fc": return `${day(p[1])} 期間責任者の固定`;
+      case "fd": return `${day(p[1])} 日勤の固定 ${p[2]}`; case "fn": return `${day(p[1])} 夜勤の固定 ${p[2]}`; case "ftag": return `${day(p[1])} 固定の印 ${p[3]}`; case "dflag": return `${day(p[1])} 日の区分 ${p.slice(2).join(":")}`; case "dnote": return `${day(p[1])} 日の予定`; case "pday": return `${p[2]} ${day(p[3])} ${p[1]}`; case "fc": return `${day(p[1])} 期間責任者の固定`;
       case "fdo": return `${day(p[1])} 日勤OC固定 ${p[2]}`; case "fno": return `${day(p[1])} 夜間OC固定 ${p[2]}`;
       case "fdon": return `${day(p[1])} 日勤 ${p[2]} のOCなし（固定）`; case "fnon": return `${day(p[1])} 夜間 ${p[2]} のOCなし（固定）`;
       case "cpm": return `${p[1]} ${day(p[2])} 午後外勤後の夜勤の確認`; case "hist": return `履歴 ${p[1]} ${p[2]}`;

@@ -15,6 +15,18 @@ try:
     sh(d, "git", "init", "-q"); sh(d, "git", "config", "core.quotepath", "true")
     write(d, "README.md"); write(d, "plugin-example/rules/local.example.x.js"); commit(d, "init")
     expect(check(d)[0] == 0 and check(d, True)[0] == 0, "正当なファイルだけなら通る（plugin-example の local.example.* を含む）")
+    write(d, "webapp/src/rules/local.example.x.js"); commit(d, "example rule")
+    expect(check(d)[0] == 0 and check(d, True)[0] == 0, "公開用の local.example.* は plugin-example の外でも通る")
+    # local.example.* の例外は施設名の判定だけに使う。非公開の保存場所まで例外にしない。
+    private_examples = [("plugins/rules/local.example.x.js", "plugins/"), ("202611/local.example.record.json", "月フォルダ"),
+                        ("docs/試用/local.example.record.json", "試用"), ("docs/内部文書/local.example.record.json", "内部文書")]
+    for path, label in private_examples:
+        write(d, path); commit(d, "private example filename")
+        rc, out = check(d)
+        expect(rc == 1 and label in out, "local.example.* でも非公開の保存場所なら止める: " + label)
+        sh(d, "git", "rm", "-q", path); commit(d, "remove private example filename")
+    expect(check(d)[0] == 0, "非公開フォルダ内の例を消すと作業ツリーは通る")
+    expect(check(d, True)[0] == 1, "履歴だけに残る非公開フォルダ内の local.example.* も止める")
     write(d, "docs/試用記録.md"); commit(d, "add jp")
     rc, out = check(d); expect(rc == 1 and "試用" in out, "日本語のパス（quotepath=true でも）を止める: " + out.strip())
     sh(d, "git", "rm", "-q", "docs/試用記録.md"); commit(d, "rm jp")

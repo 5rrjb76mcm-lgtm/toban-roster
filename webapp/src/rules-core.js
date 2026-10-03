@@ -113,7 +113,8 @@
     const unN = (n, d) => (P.unavailNight[n] || new Set()).has(d);                               // 夜間不可
     const unO = (n, d) => ((P.unavailOther[n] || []).find(([dd]) => dd === d) || [])[1];         // 日中の不可（"allday" / 半日）
     const dutyOn = P.isHard("duty_conflicts"); // 規則 duty_conflicts が「なし」の施設は日中の業務で当番を制限しない
-    const canWork = (n, s) => { const [d, k] = s;
+    const canWork = (n, s) => { if (!P.workAllowed(n)) return false; const [d, k] = s;
+      if (P.isHard("fixed_only") && P.isFixedOnly(n) && !P.isFixedWork(s, n)) return false;
       if (k === "night") { if (unN(n, d) || unO(n, d) === "allday") return false; if (!dutyOn) return true;
         if (d + 1 <= N && (P.busy(n, d + 1, "am", ["external"]) || P.busy(n, d + 1, "pm"))) return false;
         if (P.busy(n, d, "pm", ["external"]) && P.pmExtNightBanned(d, n)) return false; return true; }

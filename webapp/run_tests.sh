@@ -29,14 +29,26 @@ run test_refine_node.js "$HP"
 run test_merge_node.js
 run test_profile_export_node.js
 run test_save_node.js
+run test_save_exists_node.js
+run test_save_context_node.js
+run test_import_previous_node.js
 run test_solve_guard_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
+echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
 run test_files_node.js
 run test_dutydays_node.js "$HP"
 run test_infer_node.js "$HP"
 run test_prevconn_node.js "$HP"
 run test_lint_node.js "$HP"
+run test_shift_eligible_node.js "$HP"
+run test_avoid_reference_node.js "$HP"
+run test_reserve_permission_node.js "$HP"
+run test_reserve_lint_node.js "$HP"
+run test_reserve_targets_node.js
+run test_fixed_only_lint_node.js "$HP"
+run test_fixed_only_targets_node.js "$HP"
+run test_variable_capacity_node.js "$HP"
 run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
 run test_spec_examples_node.js
@@ -46,7 +58,7 @@ run ../plugin-example/test_local_data_node.js
 # 実ブラウザの通し試験（Playwright + インストール済みの Chrome）。組み立てた HTML を一時ファイルに作って使う。Playwright か Chrome が無ければ試験の側が省略と表示する
 if [ -x "$PY" ]; then
   E2E_HTML=$(mktemp -d)/toban_e2e.html
-  if "$PY" build.py --out "$E2E_HTML" >/dev/null 2>&1; then run test_browser_e2e.js "$E2E_HTML"; else echo "FAIL 通し試験用の組み立てに失敗"; fail=1; fi
+  if "$PY" build.py --out "$E2E_HTML" >/dev/null 2>&1; then run test_browser_e2e.js "$E2E_HTML"; run test_reserve_ui_browser.js "$E2E_HTML"; else echo "FAIL 通し試験用の組み立てに失敗"; fail=1; fi
   rm -f "$E2E_HTML"
 else echo "--  実ブラウザの通し試験は省略（../tools/.venv が無いので組み立てられない）"; fi
 PY=../tools/.venv/bin/python
