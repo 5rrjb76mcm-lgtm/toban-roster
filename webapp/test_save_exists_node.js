@@ -9,8 +9,9 @@ globalThis.document = { querySelector: element, querySelectorAll: () => [], addE
 globalThis.window = globalThis;
 globalThis.location = { pathname: '/synthetic/toban.html', protocol: 'file:', href: 'file:///synthetic/toban.html' };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-globalThis.T = { esc: String };
-for (const f of ['i18n.js', 'app-core.js', 'app-folder.js'])
+globalThis.T = {};
+// 保存データの年月判定は本体と同じ model を読む。帳票・検算だけを下で代替する。
+for (const f of ['i18n.js', 'rules-core.js', 'model.js', 'app-core.js', 'app-folder.js'])
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, 'src', f), 'utf8'), { filename: f });
 const A = T.app;
 A.readAll = A.renderHeader = A.renderAll = () => {};

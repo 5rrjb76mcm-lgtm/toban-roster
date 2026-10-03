@@ -19,6 +19,7 @@
   const fontOf = P => ((P.rules || {}).docx || {}).font || DEFAULT_FONT;
   // 段落・セル・行のプラグイン。様式はこれを組み合わせて表を作る
   function parts(font) {
+    font = x(font); // 設定のフォント名を XML 属性値として出す（ctx.font は元の文字列）。
     const rpr = (sz, bold, color) => `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:eastAsia="${font}"/>${bold ? "<w:b/>" : ""}${color ? `<w:color w:val="${color}"/>` : ""}<w:sz w:val="${sz}"/><w:szCs w:val="${sz}"/></w:rPr>`;
     const para = (text, sz = 24, bold = false, jc = "left", color = null) => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="${jc}"/></w:pPr><w:r>${rpr(sz, bold, color)}<w:t xml:space="preserve">${x(text)}</w:t></w:r></w:p>`;
     const cell = (text, width, fill, opts = {}) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${fill}"/><w:vAlign w:val="center"/></w:tcPr>${para(text, opts.sz || 24, !!opts.bold, opts.jc || "left", opts.color || null)}</w:tc>`;
@@ -169,7 +170,7 @@
   const docxXml = (P, asg, label = "確認版", opts = {}) => renderDocx(P, asg, label, opts).xml;
 
   async function makeDocx(P, asg, label, opts = {}) {
-    const zip = new JSZip(), font = fontOf(P);
+    const zip = new JSZip(), font = x(fontOf(P));
     const r = renderDocx(P, asg, label, opts);
     zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`);

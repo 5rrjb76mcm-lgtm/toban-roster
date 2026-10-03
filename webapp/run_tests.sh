@@ -29,6 +29,7 @@ run test_refine_node.js "$HP"
 run test_merge_node.js
 run test_profile_export_node.js
 run test_settings_import_node.js
+run test_numeric_validation_node.js "$HP"
 run test_save_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
@@ -38,10 +39,12 @@ run test_absent_assignment_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
+run test_output_escape_node.js
 run test_files_node.js
 run test_dutydays_node.js "$HP"
 run test_infer_node.js "$HP"
 run test_prevconn_node.js "$HP"
+run test_period_slots_node.js "$HP"
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"

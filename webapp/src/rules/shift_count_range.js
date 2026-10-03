@@ -11,7 +11,17 @@ T.rules.register({
     render(d, R, h) { return `<input type="number" min="0" max="31" data-f="${SCR_FIELD[k]}" value="${d[SCR_FIELD[k]] ?? ""}" style="width:3.5em">`; },
     read(td, d) { const v = td.querySelector(`[data-f="${SCR_FIELD[k]}"]`).value; if (v !== "") d[SCR_FIELD[k]] = Math.max(0, +v); } })),
   read(P) { const c = P.rules.shift_counts || { night: { min: 3, max: 5 } }, out = {};
-    for (const [k, v] of Object.entries(c)) if (["day", "night"].includes(k) && v) out[k] = { min: v.min === "" || v.min == null ? null : +v.min, max: v.max === "" || v.max == null ? null : +v.max };
+    const active = P.state("shift_count_range") !== "off";
+    const count = (v, field) => {
+      if (v === "" || v == null) return null;
+      const n = typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+      if (active && (!Number.isInteger(n) || n < 0)) throw new Error(T.t("設定の {field} は0以上の整数にしてください（勤務回数。空欄は制限なし）", { field }));
+      return n;
+    };
+    for (const [k, v] of Object.entries(c)) if (["day", "night"].includes(k) && v) {
+      out[k] = { min: count(v.min, `shift_counts.${k}.min`), max: count(v.max, `shift_counts.${k}.max`) };
+      if (active) for (const n of P.dutyNames) if (!P.isRole(n, "reserve") && !P.isFixedOnly(n)) count(P.doctors[n][SCR_FIELD[k]], `doctors[${n}].${SCR_FIELD[k]}`);
+    }
     return { range: out }; },
   solve(ctx, prm) {
     const { P, LP } = ctx;

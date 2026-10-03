@@ -4,6 +4,7 @@
   const state = A.state;
 
   function blankMonth(y, m) {
+    T.requireMonth({ year: y, month: m });
     const nm = A.names(); const obj = f => Object.fromEntries(nm.map(x => [x, f()]));
     const auto = autoCalendar(y, m);
     return { year: y, month: m, holidays: auto.holidays, closure_days: auto.closure, duties_on_holidays: false, next_month_first_day_is_holiday: auto.nextFirst, next_first_day_in_calendar: true, targets: {}, regular_duties: obj(() => []), duty_days: obj(() => ({})), confirmed_pm_external_night: [], unavailable_night: obj(() => []), unavailable_other: [], wishes: { weekend_dayshift: [], night_on: {} }, fixed: { night: {}, day: {}, weekend_charge: {} }, exceptions: {}, prev_month: { last_days: [], last_weekend_charge: null, prev_weekend_charge: null }, history: { weekend_charge: {}, holiday_charge: {}, work_balance: {} }, notes: "" };
@@ -48,7 +49,7 @@
       if (consecutive) {
         nmn.prev_month.last_days = ld;
         if (wps.length) { const last = wps[wps.length - 1]; nmn.prev_month.last_weekend_charge = chg(last)[0] || null; if (wps.length > 1) nmn.prev_month.prev_weekend_charge = chg(wps[wps.length - 2])[0] || null;
-          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
+          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5 && chg(last).length) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
       } else notes.push(T.t("{y}年{m}月 のデータから取り込んだため、前月末の接続は未入力です（月が連続していません）", { y, m: mo }));
       const fw = T.fullWeekendUnits(PP, charge);
       for (const n of PP.I) { nmn.history.weekend_charge[n] = (prev.month.history?.weekend_charge?.[n] || 0) + fw[n] / 2 + (wps.some(p => p.crossing && p.prevDays.length && chg(p).includes(n)) ? 1 : 0); nmn.history.holiday_charge[n] = (prev.month.history?.holiday_charge?.[n] || 0) + PP.periods.filter(p => p.kind === "holiday" && chg(p).includes(n)).length; }
@@ -105,6 +106,7 @@
 
   // ---------- 月の切替: その月のデータがあれば開く、なければ直前の月から作成 ----------
   async function onMonthChange(ny, nm) {
+    try { T.requireMonth({ year: ny, month: nm }); } catch (e) { A.toast(e.message); A.renderSettingsMonth(); return; }
     const t = `${ny}${String(nm).padStart(2, "0")}`;
     if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return; }
     if (!A.dirHandle && A.fsOK() && A.storedHandle) await A.ensureFolder();
@@ -137,7 +139,11 @@
       { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
       { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
     if (v && !(await again())) return;
-    if (v === "prev") { const base = { rules: state.rules, month: state.month, result: state.result }; state.meta = null; state.base = null; state.month = fromPrevious(base, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); }
+    if (v === "prev") {
+      const base = { rules: state.rules, month: state.month, result: state.result };
+      let month; try { month = fromPrevious(base, ny, nm); } catch (e) { A.toast(T.t("{y}年{m}月 のデータから作れません: {err}", { y: state.month.year, m: state.month.month, err: e.message })); A.renderSettingsMonth(); return; }
+      state.meta = null; state.base = null; state.month = month; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm }));
+    }
     else if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); }
     else A.renderSettingsMonth();
   }

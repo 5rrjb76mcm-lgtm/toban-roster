@@ -90,6 +90,20 @@ async function rejected(importer, edit) {
     await new Promise(resolve => setImmediate(resolve));
     A.undo(); assert.strictEqual(A.state.rules.quota_tolerance, 1, "正常な読み込みは取り消せる");
   }
+  // 数値の誤りは設定画面で修正できる形で保持する。計算では拒否し、取込や取消で月・結果を壊さない。
+  for (const importer of [jsonInput, profileInput, bundledInput]) for (const [change, err] of [
+    [r => { r.rule_states.quota_target = "soft"; r.weights.target_deviation = -1; }, /weights\.target_deviation/],
+    [r => { r.rule_states.shift_count_range = "soft"; r.shift_counts = { night: { max: 14.5 } }; }, /shift_counts\.night\.max/],
+  ]) {
+    setup(); const rulesBefore = JSON.stringify(A.state.rules), monthBefore = JSON.stringify(A.state.month), result = A.state.result;
+    const incoming = clone(A.state.rules); change(incoming); await importer(incoming);
+    assert.strictEqual(alerts.length, 0); assert.strictEqual(unhandled.length, 0);
+    assert.strictEqual(JSON.stringify(A.state.month), monthBefore); assert.strictEqual(A.state.result, result);
+    assert.throws(() => new T.Problem(A.state.rules, A.state.month), err, "不正な数値で計算しない");
+    await new Promise(resolve => setImmediate(resolve)); A.undo();
+    assert.strictEqual(JSON.stringify(A.state.rules), rulesBefore); assert.strictEqual(JSON.stringify(A.state.month), monthBefore);
+    assert.doesNotThrow(() => new T.Problem(A.state.rules, A.state.month), "取り消すと計算可能な設定に戻る");
+  }
   setup(); const names = A.state.rules.doctors.map(d => d.name);
   await profileInput({ profile: { id: "fictional-without-roster" }, quota_tolerance: 2 });
   assert.strictEqual(unhandled.length, 0); assert.strictEqual(alerts.length, 0);
