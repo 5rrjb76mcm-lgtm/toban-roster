@@ -505,7 +505,8 @@
     const last = undoStack.pop(); if (!last) return;
     const o = JSON.parse(last.snap);
     const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
-    const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name)) !== JSON.stringify((state.rules.doctors || []).map(d => d.name));
+    // 行の並べ替えは改名ではない。逆改名を記録すると、未保存の改名と連結されて別人の入力を統合してしまう。
+    const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name).sort()) !== JSON.stringify((state.rules.doctors || []).map(d => d.name).sort());
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
     if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name);
       if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); });
