@@ -73,8 +73,13 @@
       if (v !== "go") return A.toast(T.t("前月の取り込みをやめました（別の施設のデータ）"));
       if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); }
     A.readAll();
-    const notes = applyConnection(f.data, state.month);
-    try { state.month.targets = T.autoTargets(state.rules, state.month).targets; } catch (e) { }
+    // 前月の名簿や結果を読めない場合も、当月の履歴・接続・固定を途中まで書き換えない。
+    // 変換は複製で完了させ、成功したときだけ当月へ反映する。
+    let month2, notes;
+    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(f.data, month2); }
+    catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
+    try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
+    state.month = month2;
     A.save(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed();
     A.toast(T.t("{y}年{m}月 から取り込みました。", { y: py, m: pm }) + notes.join(" "));
   }

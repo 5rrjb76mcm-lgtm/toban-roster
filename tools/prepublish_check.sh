@@ -195,10 +195,13 @@ if ntag: scope += f"、タグ {ntag}"
 if nn:
     rep("raw", "名簿の名前がそのまま入っています（対象:件数）"); rep("esc", "名簿の名前が uXXXX 表記（JSON のエスケープ）で入っています"); rep("json", "JSON を解析した文字列に名簿の名前が入っています")
     if not (h["raw"] or h["esc"] or h["json"] or h["fname"] or h["msg"] or h["tagmsg"]): lines.append(f"ok  名簿の名前（{nn} 名。本文そのまま／エスケープ表記／JSON 解析後／ファイル名／コミットメッセージ／タグ）は無い（{scope}）")
-    rep("fname", "ファイル名（パス）に名簿の名前があります（対象:件数。パスは表示しない）"); rep("msg", "コミットメッセージか著者名に名簿の名前があります（コミット）"); rep("tagmsg", "注釈付きタグのメッセージかタグ名に名簿の名前があります")
+    rep("fname", "ファイル名（パス）に名簿の名前があります（対象:件数。パスは表示しない）")
+# メタデータでは名簿以外にトークン・端末のパス・タグの参照先も検査している。名簿の有無にかかわらず失敗を反映する。
+rep("msg", "コミットメッセージか著者名に名簿の名前・トークン・端末のパスに該当する内容があります（コミット）")
+rep("tagmsg", "タグの検査に問題があります（名前・注釈・参照先）")
 rep("token", "トークンや鍵に見える文字列があります"); rep("path", "端末のパス（ホームから始まる絶対パス）があります")
-if not h["token"]: lines.append(f"ok  トークン・鍵に見える文字列なし（{scope}）")
-if not h["path"]: lines.append(f"ok  端末のパスなし（{scope}）")
+if not (h["token"] or h["msg"] or h["tagmsg"]): lines.append(f"ok  トークン・鍵に見える文字列なし（{scope}）")
+if not (h["path"] or h["msg"] or h["tagmsg"]): lines.append(f"ok  端末のパスなし（{scope}）")
 print("\n".join(lines))')"
   echo "$summary"; echo "$summary" | grep -q '^NG' && ng=1
 fi

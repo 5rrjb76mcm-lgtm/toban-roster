@@ -58,3 +58,25 @@ r=T.mergeMonth(base, mine2, theirs, 'mine'); console.log('prefer mine notes:', r
   { const mine5 = c(b5), theirs5 = c(b5); mine5.day_notes = Object.assign({}, mine5.day_notes, { 1: '手元の予定' }); theirs5.notes = '相手のメモ'; const r5 = T.mergeMonth(b5, mine5, theirs5); assert.strictEqual(r5.conflicts.length, 0); assert.deepStrictEqual(both(r5.merged), { un: ['day'], av: ['day', 'night'], night: true }, '無関係な項目の統合で、同じ時間帯の避が消えない'); }
   const b6 = c(b0); b6.unavailable_other.push({ name: 'Dr E', day: 7, part: 'allday' }); assert.strictEqual(JSON.parse(T.flattenMonth(b6)['cal:Dr E:7']), 'allday+day+avoid_night', '日夜両方の不可があっても、ほかの入力を落とさない');
   console.log('same-day unavailable + avoid kept: true'); }
+
+// 設定画面で入力できる日区分名は ':' も含めて識別子。統合のキーの区切りと取り違えない（すべて架空）。
+{ const assert = require('assert'), c = o => JSON.parse(JSON.stringify(o));
+  const b = { year: 2026, month: 11, day_flags: { 5: ['会議 13:00', '会議 13:30', '研修:午前:架空', '行事'] } };
+  const flags = m => Object.fromEntries(Object.entries(m.day_flags).map(([d, ids]) => [d, [...ids].sort()]));
+  assert.deepStrictEqual(flags(T.unflattenMonth(T.flattenMonth(b), b)), flags(b), '日区分のコロン以降も往復で保持する');
+  const mine = c(b), theirs = c(b); mine.notes = '手元の架空メモ'; theirs.holidays = [3];
+  let r = T.mergeMonth(b, mine, theirs);
+  assert.strictEqual(r.conflicts.length, 0); assert.deepStrictEqual(flags(r.merged), flags(b), '無関係な編集の統合で日区分名を変えない');
+  assert.strictEqual(r.merged.notes, mine.notes); assert.deepStrictEqual(r.merged.holidays, [3]);
+  const mine2 = c(b), theirs2 = c(b); mine2.day_flags[5] = mine2.day_flags[5].filter(id => id !== '会議 13:00'); theirs2.day_flags[5].push('会議 14:00');
+  r = T.mergeMonth(b, mine2, theirs2);
+  assert.strictEqual(r.conflicts.length, 0); assert.deepStrictEqual(r.merged.day_flags[5].sort(), ['会議 13:30', '会議 14:00', '研修:午前:架空', '行事'].sort(), '接頭辞が同じ別区分の追加・削除を区別する');
+  const mine3 = c(b), theirs3 = c(b); mine3.day_flags[5].push('会議 14:00'); theirs3.day_flags[5].push('会議 14:00');
+  r = T.mergeMonth(b, mine3, theirs3);
+  assert.strictEqual(r.conflicts.length, 0); assert.deepStrictEqual(flags(r.merged), flags(mine3), '両方が同じ区分を追加しても1つだけ保持する');
+  // 区分そのものは存在/不存在の2値なので衝突しない。同じ日の予定が衝突した場合も区分は保持する。
+  mine.day_notes = { 5: '手元の架空予定' }; theirs.day_notes = { 5: '相手の架空予定' };
+  for (const prefer of ['mine', 'theirs']) { r = T.mergeMonth(b, mine, theirs, prefer);
+    assert.strictEqual(r.conflicts.length, 1); assert.strictEqual(r.conflicts[0].label, '5日 日の予定');
+    assert.deepStrictEqual(flags(r.merged), flags(b)); assert.strictEqual(r.merged.day_notes[5], (prefer === 'mine' ? mine : theirs).day_notes[5]); }
+  console.log('day flag IDs containing colons preserved: true'); }

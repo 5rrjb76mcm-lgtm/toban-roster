@@ -3,8 +3,9 @@
 # git の生のパス（-z 区切り。core.quotepath のエスケープを受けない）で見る。PUSH=1 なら、これから送る履歴の全コミット（@{u}..HEAD。上流が無ければ全履歴）のパスも見る。
 # 見つかれば 1 で終わり、該当パスを 1 行ずつ出す（氏名を含みうるので、行の一部を伏せて出す）。
 import os, re, subprocess, sys
-PAT = re.compile(r"(^|/)plugins/|試用|内部文書|(^|/)2[0-9]{5}(/|$)|(^|/)local\.[A-Za-z0-9_-]+\.")
-OK = re.compile(r"^plugin-example/|(^|/)local\.example\.")
+# local.example.* は施設固有名の判定だけから除く。非公開フォルダの判定は残す。
+PAT = re.compile(r"(^|/)plugins/|試用|内部文書|(^|/)2[0-9]{5}(/|$)|(^|/)local\.(?!example\.)[A-Za-z0-9_-]+\.")
+OK = re.compile(r"^plugin-example/")
 def git(*a): return subprocess.check_output(["git", *a], stderr=subprocess.DEVNULL)
 def lines(b): return [p for p in b.decode("utf-8", "surrogateescape").split("\0") if p]
 paths = set(lines(git("ls-files", "-z")))

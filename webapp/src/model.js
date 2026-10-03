@@ -404,8 +404,8 @@
     // 構成の規則の条件に合う人か（経験年数は「何年目か」。資格は名簿の quals）
     compMatch(c, n) { const d = this.doctors[n] || {}, y = +(d.years || 0), q = [].concat(d.quals || []);
       return (c.ymin == null || y >= c.ymin) && (c.ymax == null || y <= c.ymax) && (!c.quals.length || c.quals.some(x => q.includes(x))) && !c.notQuals.some(x => q.includes(x)); }
-    // その勤務帯に入りうる人か（構成の規則で、すべての日に「最大 0 人」とされた条件に当たる人は入れない）。回数の偏りはこの人たちの間で見る
-    shiftEligible(n, kind) { return this.ruleStates.composition === "off" || !this.comp.some(c => c.max === 0 && c.days === "all" && (c.shift === "all" || c.shift === kind) && this.compMatch(c, n)); }
+    // その勤務帯に入りうる人か（構成が必須で、すべての日に「最大 0 人」とされた条件に当たる人は入れない）。減点なら配置できるので、回数の偏りと勤務日容量の対象に含める
+    shiftEligible(n, kind) { return this.ruleStates.composition !== "hard" || !this.comp.some(c => c.max === 0 && c.days === "all" && (c.shift === "all" || c.shift === kind) && this.compMatch(c, n)); }
     compOn(c, s) { return (c.shift === "all" || c.shift === s[1]) && (c.days === "all" || (/^flag:/.test(c.days) ? this.dayHas(s[0], c.days.slice(5)) : (c.days === "weekdays") === !this.isHoliday(s[0]))); } // 勤務帯と日（すべて／平日だけ／土日祝だけ／日ごとの区分が付いた日） // 勤務帯と日の種別（すべて／平日だけ／土日祝だけ）
     // 構成の規則の条件を文にする（名前を付けていればその名前）
     compLabel(c) {

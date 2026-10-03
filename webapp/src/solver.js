@@ -221,7 +221,7 @@
 
   // 避けたい日の参照解方式: まず避けたい日を無視して計算し（参照解）、申告者の回数を基準回数として本計算に渡す
   async function solveWithAvoidRef(P, highs, opts = {}) { // 常に Promise を返す（同期の highs でも可）
-    const declarers = P.dutyNames.filter(n => P.avoidSlots(n).length && P.team[n] !== "C");
+    const declarers = P.dutyNames.filter(n => P.avoidSlots(n).length && !P.isRole(n, "reserve"));
     if (!declarers.length) return await solve(P, highs, opts);
     const ref = await solve(P, highs, Object.assign({}, opts, { ignoreAvoid: true }));
     if (!ref.asg) return Object.assign(ref, { avoidRef: null, refSeconds: ref.seconds });
