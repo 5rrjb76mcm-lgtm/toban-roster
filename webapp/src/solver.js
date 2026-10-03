@@ -156,7 +156,7 @@
     }
     // 勤務回数（total は上で定義）
     for (const n of names) {
-      if (P.isRole(n, "reserve")) { lp.add(total[n], "<=", 1); lp.objAdd(W.chief_duty, total[n]); } // 予備の役割の登用は月1回まで・大幅減点（重み chief_duty）
+      if (P.isRole(n, "reserve")) { lp.add(total[n], "<=", P.allowChief ? 1 : 0); lp.objAdd(W.chief_duty, total[n]); } // 予備の実勤務は月の許可があるときだけ1回まで（名簿の「配置する」で上書きしない）。OCは対象外
     }
     T.rules.runSolve(ctx, 210); // プラグイン: 勤務回数の範囲（200）・当月目標（210）。移す前は上の loop の中で人ごとに並んでいた
     T.rules.runSolve(ctx, 400); // プラグイン: 同じ日に 2 枠（300）・連日（310）・OC を含む隣接枠の連続（400）があった位置

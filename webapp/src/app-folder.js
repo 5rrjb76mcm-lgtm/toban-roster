@@ -38,7 +38,7 @@
       if (!theirsCh) rulesPick = "mine";
       else if (mineCh) { const w = await A.choose(T.t("設定（名簿・規則・重み）が、このブラウザと別のPCの両方で変わっています。どちらの設定を使いますか。月の入力は自動で統合します。"),
         [{ label: T.t("相手の設定を使う"), sub: T.t("このブラウザで変えた設定は消えます"), value: "theirs", primary: true }, { label: T.t("自分の設定を使う"), sub: T.t("相手が変えた設定は消えます"), value: "mine" }, { label: T.t("何もしない（後で判断）"), value: null, cancel: true }]);
-        if (!w) return false; rulesPick = w; } }
+        if (!w || (stale && stale())) return false; rulesPick = w; } }
     if (!f.data.rules) rulesPick = "mine";
     // 2) 氏名を、採用する名簿に揃えてから比べる。最後に同期してから手元で改名していたら、
     //    自分の設定を使うとき: 相手の版と共通の元に同じ改名を当てる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
@@ -104,29 +104,40 @@
   }
   // 相手（フォルダ）のデータが別の施設のものか（設定の profile.id か月の profile_id が違う）
   // 手元（設定と月）と相手（設定と月）に記録された施設 id が 1 つに揃っていなければ「別の施設」（設定と月の id が食い違っている状態も含む。自動統合・無確認の上書きの対象にしない）
-  async function checkConflict() {
+  // 保存前の読取・確認は、始めた接続先・月・同期基準にだけ有効。
+  // フォルダ選択中に予約済みの自動保存が始まることもあるため、切替窓口の待機だけに頼らない。
+  function saveGuard() {
+    const g = A.switchMark(), guard = { root: A.dirHandle, saveGen: A.saveGen };
+    guard.stale = () => A.switchStale(g) || A.dirHandle !== guard.root || A.saveGen !== guard.saveGen;
+    return guard;
+  }
+  async function checkConflict(guard) {
     const f = await findMonthData(A.tag());
+    if (guard.stale()) return false;
     if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: A.tag(), err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 施設の一致は保存時刻の一致より先に見る（別施設のファイルを複製した場合など、時刻が同じでも別のデータ）
     if (!other && fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
-    const m = other ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"));
-    if (m === true) return true; if (m === false) return false;
+    const m = other ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"), guard.stale);
+    if (m === true) { guard.saveGen++; return !guard.stale(); } // この統合自身が進めた同期基準だけを採用する
+    if (m === false || guard.stale()) return false;
     // 共通の元がなく統合できないときだけ、どちらを採るか聞く
     const opts = [];
     opts.push({ label: T.t("相手の保存データを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。このブラウザの未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "load", primary: true });
     opts.push({ label: T.t("このブラウザの状態で上書きする"), sub: T.t("相手の変更は消えます。例: 相手の保存が誤操作や古い試作と分かっていて、こちらの入力が最新のとき"), value: "overwrite" });
     opts.push({ label: T.t("何もしない（後で判断）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true });
     const v = await A.choose(T.t("別のPC（または別のウィンドウ）で {tag} が保存されています（保存 {at}）。このブラウザの状態はそれより前のもので、自動統合の元になる版がありません。", { tag: A.tag(), at: new Date(fileAt).toLocaleString(T.dateLocale()) }), opts);
+    if (guard.stale()) return false;
     if (v === "load") { applyLoaded(f.data, T.t("{where} を読み込みました", { where: f.where })); return false; }
     return v === "overwrite";
   }
   async function autosaveJson() { return A.serialized(autosaveCore); }
   async function autosaveCore() { // 返り値: "saved" / "skipped" / "failed"
     if (!A.dirHandle || !A.isDirty()) return "skipped";
-    if (!(await checkConflict())) return "skipped";
-    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await A.dirHandle.getDirectoryHandle(A.tag(), { create: true }); await writeFile(dir, A.dataFileName(), new Blob([snap.payload], { type: "application/json" })); A.markSaved(undefined, at, snap); return "saved"; }
+    const guard = saveGuard();
+    if (!(await checkConflict(guard)) || guard.stale()) return "skipped";
+    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); A.markSaved(undefined, at, snap); return "saved"; }
     catch (e) { renderHeader(); A.toast(T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
   }
 
@@ -369,9 +380,10 @@
       if (!(await ensureFolder())) { if (!fsOK()) { const at = new Date().toISOString(); A.download(A.dataFileName(), new Blob([A.payloadJson(at)], { type: "application/json" })); A.markSaved("ダウンロード", at); return "downloaded"; A.toast(T.t("この環境ではフォルダに直接保存できないため、JSONをダウンロードしました")); } else A.toast(T.t("保存先のフォルダを選ぶと保存できます")); return; }
       A.readAll();
     }
-    if (!(await checkConflict())) { A.toast(T.t("保存を見送りました")); return "skipped"; } // ここで自動統合が入ることがある（統合後の内容を書く）
+    const guard = saveGuard();
+    if (!(await checkConflict(guard)) || guard.stale()) { A.toast(T.t("保存を見送りました")); return "skipped"; } // ここで自動統合が入ることがある（統合後の内容を書く）
     try {
-      const root = A.dirHandle, prep = await prepareSave();
+      const root = guard.root, prep = await prepareSave();
       await writeSave(root, prep);
       commitSave(prep);
       await refreshMonths();
@@ -433,7 +445,7 @@
     try { if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { } // 誤操作や統合の取り違えからの復元用
     // 版の番号: 保存先の記録に同じ番号で別の署名の版があれば、その番号の帳票は別の内容（別のフォルダから持ち込んだ月データなど）。同じ名前の帳票が片方でもあるのに記録で「この番号＝この内容」と確かめられないときも同じ。
     // どちらも上書きせず、記録にも帳票にも無い番号を付け直す
-    const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { return false; } }, namesOf = (ver, label) => [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)];
+    const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { if (notFound(e)) return false; throw e; } }, namesOf = (ver, label) => [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)]; // 存在確認の失敗は「無い」ではない。既存帳票を上書きしないよう保存を止める
     const clash = ver => prevVers.some(v => +v.ver === ver && v.sig !== prep.vsig), verified = ver => prevVers.some(v => +v.ver === ver && v.sig === prep.vsig);
     const anyExists = async (ver, label) => { for (const n of namesOf(ver, label)) if (await exists(n)) return true; return false; }, allExist = async (ver, label) => { for (const n of namesOf(ver, label)) if (!(await exists(n))) return false; return true; };
     const taken = async (ver, label) => clash(ver) || (!verified(ver) && await anyExists(ver, label)); // この番号は別の内容の帳票に使われている（かもしれない）
