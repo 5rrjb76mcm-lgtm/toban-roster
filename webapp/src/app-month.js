@@ -67,8 +67,9 @@
     const f = await A.findMonthData(t);
     if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));
     if (!f.data) return alert(T.t("{y}年{m}月 の保存データが見つかりません（探した場所: {tried}）", { y: py, m: pm, tried: f.tried.join(T.listSep()) }));
-    if (A.otherFacility(f)) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
-      const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id || "?" }),
+    const prev = A.isMonthObj(f.data.month) ? f.data : { month: f.data }; // findMonthData は旧形式（月そのもの）も読む。施設の判定と引き継ぎは同じ形で扱う
+    if (A.otherFacility({ data: prev })) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
+      const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((prev.rules || {}).profile || {}).id || (prev.month || {}).profile_id || "?" }),
         [{ label: T.t("取り込まない（推奨）"), value: null, cancel: true, primary: true }, { label: T.t("別の施設のデータと分かったうえで取り込む"), value: "go" }]);
       if (v !== "go") return A.toast(T.t("前月の取り込みをやめました（別の施設のデータ）"));
       if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); }
@@ -76,7 +77,7 @@
     // 前月の名簿や結果を読めない場合も、当月の履歴・接続・固定を途中まで書き換えない。
     // 変換は複製で完了させ、成功したときだけ当月へ反映する。
     let month2, notes;
-    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(f.data, month2); }
+    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
     state.month = month2;

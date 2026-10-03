@@ -9,6 +9,7 @@
 (function (T) {
   const MSG = {
     // ---- 枠の充足と役割構成 ----
+    SLOT_NOT_EXISTS: { en: "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster", ja: "{slot}: 当月の勤務帯の設定にない枠に割当があります（{who}）。再計算してください" },
     SLOT_WORKER_COUNT: { en: "{slot}: {got} on duty (needs {need}){who}", ja: "{slot}: 勤務者が {got} 名（必要 {need} 名）{who}" },
     SLOT_WORKER_DUP: { en: "{slot}: the same person is listed twice ({who})", ja: "{slot}: 同じ人が重ねて入っている（{who}）" },
     SLOT_WORKER_UNKNOWN: { en: "{slot}: not on the roster ({who})", ja: "{slot}: 勤務者が不正（{who}）" },
@@ -111,7 +112,7 @@
     LINT_FIXED_DUP: { en: "Fixed \"{day} {slot} {who}\": the same person is listed twice", ja: "固定指定「{day} {slot} {who}」: 同じ人が 2 回入っています" },
     LINT_FIXED_DUP_HINT: { en: "Month tab → fixed assignments → list each person once", ja: "月の設定 → 固定指定 で 1 人 1 回にする" },
     LINT_FIXED_NO_SLOT: { en: "Fixed \"{day} {slot} {who}\": there is no {slot} slot on that day", ja: "固定指定「{day} {slot} {who}」: {day} に{slot}の枠がありません" },
-    LINT_FIXED_NO_SLOT_HINT: { en: "Month tab → fixed assignments → remove it (add the date to the holidays if it should be one)", ja: "月の設定 → 固定指定 から削除（祝日なら暦の祝日に日付を足す）" },
+    LINT_FIXED_NO_SLOT_HINT: { en: "Remove this fixed assignment, or check which days this shift is scheduled in Settings", ja: "固定指定を解除するか、設定でその勤務帯を計算する日を確認してください" },
     LINT_FIXED_SAME_DAY_CHARGE_OTHER: { en: "Fixed \"{day} day {a} ({aRole})\" and \"night {b} ({bRole})\" make the {charge} + {other} pairing on a day off, which is not used here", ja: "固定指定「{day} 日勤 {a}（{aRole}）」と「夜勤 {b}（{bRole}）」は休日の{charge}＋{other}の組合せで、共通ルールでは採用しません" },
     LINT_FIXED_SAME_DAY_CHARGE_OTHER_HINT: { en: "Change one of them, or set the rule \"day and night shift on a day off being {charge} + {other}\" to None", ja: "どちらかの固定を変えるか、設定タブ → 規則 → 「休日の日勤と夜勤が{charge}＋{other}の組合せ」を「なし」にする" },
     LINT_PERIOD_CHARGE_NEEDS_ONCALL: { en: "The period-charge rule needs the person in charge in every slot of the period, but the {shift} shift has no on-call; the same person would have to work consecutive days, which usually has no solution", ja: "期間責任者の規則は期間中の全枠に担当者が関わる必要がありますが、{shift}にはオンコールを付けていません。同じ人が連日勤務するしかなく、多くの場合は解なしになります" },

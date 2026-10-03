@@ -41,6 +41,12 @@
       VD.push({ days: days == null ? [] : [].concat(days), names: [].concat(ns), fixed: fixed === undefined ? undefined : !!fixed });
     };
     const slab = s => `${lab(s[0])}${P.shiftLabel(s[1])}`;
+    // 入力で勤務帯を減らしても旧結果は保持される。存在しない枠の非空の割当は固定でも許容しない。
+    // asg だけを見る（A.a には、当月の枠ではない正式な前月末の接続 P.prevFixed も入る）。
+    for (const [k, v] of Object.entries(asg)) if (!P.slotSet.has(k)) {
+      const who = [...new Set([].concat(v.work || [], v.oc || []).filter(Boolean))];
+      if (who.length) viol("SLOT_NOT_EXISTS", { slot: k, who: who.join(T.nameSep()) }, null, [], false);
+    }
     // 1 充足とチーム構成
     for (const s of P.slots) {
       const ws = A.workers(s), cnt = P.countOf(s), lo = P.countMinOf(s);
@@ -223,6 +229,7 @@
     // 固定指定
     const sl = { night: P.shiftLabel("night"), day: P.shiftLabel("day") };
     for (const [ds, ns] of Object.entries(P.fixedNight)) { const d = +ds;
+      if (!P.slotExists(d, "night")) { push("LINT_FIXED_NO_SLOT", { day: lab(d), slot: sl.night, who: ns.join("・") }); continue; }
       if (new Set(ns).size !== ns.length) push("LINT_FIXED_DUP", { day: lab(d), slot: sl.night, who: ns.join("・") });
       if (ns.length > P.countOf([d, "night"])) push("LINT_FIXED_OVER_COUNT", { day: lab(d), slot: sl.night, who: ns.join("・"), n: ns.length, count: P.countOf([d, "night"]) }); // 枠の人数より多く固定している
       for (const n of ns) {
@@ -239,7 +246,7 @@
     // 待機（オンコール）の固定
     for (const [kind, table] of [["day", P.fixedDayOc], ["night", P.fixedNightOc]]) for (const [ds, ns] of Object.entries(table)) {
       const d = +ds, lbl = T.t(kind === "day" ? "日勤OC" : "夜間OC");
-      if (kind === "day" && !P.slotExists(d, "day")) { push("LINT_FIXED_NO_SLOT", { day: lab(d), slot: lbl, who: ns.join("・") }); continue; }
+      if (!P.slotExists(d, kind)) { if (ns.length) push("LINT_FIXED_NO_SLOT", { day: lab(d), slot: lbl, who: ns.join("・") }); continue; }
       if (ns.length && !P.shiftHasOncall(kind)) { push("LINT_FIXED_OC_NO_ONCALL_SHIFT", { day: lab(d), slot: lbl, who: ns.join("・"), shift: P.shiftLabel(kind) }); continue; } // オンコールを付けない勤務帯
       for (const n of ns) {
         if (!P.dutyNames.includes(n)) { push("LINT_FIXED_NOT_CANDIDATE", { day: lab(d), slot: lbl, who: n }); continue; }

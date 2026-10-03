@@ -1094,6 +1094,7 @@
     "この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します": "Fixed on-call that this screen has no field for (it is kept as is). To change it, use the Fixed field in the per-person calendar"
   },
   "msg": {
+    "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",
     "SLOT_WORKER_COUNT": "{slot}: {got} on duty (needs {need}){who}",
     "SLOT_WORKER_DUP": "{slot}: the same person is listed twice ({who})",
     "SLOT_WORKER_UNKNOWN": "{slot}: not on the roster ({who})",
@@ -1195,7 +1196,7 @@
     "LINT_FIXED_PRE_WORKDAY_NIGHT": "Fixed \"{day} {slot} {who}\" is a weekday night before a working day (forbidden here)",
     "LINT_FIXED_PRE_WORKDAY_NIGHT_HINT": "Set the rule back to Penalty, or remove the fixed assignment",
     "LINT_FIXED_NO_SLOT": "Fixed \"{day} {slot} {who}\": there is no {slot} slot on that day",
-    "LINT_FIXED_NO_SLOT_HINT": "Month tab → fixed assignments → remove it (add the date to the holidays if it should be one)",
+    "LINT_FIXED_NO_SLOT_HINT": "Remove this fixed assignment, or check which days this shift is scheduled in Settings",
     "LINT_FIXED_SAME_DAY_CHARGE_OTHER": "Fixed \"{day} day {a} ({aRole})\" and \"night {b} ({bRole})\" make the {charge} + {other} pairing on a day off, which is not used here",
     "LINT_FIXED_SAME_DAY_CHARGE_OTHER_HINT": "Change one of them, or set the rule \"day and night shift on a day off being {charge} + {other}\" to None",
     "LINT_FIXED_OC_NOT_STANDBY": "Fixed \"{day} {slot} {who}\": only {roles} can take on-call ({who} is {role})",
