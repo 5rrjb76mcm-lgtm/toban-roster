@@ -4,7 +4,7 @@
 // 検算と減点の数え方は解く側と独立なので、解く側が必須条件をきつく書きすぎて良い割当を捨てている（最適値が総当たりより大きい）、
 // あるいは検算が解く側の必須条件を見落としている（総当たりの方が小さい）ことが分かる。
 // 加えて、検算が通した割当の一部を全枠固定で解き、解く側が最適でない割当まで不要に禁止していないかを見る
-const fs = require("fs"), vm = require("vm"), path = require("path");
+const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
 globalThis.T = {};
 for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f }); // 規則のプラグイン
@@ -40,7 +40,7 @@ const CASES = [
   ["2交代・連勤と休みを減点、重み 1", withStates(two, ALL_SOFT, true), plainMonth(two), [days(10, 11, 12), days(28, 29, 30)], { seed: 5, scale: 60 }],
   ["2交代・連勤と休みを必須", withStates(two, { run_length_max: "hard", days_off_min: "hard", days_off_pair: "hard" }), plainMonth(two), [days(14, 15, 16)]],
   ["病棟（1枠複数名）", ward, plainMonth(ward), [days(7, 8)]],
-  ["オンコールなし最小", onc, plainMonth(onc), [days(5, 6), days(1, 2)]],
+  ["オンコールなし最小", onc, plainMonth(onc), [nights(5, 6), ["1:day", ...nights(1, 2)]]], // 平日は夜勤だけ。11/1（日）の日勤も確かめる
   ["看護師2交代（小）", nurseS, plainMonth(nurseS), [["10:night", "11:day"], nights(12, 13), ["20:day", "20:night"]]],
   ["看護師2交代（小）・休みと連勤を減点、重み 1", withStates(nurseS, { days_off_min: "soft", days_off_pair: "soft", run_length_max: "soft", composition: "soft" }, true), plainMonth(nurseS), [["10:night", "11:day"], nights(12, 13), ["29:day", "29:night"]], { seed: 9, scale: 60 }],
 ];
@@ -74,6 +74,7 @@ function optionsOf(P, s) {
     const ref = T.solve(P, highs, Object.assign({ timeLimit: 10, mipGap: 0.2 }, jitter ? { jitter } : {}));
     if (!ref.asg) { bad++; console.log(`FAIL ${label}: 基準の割当が作れない（${ref.status}）`); continue; }
     for (const win of wins) {
+      assert(win.every(k => P.slotSet.has(k)), `${label}: 存在しない枠を総当たりの窓に含めない（${win.filter(k => !P.slotSet.has(k)).join(" ")}）`);
       const t0 = Date.now(), pin = clone(ref.asg); for (const k of win) delete pin[k];
       const r = T.solve(P, highs, { timeLimit: 60, pin });
       const opts = win.map(k => optionsOf(P, k.split(":").map((x, i) => i ? x : +x)));

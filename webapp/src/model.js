@@ -183,6 +183,17 @@
   // 実勤務の候補。予備の月許可は勤務だけに追加で適用し、OCの候補は変えない。
   const isWorkCandidate = (doc, allowChief, reserveRoleId) => !!doc && isDutyCandidate(doc, allowChief) && (!reserveRoleId || doc.team !== reserveRoleId || !!allowChief);
 
+  const numericValue = v => typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  function isValidMonth(m) {
+    if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+    const y = numericValue(m.year), mo = numericValue(m.month);
+    if (!Number.isInteger(y) || y <= 0 || !Number.isInteger(mo) || mo < 1 || mo > 12) return false;
+    const d = new Date(y, mo - 1, 1);
+    return d.getFullYear() === y && d.getMonth() === mo - 1 && Number.isFinite(new Date(y, mo, 1).getTime()); // Date の繰越し・0〜99 年の補正・翌月1日まで表せない範囲外を認めない
+  }
+  function requireMonth(m) {
+    if (!isValidMonth(m)) throw new Error(T.t("月データの year / month が不正です。実在する年と1〜12の整数の月を指定してください"));
+  }
   function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
   // 「避：…」の曜日パターンを日付に展開する（平日のみ。土日祝の避けたい日はカレンダーで個別に申告する）。Problem と expandAvoid の両方が使う
   function avoidDaysFromPatterns(pats, N, dowOf, nthOf, isHoliday) {
@@ -197,6 +208,7 @@
 
   class Problem {
     constructor(rules, month) {
+      requireMonth(month);
       this.rules = rules; this.m = month;
       this.fridayMin = rules.friday_night_min || rules.friday_night_exact || {};
       // 将来変わりうる必須条件（設定タブで変更できる）
@@ -348,6 +360,11 @@
       // 「なし」にした規則の重みは 0 にする（その規則の内側でだけ使う重み sub も同じ）。
       // ソルバーの objAdd は 0 の項を作らないので、これだけでその規則の減点は消える（式の生成自体も主な規則では省く）
       for (const def of RULE_DEFS) if (this.ruleStates[def.id] === "off") for (const k of [def.weight].concat(def.sub || [])) if (k) this.weights[k] = 0;
+      for (const [k, v] of Object.entries(this.weights)) {
+        const n = numericValue(v);
+        if (!Number.isFinite(n) || n < 0) throw new Error(T.t("設定の weights.{key} は0以上の有限の数にしてください（減点の重み）", { key: k }));
+        this.weights[k] = n; // 数字の文字列は計算用の写しだけで数にする。設定そのものは変更しない
+      }
       this.buildCalendar();
       // 目安（P.quota）と当月の目標（P.targets。月の設定の targets で上書き）。相対のときは枠の数から按分するので暦の後
       if (this.quotaMode === "share") this.shareQuotas = shareQuotas(this);
@@ -865,6 +882,7 @@
   T.fillDefaultRules = fillDefaultRules;
   // 月データの形を整える（欠けている入れ物を作る・旧形式を移す）。読込・統合・新規作成のあとに必ず通す
   function normalizeMonth(m, rules) {
+    requireMonth(m); // 不正な年月なら、旧形式の移行や曜日展開に入る前に止める
     const names = (rules.doctors || []).map(d => d.name);
     if (m.cath_off_days && m.cath_off_days.length) { // 旧データ: 副担当・主担当の両方に振り分ける
       const u = a => [...new Set([...(a || []), ...m.cath_off_days].map(Number))].sort((x, y) => x - y); m.cath_off_days_A = u(m.cath_off_days_A); m.cath_off_days_I = u(m.cath_off_days_I);
@@ -998,7 +1016,7 @@
   }
   T.rulesSummary = rulesSummary;
   T.RULE_GROUPS = RULE_GROUPS; T.term = term; T.ruleLabel = (rules, def) => term(T.t ? T.t(def.label) : def.label, rules); T.minDaysOff = minDaysOff;
-  T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets;
+  T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets; T.isValidMonth = isValidMonth; T.requireMonth = requireMonth;
   T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate;
   T.kindJa = k => KINDS[k] || k; // 互換（日本語固定）
   T.kindLabel = k => (T.t ? T.t(KINDS[k] || k) : (KINDS[k] || k)); // 表示言語で読む

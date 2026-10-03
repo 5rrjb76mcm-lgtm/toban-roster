@@ -82,7 +82,7 @@
   const payloadOf = (S, at) => JSON.stringify({ rules: S.rules, month: S.month, result: S.result, saved_at: at }, null, 1);
   function payloadJson(at) { return payloadOf(state, at); }
 
-  const isMonthObj = x => x && typeof x === "object" && +x.year > 0 && +x.month >= 1 && +x.month <= 12;
+  const isMonthObj = x => T.isValidMonth(x);
   function load() {
     try {
       const s = localStorage.getItem(STORE) || localStorage.getItem(STORE_LEGACY); // 旧キーからの引き継ぎ（一度読めば新キーに保存される）

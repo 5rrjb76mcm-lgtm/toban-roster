@@ -73,7 +73,14 @@
     // ファイルの読込は、読み終わって状態に当てるところまで窓口の中で行う（読取中に計算が始まっても、当てる時点で守られる）
     $("#fileLoadJson").addEventListener("change", ev => { const f = ev.target.files[0]; ev.target.value = ""; A.transition("data", () => A.loadJsonFile(f)); });
     $("#fileFromPrev").addEventListener("change", ev => { const f = ev.target.files[0]; ev.target.value = ""; A.transition("data", () => A.createFromPrevFile(f)); });
-    $("#btnNewMonth").addEventListener("click", () => A.transition("month", async () => { if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("入力を空にして新しい月を作ります。よろしいですか"))) return; const y = +prompt(T.t("年"), state.month.year), mo = +prompt(T.t("月"), (state.month.month % 12) + 1); if (!y || !mo) return; state.meta = null; state.base = null; state.month = A.blankMonth(y, mo); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); renderAll(); showTab("input"); }));
+    $("#btnNewMonth").addEventListener("click", () => A.transition("month", async () => {
+      if (!(await A.saveBeforeSwitch())) return;
+      if (!confirm(T.t("入力を空にして新しい月を作ります。よろしいですか"))) return;
+      const y = prompt(T.t("年"), state.month.year); if (y == null) return;
+      const mo = prompt(T.t("月"), (state.month.month % 12) + 1); if (mo == null) return;
+      let month; try { T.requireMonth({ year: y, month: mo }); month = A.blankMonth(+y, +mo); } catch (e) { alert(e.message); return; }
+      state.meta = null; state.base = null; state.month = month; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); renderAll(); showTab("input");
+    }));
     $("#btnSample").addEventListener("click", () => A.transition("month", async () => { if (!T.SAMPLE_MONTH) return; if (!(await A.saveBeforeSwitch())) return; if (!confirm(T.t("サンプル（2026年11月）を読み込みます"))) return; state.rules = JSON.parse(JSON.stringify(T.DEFAULT_RULES)); state.meta = null; state.base = null; state.month = JSON.parse(JSON.stringify(T.SAMPLE_MONTH)); state.result = null; state.ui.doctor = 0; A.ensureMonth(state.month); A.clearUndo(); A.save(); renderAll(); showTab("input"); }));
     showTab("input");
     T.applyI18n();

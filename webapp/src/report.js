@@ -16,11 +16,11 @@
     const byShift = P.shifts.map(sh => tv("{shift} {n}", { shift: sh.label, n: P.slots.filter(x => x[1] === sh.id).length })).join(T.listSep());
     const head = [
       tv("対象月 {y}年{m}月　{status}", { y: P.year, m: P.month,
-        status: info.status ? tv("ソルバー状態 {st}{sec}", { st: esc(info.status), sec: info.seconds != null ? tv("（{s}秒）", { s: info.seconds.toFixed(1) }) : "" }) : tx("検算") }),
+        status: info.status ? tv("ソルバー状態 {st}{sec}", { st: info.status, sec: info.seconds != null ? tv("（{s}秒）", { s: info.seconds.toFixed(1) }) : "" }) : tx("検算") }),
       tv("必要枠: {detail}、計{total}枠。目安合計 {quota}", { detail: byShift, total: P.slots.length, quota: P.dutyNames.reduce((a, n) => a + P.quota(n), 0) }),
     ];
     const summary = (T.rulesSummary(P) || []).map(g => `<h4>${esc(g.head)}</h4><ul>${g.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>`).join("");
-    S.push({ id: "s0", title: tx("概要"), html: `<ul>${head.map(h => `<li>${h}</li>`).join("")}</ul>`
+    S.push({ id: "s0", title: tx("概要"), html: `<ul>${head.map(h => `<li>${esc(h)}</li>`).join("")}</ul>`
       + `<details><summary>${esc(tx("この月に使った規則（設定から作った要約）"))}</summary>${summary}</details>` });
     // 1 検算
     S.push({ id: "s1", title: tx("1 必須条件の検算"), html: (V.length ? `<p class="ng"><b>${esc(tv("違反 {n} 件", { n: V.length }))}</b></p><ul>${V.map(v => `<li>${esc(v)}</li>`).join("")}</ul>` : `<p class="ok">${esc(tx("違反なし（必須にしたすべての規則を満たしています）"))}</p>`) + (W.length ? `<p><b>${esc(tv("固定指定により許容した条件 {n} 件（要確認。固定指定を優先し、次の条件は満たしていません）", { n: W.length }))}</b></p><ul>${W.map(v => `<li>${esc(v)}</li>`).join("")}</ul>` : "") });
@@ -115,7 +115,7 @@
     }
     S.push({ id: "s7", title: tx("7 定期業務との重なり（残る負担・午後外勤日の全件）"), html: rows7.length ? table(["担当", "{person}", "翌日の業務／当日の扱い"].map(tx), rows7) : `<p>${esc(tx("なし"))}</p>` });
     // 8 日中の専門業務
-    const rows8 = T.cathTable(P, A).map(r => [esc(r.label.split(" ")[0]), esc(r.label.split(" ")[1]), r.needA, esc(join(r.okA)), esc(join(r.exA, T.listSep())), esc(join(r.okI)), esc(join(r.exI, T.listSep())), r.clinic ? `${esc(join(r.clinic.okC))} / ${esc(join(r.clinic.okY))}` : "", r.ng.length ? `<b class="ng">${esc(tx("不足"))}: ${esc(r.ng.map(x => P.msg(x.code, x.args)).join("; "))}</b>` : (r.offA && r.offI) ? tx("配置不要（設定）") : r.offA ? L("{other}は配置不要（設定）") : r.offI ? L("{charge}は配置不要（設定）") : r.postUsed ? tx("充足（夜勤明けを含む・減点）") : tx("充足")]);
+    const rows8 = T.cathTable(P, A).map(r => [esc(r.label.split(" ")[0]), esc(r.label.split(" ")[1]), r.needA, esc(join(r.okA)), esc(join(r.exA, T.listSep())), esc(join(r.okI)), esc(join(r.exI, T.listSep())), r.clinic ? `${esc(join(r.clinic.okC))} / ${esc(join(r.clinic.okY))}` : "", r.ng.length ? `<b class="ng">${esc(tx("不足"))}: ${esc(r.ng.map(x => P.msg(x.code, x.args)).join("; "))}</b>` : esc((r.offA && r.offI) ? tx("配置不要（設定）") : r.offA ? L("{other}は配置不要（設定）") : r.offI ? L("{charge}は配置不要（設定）") : r.postUsed ? tx("充足（夜勤明けを含む・減点）") : tx("充足"))]);
     S.push({ id: "s8", title: tx("8 日中の専門業務の時間帯別配置（平日）"), html: `<p class="note">${esc(tx("候補＝資格者から外来・病棟番・外勤・不在・不可を除いた人。夜勤明けは午前だけ候補に含める（夜勤明けを数えて初めて足りる時間帯は減点）。午後は除外。* は前夜の夜間OC。実際の配置は当月条件で確定させる。"))}</p>` + table([tx("日付"), tx("時間帯"), L("{other} 必要"), L("{other} 候補"), L("{other} 除外"), L("{charge} 候補"), L("{charge} 除外"), L("専門外来 候補（{other} / {junior}）"), tx("判定")], rows8) });
     // 9 調整目標。行は規則のプラグイン（def.report）が出す。本体はオンコール（待機）の行だけ
     const soft = [];

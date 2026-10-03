@@ -457,17 +457,28 @@
     const name = `profile_${id}${withRoster ? "_with_roster" : ""}.json`, blob = new Blob([JSON.stringify(R, null, 1)], { type: "application/json" });
     if (A.dirHandle) { await A.writeFile(A.dirHandle, name, blob); A.toast(T.t("フォルダに {name} を保存しました", { name })); } else A.download(name, blob);
   }
+  // 設定と月の正規化は複製で完了させる。不正な名簿や正規化の失敗で、編集中の状態・取り消し履歴を壊さない。
+  function prepareRulesImport(input, keepRoster = false) {
+    const clone = x => JSON.parse(JSON.stringify(x));
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error(T.t("doctors（{person}一覧）がありません"));
+    const rules = clone(input), month = clone(state.month);
+    if (keepRoster && (rules.doctors == null || Array.isArray(rules.doctors) && !rules.doctors.length)) { rules.doctors = clone(state.rules.doctors); rules.name_order = clone(state.rules.name_order || []); }
+    if (!Array.isArray(rules.doctors)) throw new Error(T.t("doctors（{person}一覧）がありません"));
+    if (!rules.doctors.every(d => d && typeof d === "object" && !Array.isArray(d) && typeof d.name === "string" && d.name.trim())) throw new Error(T.t("勤務表データの設定（rules）の{person}一覧に、氏名の無い要素があります"));
+    T.fillDefaultRules(rules); T.normalizeMonth(month, rules);
+    return { rules, month };
+  }
   const importProfile = file => A.transition("data", () => importProfileCore(file));
   async function importProfileCore(file) {
     let R; try { R = JSON.parse(await file.text()); } catch (e) { return alert(tx("プロファイルのファイルを読めませんでした（JSON の形式ではありません）")); }
     if (!R || typeof R !== "object" || (!R.profile && !Array.isArray(R.doctors))) return alert(tx("施設プロファイルのファイルではありません（profile も doctors もありません）"));
     const label = T.pickLabel((R.profile || {}).label, (R.profile || {}).id || file.name);
     if (!confirm(T.t("施設プロファイル「{name}」を読み込みます。施設の構成・規則・規則の状態が置き換わります（「元に戻す」で取り消せます）。", { name: label }))) return;
-    pushUndo("施設プロファイルの読み込み");
-    if (!Array.isArray(R.doctors) || !R.doctors.length) { R.doctors = state.rules.doctors; R.name_order = state.rules.name_order; } // 名簿の無いファイルはいまの名簿を残す
     delete R.toban_profile;
-    state.rules = R; T.fillDefaultRules(state.rules);
-    A.ensureMonth(state.month); A.save(); A.renderAll();
+    let prepared; try { prepared = prepareRulesImport(R, true); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
+    pushUndo("施設プロファイルの読み込み");
+    state.rules = prepared.rules; state.month = prepared.month;
+    A.save(); A.renderAll();
     A.toast(T.t("施設プロファイル「{name}」を読み込みました。名簿と規則を確かめてください", { name: label }));
   }
 
@@ -546,7 +557,7 @@
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { pushUndo(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更"); readSettings(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
-    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const R = JSON.parse($("#rulesJson").value); if (!R || !Array.isArray(R.doctors)) throw new Error(T.t("doctors（{person}一覧）がありません")); pushUndo("JSON の反映"); state.rules = R; A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
+    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
     // 既定に戻すのは重みだけ（医師の表・版の表記・その他の設定はそのまま）
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnLoadProfile") loadProfileById($("#setProfile").value); });    $("#btnResetRules").addEventListener("click", () => { if (confirm(T.t("調整目標の重みを既定（配布時の値）に戻します。{person}の表や他の設定は変わりません"))) { pushUndo("重みを既定に戻す"); state.rules.weights = JSON.parse(JSON.stringify(T.DEFAULT_RULES.weights || {})); A.save(); renderSettings(); A.toast(T.t("重みを既定に戻しました")); } });
   }
@@ -560,9 +571,10 @@
     if (!src) return A.toast(T.t("同梱されていないプロファイルです: {id}", { id }));
     const name = T.pickLabel((src.profile || {}).label, id);
     if (!confirm(T.t("施設プロファイルを「{name}」に切り替えます。名簿・規則・規則の状態が置き換わります。\n開いている月データは別の施設のものとして残るので、この施設の月を新しく作るか、月の設定で「この月をいまの施設の月にする」を押してください", { name }))) return;
+    let prepared; try { prepared = prepareRulesImport(src); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     pushUndo("施設プロファイルの読み込み");
-    state.rules = JSON.parse(JSON.stringify(src)); T.fillDefaultRules(state.rules);
-    A.ensureMonth(state.month); A.save(); A.renderAll();
+    state.rules = prepared.rules; state.month = prepared.month;
+    A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
   Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数

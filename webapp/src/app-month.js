@@ -4,6 +4,7 @@
   const state = A.state;
 
   function blankMonth(y, m) {
+    T.requireMonth({ year: y, month: m });
     const nm = A.names(); const obj = f => Object.fromEntries(nm.map(x => [x, f()]));
     const auto = autoCalendar(y, m);
     return { year: y, month: m, holidays: auto.holidays, closure_days: auto.closure, duties_on_holidays: false, next_month_first_day_is_holiday: auto.nextFirst, next_first_day_in_calendar: true, targets: {}, regular_duties: obj(() => []), duty_days: obj(() => ({})), confirmed_pm_external_night: [], unavailable_night: obj(() => []), unavailable_other: [], wishes: { weekend_dayshift: [], night_on: {} }, fixed: { night: {}, day: {}, weekend_charge: {} }, exceptions: {}, prev_month: { last_days: [], last_weekend_charge: null, prev_weekend_charge: null }, history: { weekend_charge: {}, holiday_charge: {}, work_balance: {} }, notes: "" };
@@ -48,7 +49,7 @@
       if (consecutive) {
         nmn.prev_month.last_days = ld;
         if (wps.length) { const last = wps[wps.length - 1]; nmn.prev_month.last_weekend_charge = chg(last)[0] || null; if (wps.length > 1) nmn.prev_month.prev_weekend_charge = chg(wps[wps.length - 2])[0] || null;
-          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
+          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5 && chg(last).length) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
       } else notes.push(T.t("{y}年{m}月 のデータから取り込んだため、前月末の接続は未入力です（月が連続していません）", { y, m: mo }));
       const fw = T.fullWeekendUnits(PP, charge);
       for (const n of PP.I) { nmn.history.weekend_charge[n] = (prev.month.history?.weekend_charge?.[n] || 0) + fw[n] / 2 + (wps.some(p => p.crossing && p.prevDays.length && chg(p).includes(n)) ? 1 : 0); nmn.history.holiday_charge[n] = (prev.month.history?.holiday_charge?.[n] || 0) + PP.periods.filter(p => p.kind === "holiday" && chg(p).includes(n)).length; }
@@ -67,8 +68,9 @@
     const f = await A.findMonthData(t);
     if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));
     if (!f.data) return alert(T.t("{y}年{m}月 の保存データが見つかりません（探した場所: {tried}）", { y: py, m: pm, tried: f.tried.join(T.listSep()) }));
-    if (A.otherFacility(f)) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
-      const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id || "?" }),
+    const prev = A.isMonthObj(f.data.month) ? f.data : { month: f.data }; // findMonthData は旧形式（月そのもの）も読む。施設の判定と引き継ぎは同じ形で扱う
+    if (A.otherFacility({ data: prev })) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
+      const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((prev.rules || {}).profile || {}).id || (prev.month || {}).profile_id || "?" }),
         [{ label: T.t("取り込まない（推奨）"), value: null, cancel: true, primary: true }, { label: T.t("別の施設のデータと分かったうえで取り込む"), value: "go" }]);
       if (v !== "go") return A.toast(T.t("前月の取り込みをやめました（別の施設のデータ）"));
       if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); }
@@ -76,7 +78,7 @@
     // 前月の名簿や結果を読めない場合も、当月の履歴・接続・固定を途中まで書き換えない。
     // 変換は複製で完了させ、成功したときだけ当月へ反映する。
     let month2, notes;
-    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(f.data, month2); }
+    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
     state.month = month2;
@@ -104,6 +106,7 @@
 
   // ---------- 月の切替: その月のデータがあれば開く、なければ直前の月から作成 ----------
   async function onMonthChange(ny, nm) {
+    try { T.requireMonth({ year: ny, month: nm }); } catch (e) { A.toast(e.message); A.renderSettingsMonth(); return; }
     const t = `${ny}${String(nm).padStart(2, "0")}`;
     if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return; }
     if (!A.dirHandle && A.fsOK() && A.storedHandle) await A.ensureFolder();
@@ -136,7 +139,11 @@
       { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
       { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
     if (v && !(await again())) return;
-    if (v === "prev") { const base = { rules: state.rules, month: state.month, result: state.result }; state.meta = null; state.base = null; state.month = fromPrevious(base, ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm })); }
+    if (v === "prev") {
+      const base = { rules: state.rules, month: state.month, result: state.result };
+      let month; try { month = fromPrevious(base, ny, nm); } catch (e) { A.toast(T.t("{y}年{m}月 のデータから作れません: {err}", { y: state.month.year, m: state.month.month, err: e.message })); A.renderSettingsMonth(); return; }
+      state.meta = null; state.base = null; state.month = month; state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を作成しました。祝日・不可日・希望を記入し、業務を確認してください", { y: ny, m: nm }));
+    }
     else if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); }
     else A.renderSettingsMonth();
   }
