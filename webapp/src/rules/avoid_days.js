@@ -10,8 +10,9 @@ T.rules.register({
     for (const n of ctx.names) { const av = P.avoidSlots(n); if (!av.length || P.isRole(n, "reserve")) continue;
       for (const s of av) if (ctx.has(s)) lp.objAdd(W.avoid_day ?? 30, ctx.Ev(s, n));
       const floor = (opts.avoidRef && opts.avoidRef[n] != null) ? +opts.avoidRef[n] : P.targets[n];
+      if (!Number.isInteger(floor)) { lp.objAdd(W.avoid_no_reduction ?? 1000, ctx.fractionalCountDeviation(n, floor, "avdn", true)); continue; }
       // 不足の上限は基準回数そのもの（勤務 0 回のとき）。上限で回数の下限を暗黙に作らない
-      const down = lp.auxInt("avdn", 0, Math.max(0, Math.ceil(+floor || 0))); lp.add(down, ">=", LP.sub(floor, ctx.total(n))); lp.objAdd(W.avoid_no_reduction ?? 1000, down); }
+      const down = lp.auxInt("avdn", 0, Math.max(0, floor)); lp.add(down, ">=", LP.sub(floor, ctx.total(n))); lp.objAdd(W.avoid_no_reduction ?? 1000, down); }
   },
   penalty(ctx) {
     const { P, pos, opts } = ctx, W = P.weights; if (opts.ignoreAvoid) return;

@@ -124,6 +124,7 @@ T.rules.register({
 | `y(d, n)` | その日に勤務したか（0/1。要るときだけ作る） | `yOf` |
 | `busy(d, n)` | 休みでない日か（明けを休みに数えない施設では明けも） | `busyOf` |
 | `roleSum(s, ref)` | 枠の勤務者のうち、規則での役目が `ref` の人数の式 | `isI` / `isA` / `isY` |
+| `fractionalCountDeviation(n, target, prefix, shortfall=false)` | 整数の勤務回数と小数目標との差の式。`shortfall=true` は不足だけ。制約は整数境界で、端数は目的関数の係数と定数に置く | `quota_target` / `avoid_days` |
 | `fixedInvolved(days, n)` | その日・その人に固定指定が絡むか | `fxW` |
 | `firstPrev` | 前月末の接続の最初の日（0 以下） | `firstPrev` |
 | `relaxed(key)` | 診断でその規則を外しているか | `relax.has` |

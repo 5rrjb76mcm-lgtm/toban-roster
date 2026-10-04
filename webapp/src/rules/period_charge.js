@@ -40,9 +40,10 @@ T.rules.register({
     if (!ctx.relaxed("prev_connection")) for (const p of periods) { if (!p.prevDays.length) continue;
       const prevI = P.I.filter(n => T.prevChargeSlots(P, p).some(s => ctx.Wv(s, n) === 1 || ctx.Ov(s, n) === 1));
       if (prevI.length === 1 && cday[`${p.days[0]}|${prevI[0]}`]) lp.add(cday[`${p.days[0]}|${prevI[0]}`], "=", 1); }
-    // 翌月 1 日の固定指定: 月またぎの土日の担当者の接続（期間責任者の固定があればそれを優先）
+    // 翌月 1 日の固定指定: 月またぎの土日の担当者の接続（期間責任者の固定があればそれを優先）。
+    // 日勤帯がない日は夜間が最初の枠なので、その勤務・OC の固定から担当者を決める。
     if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny()) { const N = P.N, firstK = P.nextFirstSlotKind(), cross = P.lastCrossingPeriod();
-      for (const n of ctx.names) if (P.nextFixedEngaged(n, firstK) && P.isRole(n, "charge") && cross && firstK === "day" && !P.nextFixed.charge && cday[`${N}|${n}`]) lp.add(cday[`${N}|${n}`], "=", 1);
+      for (const n of ctx.names) if (P.nextSlotExists(firstK) && P.nextFixedEngaged(n, firstK) && P.isRole(n, "charge") && cross && !P.nextFixed.charge && cday[`${N}|${n}`]) lp.add(cday[`${N}|${n}`], "=", 1);
       if (cross && P.nextFixed.charge && cday[`${N}|${P.nextFixed.charge}`]) lp.add(cday[`${N}|${P.nextFixed.charge}`], "=", 1); }
     const fullDays = {}; for (const n of P.I) fullDays[n] = LP.sum(periods.filter(p => p.kind === "weekend" && p.full).flatMap(p => p.days.map(d => cday[`${d}|${n}`])));
     ctx.provide("charge", { cday, chargedP, fullDays });
@@ -74,7 +75,7 @@ T.rules.register({
         if (prevI.length === 1 && first && first !== prevI[0]) ctx.viol("PERIOD_CHARGE_PREV_LINK", { period: p.name, who: prevI[0] }); } // 前月末の最初の枠に期間責任者になれる人が2名いる入力はソルバーも接続しない（lint が知らせる）
       for (const [d, n] of Object.entries(P.fixedCharge)) if (p.days.includes(+d) && cd[+d] !== n) ctx.viol("PERIOD_CHARGE_FIXED_MISMATCH", { day: ctx.lab(+d), who: n });
     }
-    { const cross = P.lastCrossingPeriod(); if (cross && P.nextFixedAny()) { const cd = charge[cross.id][P.N]; const want = P.nextFixed.charge || P.I.find(n => P.nextFixedEngaged(n, "day")); if (want && cd && cd !== want) ctx.viol("PERIOD_CHARGE_NEXT_LINK", { period: cross.name, want, got: cd }); } }
+    { const cross = P.lastCrossingPeriod(); if (cross && P.nextFixedAny()) { const cd = charge[cross.id][P.N], firstK = P.nextFirstSlotKind(); const want = P.nextFixed.charge || (P.nextSlotExists(firstK) && P.I.find(n => P.nextFixedEngaged(n, firstK))); if (want && cd && cd !== want) ctx.viol("PERIOD_CHARGE_NEXT_LINK", { period: cross.name, want, got: cd }); } }
     ctx.provide("charge", { map: charge });
   },
   penalty(ctx) {
@@ -116,8 +117,8 @@ T.rules.register({
     if (P.state("period_charge") === "hard" && !P.refId("charge")) ctx.push("LINT_ROLE_REF_MISSING", { ref: T.t("期間の責任者になれる") });
     if (!P.isHard("period_charge")) return;
     if (P.nextFixed.charge && !P.nextSlotExists("day") && !P.nextSlotExists("night")) ctx.push("LINT_FIXED_CHARGE_NO_SLOT", { day: lab(P.N + 1), who: P.nextFixed.charge });
-    { const pf = P.nextFixed; const iEng = P.I.filter(n => P.nextFixedEngaged(n, "day"));
-      if (pf.charge && iEng.some(n => n !== pf.charge)) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE", { who: pf.charge, others: ctx.join(iEng.filter(n => n !== pf.charge)) }); else if (!pf.charge && iEng.length > 1) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE2", { others: ctx.join(iEng) }); }
+    { const pf = P.nextFixed, firstK = P.nextFirstSlotKind(); const iEng = P.nextSlotExists(firstK) ? P.I.filter(n => P.nextFixedEngaged(n, firstK)) : [];
+      if (pf.charge && iEng.some(n => n !== pf.charge)) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE", { who: pf.charge, others: ctx.join(iEng.filter(n => n !== pf.charge)), shift: P.shiftLabel(firstK) }); else if (!pf.charge && iEng.length > 1) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE2", { others: ctx.join(iEng), shift: P.shiftLabel(firstK) }); }
     // 期間の各枠には期間責任者の役割の誰かが勤務かオンコールで関わる。オンコールを付けない勤務帯が期間の日にあると、同じ人が連日勤務するしかなく解なしになりやすい
     if (P.state("oncall") !== "off") for (const sh of P.shifts) if (sh.oncall === false && P.periods.some(p => p.slots.some(s => s[1] === sh.id))) ctx.push("LINT_PERIOD_CHARGE_NEEDS_ONCALL", { shift: sh.label });
     for (const [ds, n] of Object.entries(P.fixedCharge)) { const d = +ds;

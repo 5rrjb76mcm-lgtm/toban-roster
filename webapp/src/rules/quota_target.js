@@ -6,7 +6,8 @@ T.rules.register({
   solve(ctx) {
     const { lp, LP, P } = ctx;
     for (const n of ctx.names) { if (P.isExempt(n)) continue;
-      const dev = lp.auxInt("dev", 0, P.slots.length + (+P.targets[n] || 0)); // ずれの上限: 全枠に入っても枠の数、目標側は目標（同日 2 勤務を許す設定では暦日数を超える）
+      if (!Number.isInteger(P.targets[n])) { lp.objAdd(P.softW("quota_target"), ctx.fractionalCountDeviation(n, P.targets[n], "dev")); continue; }
+      const dev = lp.auxInt("dev", 0, P.slots.length + P.targets[n]); // 整数目標は従来どおり
       lp.add(dev, ">=", LP.sub(ctx.total(n), P.targets[n])); lp.add(dev, ">=", LP.sub(P.targets[n], ctx.total(n)));
       lp.objAdd(P.softW("quota_target"), dev); }
   },

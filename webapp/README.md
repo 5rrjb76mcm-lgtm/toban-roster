@@ -101,6 +101,11 @@
 
 ## テスト
 
+- `test_fractional_targets_node.js` — 小数の目安・当月目標を保持し、解く側・検算の減点と参照実装の扱いが一致すること、不正な数値を計算前に止めること、自動調整が小数の残りを超えて増減しないことを架空データで確かめる
+- `test_role_edit_preservation_node.js` — 役割の識別子・機能の不正な編集が名簿、OC構成、固定指定を壊さず、正常な改名が対応を保つことを架空データで確かめる
+- `test_undo_profile_identity_node.js` — プロファイルの読み込みを取り消した後も、保存・統合で別の職員へ入力が移らないことと、実際の改名の取り消しを確かめる
+- `test_period_charge_next_slot_node.js` — 月末土曜から翌月日曜への期間責任者の接続が、翌月の最初の勤務帯（日勤または夜勤）の固定勤務・OCと一致することを解く側・検算・入力チェック・翌月作成で確かめる
+
 ```
 sh run_tests.sh /path/to/node_modules/highs
 ```

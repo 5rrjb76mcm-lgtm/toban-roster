@@ -43,6 +43,28 @@ ALWAYS_ON_PY = ("quota_range", "quota_target", "staff_per_day", "oc_consecutive"
                 "duty_after_night", "duty_conflicts")  # cath_requirement は循環器内科のプラグインの規則（rule_states で付け外し。表も資格も無ければ「なし」）
 
 
+def _nonnegative_number(value, field):
+    """JS の numericValue と同じ数値入力。小数を丸めず、不正値を0へ読み替えない。"""
+    try:
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            raise ValueError()
+        if isinstance(value, str):
+            value = value.strip(" \t\n\r\v\f\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")
+            if re.fullmatch(r"0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+", value):
+                number = float(int(value, 0))
+            elif re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
+                number = float(value)
+            else:
+                raise ValueError()
+        else:
+            number = float(value)
+        if not math.isfinite(number) or number < 0:
+            raise ValueError()
+    except (ValueError, TypeError, OverflowError):
+        raise ValueError(f"{field} は0以上の有限の数にしてください（小数も使えます）") from None
+    return int(number) if number.is_integer() else number
+
+
 def _month_count_limits(month, key):
     # JS の numericValue と同じく数または数値文字列だけ。bool・小数・負数を丸めて別の必須条件にしない。
     out = {}
@@ -104,9 +126,12 @@ class Problem:
         self.cathA = [n for n in self.names if self.doctors[n].get("cath") == "A"]
         self.cathI = [n for n in self.names if self.doctors[n].get("cath") == "I"]
 
-        self.targets = {n: int(self.doctors[n]["quota"]) for n in self.names}
+        self.quotas = {n: _nonnegative_number(0 if self.doctors[n].get("quota") in (None, "") else self.doctors[n]["quota"], f"doctors[{n}].quota") for n in self.names}
+        self.targets = dict(self.quotas)
         for n, t in (month.get("targets") or {}).items():
-            self.targets[n] = int(t)
+            if t is None or t == "":
+                continue
+            self.targets[n] = _nonnegative_number(t, f"targets[{n}]")
         self.tol = int(rules.get("quota_tolerance", 1))
         # 当月の勤務回数の下限・上限（人ごと。月の count_min / count_max）。入れた人は目安±許容幅の代わりにこの範囲が必須（JS の P.countLo / P.countHi と同じ）
         self.count_min = _month_count_limits(month, "count_min")
@@ -413,10 +438,10 @@ class Problem:
         return (tuple(s), n) in self.fixed_eng_keys
 
     def count_lo(self, n):
-        return self.count_min.get(n, int(self.doctors[n]["quota"]) - self.tol)
+        return self.count_min.get(n, self.quotas[n] - self.tol)
 
     def count_hi(self, n):
-        return self.count_max.get(n, int(self.doctors[n]["quota"]) + self.tol)
+        return self.count_max.get(n, self.quotas[n] + self.tol)
 
     def fixed_work_count(self, n):
         return sum(1 for (_, m) in self.fixed_work_keys if m == n)
@@ -576,18 +601,44 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
 
     # 勤務回数 目安±1（当月目標からの乖離は目的関数）
     total = {n: sum(work[s, n] for s in slots) for n in names}
+
+    def count_deviation(n, target, label, shortfall=False):
+        # CP-SAT の制約は整数だけ。整数の勤務回数 x に対して t=k+f とすると、
+        # |x-t| = (1-f)|x-k| + f|x-(k+1)|。不足だけの max(0,t-x) も同じ。
+        # 目標を丸めず、小数部分は目的関数の係数に置く（巨大な10進数倍率も不要）。
+        if target == int(target):
+            anchor = int(target)
+            dev = M.NewIntVar(0, len(slots) + anchor, f"{label}_{n}")
+            if not shortfall:
+                M.Add(dev >= total[n] - anchor)
+            M.Add(dev >= anchor - total[n])
+            return dev
+        if target >= len(slots):
+            return target - total[n]
+        k = math.floor(target)
+        fraction = target - k
+        terms = []
+        for anchor, coefficient in [(k, 1 - fraction), (k + 1, fraction)]:
+            if not coefficient:
+                continue
+            dev = M.NewIntVar(0, max(len(slots), anchor), f"{label}_{n}_{anchor}")
+            # 小さい小数係数がCP-SATの目的関数の内部倍率で消えても、採点値は正確に決める。
+            if shortfall:
+                M.AddMaxEquality(dev, [anchor - total[n], 0])
+            else:
+                M.AddAbsEquality(dev, total[n] - anchor)
+            terms.append(coefficient * dev)
+        return sum(terms)
+
     for n in names:
-        q = int(P.doctors[n]["quota"])
         if P.team[n] == "C":
             M.Add(total[n] <= 1)
             obj.append(W.get("chief_duty", 1000) * total[n])
             continue
         if "quota" not in relax:
-            M.Add(total[n] >= P.count_lo(n))
-            M.Add(total[n] <= max(P.count_hi(n), P.fixed_work_count(n)))  # 固定指定で上限を超える場合はその数まで許す
-        dev = M.NewIntVar(0, len(P.slots) + int(P.targets[n]), f"dev_{n}")  # ずれの上限: 全枠に入っても枠の数、目標側は目標（JS 版 quota_target と同じ）
-        M.Add(dev >= total[n] - P.targets[n])
-        M.Add(dev >= P.targets[n] - total[n])
+            M.Add(total[n] >= math.ceil(P.count_lo(n)))
+            M.Add(total[n] <= math.floor(max(P.count_hi(n), P.fixed_work_count(n))))  # 目安は丸めず、整数の勤務回数が満たす同値の境界にする
+        dev = count_deviation(n, P.targets[n], "dev")
         obj.append(W["target_deviation"] * dev)
         # できれば避けたい日（調整目標）: その枠の勤務・OCに減点。申告で負担が減らないよう、基準回数を下回る分に大きな減点。
         # 基準回数＝避けたい日を無視した参照解での回数（avoid_ref、solve コマンドが2段階で計算）。無ければ当月目標
@@ -597,8 +648,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 if s in P.all_slots_set:
                     obj.append(W.get("avoid_day", 30) * Ev(s, n))
             floor = (avoid_ref or {}).get(n, P.targets[n])
-            down = M.NewIntVar(0, len(P.slots) + int(floor), f"avdn_{n}")
-            M.Add(down >= floor - total[n])
+            down = count_deviation(n, floor, "avdn", shortfall=True)
             obj.append(W.get("avoid_no_reduction", 1000) * down)
 
     # 実勤務の連続禁止（同日、連日）
@@ -1157,7 +1207,7 @@ def check(P: Problem, asg: dict):
     # 3 回数
     for n in P.names:
         tot = sum(1 for s in P.slots if A.worked(n, s))
-        q = int(P.doctors[n]["quota"])
+        q = P.quotas[n]
         if T[n] == "C":
             if tot and (P.doctors[n].get("duty") == "never" or not P.allow_chief):
                 V.append(f"{n}: 部長が勤務に配置されている（{tot}回）")
@@ -1418,7 +1468,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     L.append(f"# {P.year}年{P.month}月 当直表 ソルバー結果")
     L.append("")
     L.append(f"- 生成: {now_jst():%Y-%m-%d %H:%M}　共通ルール {P.rules.get('rules_version')}　ソルバー状態: {status}（目的関数値 {objective}）")
-    L.append(f"- 必要枠: 平日夜勤{sum(1 for d in range(1,P.N+1) if not P.is_holiday(d))}、休日日勤{sum(1 for d in range(1,P.N+1) if P.is_holiday(d))}、休日夜勤{sum(1 for d in range(1,P.N+1) if P.is_holiday(d))}、計{len(P.slots)}枠。目安合計{sum(int(P.doctors[n]['quota']) for n in P.duty_names)}")
+    L.append(f"- 必要枠: 平日夜勤{sum(1 for d in range(1,P.N+1) if not P.is_holiday(d))}、休日日勤{sum(1 for d in range(1,P.N+1) if P.is_holiday(d))}、休日夜勤{sum(1 for d in range(1,P.N+1) if P.is_holiday(d))}、計{len(P.slots)}枠。目安合計{sum(P.quotas[n] for n in P.duty_names)}")
     if base_label:
         L.append(f"- 既存案: {base_label}（変更量を目的関数に含めた）")
     L.append("")
