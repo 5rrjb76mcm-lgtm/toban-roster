@@ -57,9 +57,9 @@
     const at = k => cols.filter(c => (c.at || "duty") === k);
     const head = [["氏名", "役割", compOn ? "何年目" : "経験年数"].map(tx), at("years").map(c => tx(c.label)), quotaOn ? [tx(share ? "比重" : "目安（月）")] : [], at("quota").map(c => tx(c.label)), [tx("当番")], at("duty").map(c => tx(c.label)), [""]].flat();
     const cell = (c, d) => `<td data-col="${esc(c.key)}">${c.render(d, R, h)}</td>`;
-    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(T.normalizeRolesOf(R).map(x => [x.id, x.label]), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${d.years ?? ""}" style="width:3.5em"></td>` +
+    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(T.normalizeRolesOf(R).map(x => [x.id, x.label]), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(d.years ?? "")}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
-      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${d.share ?? 1}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" data-f="quota" value="${d.quota ?? 0}" style="width:3.5em"></td>`) : "") +
+      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(d.share ?? 1)}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
       `<td>${A.sel([["", tx("配置する")], ["fixed_only", tx("固定したときだけ")], ["no_unless_needed", tx("原則配置しない")], ["never", tx("配置禁止")]], d.duty || "", 'data-f="duty"')}</td>` +
       at("duty").map(c => cell(c, d)).join("") +
@@ -69,7 +69,7 @@
     // 規則の表に出る重み（規則そのものの重みと、その中で使う重み）は、ここには重ねて出さない
     const owned = new Set((T.RULE_DEFS || []).flatMap(d => [d.weight].concat(d.sub || [])).filter(Boolean));
     const rest = Object.keys(WEIGHT_LABELS).filter(k => !owned.has(k));
-    $("#weightsTable").innerHTML = `<table class="grid"><tr><th>${esc(tx("調整目標"))}</th><th>${esc(tx("重み"))}</th></tr>${rest.map(k => `<tr><td>${esc(L(tx(WEIGHT_LABELS[k])))}<br><small class="note">${esc(k)}</small></td><td><input type="number" data-w="${esc(k)}" value="${W[k] ?? ""}" style="width:5em"></td></tr>`).join("")}</table>
+    $("#weightsTable").innerHTML = `<table class="grid"><tr><th>${esc(tx("調整目標"))}</th><th>${esc(tx("重み"))}</th></tr>${rest.map(k => `<tr><td>${esc(L(tx(WEIGHT_LABELS[k])))}<br><small class="note">${esc(k)}</small></td><td><input type="number" data-w="${esc(k)}" value="${esc(W[k] ?? "")}" style="width:5em"></td></tr>`).join("")}</table>
 <p class="note">${esc(tx("ここに無い重みは、上の規則の表で規則ごとに並んでいます。"))}</p>`;
     renderBuilder(R); renderHardRules(R); renderUndo();
     { const el = $("#pluginsInfo"), pl = T.PLUGINS || [], fl = (T.plugins && T.plugins.loaded) || []; if (el) { const lines = [];
@@ -96,7 +96,7 @@
       case "oncall": {
         const oc = R.oncall_requirement || {}, roles = T.normalizeRolesOf(R), sb = roles.filter(x => x.standby);
         return `<table class="grid" id="ocReqTbl"><tr><th>${esc(tx("勤務者の役割"))}</th>${sb.map(x => `<th>${esc(T.t("必要な {role} のオンコール（人）", { role: x.label }))}</th>`).join("") || `<th>${esc(tx("（オンコールに入れる役割がありません）"))}</th>`}</tr>` +
-          roles.map(t => `<tr data-t="${esc(t.id)}"><td>${esc(t.label)}</td>${sb.map(x => `<td><input type="number" min="0" data-oc="${esc(x.id)}" value="${(oc[t.id] || {})[x.id] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>`).join("") + `</table>
+          roles.map(t => `<tr data-t="${esc(t.id)}"><td>${esc(t.label)}</td>${sb.map(x => `<td><input type="number" min="0" data-oc="${esc(x.id)}" value="${esc((oc[t.id] || {})[x.id] ?? 0)}" style="width:3.5em"></td>`).join("")}</tr>`).join("") + `</table>
 <p class="note">${esc(L(tx("勤務者の役割ごとに必要なオンコール。{other}の勤務のときだけ、{junior}のオンコールは置けなくてもよく、置けない枠は減点（missing_young_oc）します。")))}</p>`;
       }
       default: return "";
@@ -136,7 +136,7 @@
       const cnt = k => rawOf(pos.count, k) ?? 1, cntMin = k => rawOf(pos.min, k), cntIdeal = k => rawOf(pos.ideal, k);
       // 人数の欄: 数なら入力欄。日の種別ごとの人数（平日と休日で違う）はこの画面では編集できないので、値をそのまま見せて保持する（読み戻しで 1 名に書き換えない）
       const byDayTxt = v => T.t("平日 {w}・休日 {h}", { w: v.weekday ?? "―", h: v.off_days ?? "―" });
-      const cntCell = (attr, k, v, extra, off) => v && typeof v === "object" ? `<span data-countkeep="${attr}:${esc(k)}" title="${esc(tx("日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します"))}">${esc(byDayTxt(v))}</span>` : `<input type="number" ${extra} data-${attr}="${esc(k)}" value="${v ?? ""}"${off ? " disabled" : ""}>`;
+      const cntCell = (attr, k, v, extra, off) => v && typeof v === "object" ? `<span data-countkeep="${attr}:${esc(k)}" title="${esc(tx("日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します"))}">${esc(byDayTxt(v))}</span>` : `<input type="number" ${extra} data-${attr}="${esc(k)}" value="${esc(v ?? "")}"${off ? " disabled" : ""}>`;
       const shifts = T.normalizeShiftsOf(R);
       const ON = { day: [["none", tx("計算しない")], ["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]],
         night: [["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]] };
@@ -236,12 +236,12 @@
         const st = T.ruleState(R, def.id), onStates = def.states.filter(x => x !== "off");
         rows.push(`<tr data-rs="${esc(def.id)}"${plugRow(def)}><td>${plugTag(def)}${esc(T.ruleLabel(R, def))}<br>${idNote(R, def)}</td>` +
           `<td>${onStates.length > 1 ? A.sel(onStates.map(x => [x, tx(T.STATE_JA[x])]), st, `data-rsv="${esc(def.id)}"`) : esc(tx(T.STATE_JA[st]))}</td>` +
-          `<td>${def.weight && onStates.includes("soft") ? `<input type="number" data-rsw="${esc(def.weight)}" value="${R.weights?.[def.weight] ?? def.w0}" style="width:5em"${st === "soft" ? "" : " disabled"}>` : "―"}</td></tr>`);
+          `<td>${def.weight && onStates.includes("soft") ? `<input type="number" data-rsw="${esc(def.weight)}" value="${esc(R.weights?.[def.weight] ?? def.w0)}" style="width:5em"${st === "soft" ? "" : " disabled"}>` : "―"}</td></tr>`);
         const parts = [];
         const p = def.id === "oncall" ? "" : ruleParams(R, def); if (p) parts.push(p); // オンコールの構成は施設の構成を作るで決める
         const subs = (def.sub || []).filter(k => WEIGHT_LABELS[k]);
         if (subs.length) parts.push(`<div class="note">${esc(tx("この規則の中で使う重み: "))}` +
-          subs.map(k => `<label style="margin-right:1em">${esc(T.term(tx(WEIGHT_LABELS[k]), R))} <input type="number" data-rsw="${esc(k)}" value="${R.weights?.[k] ?? ""}" style="width:5em"></label>`).join("") + `</div>`);
+          subs.map(k => `<label style="margin-right:1em">${esc(T.term(tx(WEIGHT_LABELS[k]), R))} <input type="number" data-rsw="${esc(k)}" value="${esc(R.weights?.[k] ?? "")}" style="width:5em"></label>`).join("") + `</div>`);
         if (parts.length) rows.push(`<tr class="rparam"><td colspan="3">${parts.join("")}</td></tr>`);
         shown++;
       }

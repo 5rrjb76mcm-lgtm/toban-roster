@@ -33,7 +33,7 @@
       for (const [tbl, lbl] of [["day", T.t("日勤")], ["night", T.t("夜勤")], ["weekend_charge", T.t("期間責任者")]]) { const v = (pf[tbl] || {})[nk]; if (v) { (nmn.fixed[tbl] ||= {})[1] = v; got.push(`${lbl} ${v}`); } }
       for (const [tbl, lbl] of [["day_oc", T.t("日勤OC")], ["night_oc", T.t("夜間OC")]]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${lbl} ${v.join("・")}`); } }
       for (const tbl of ["day_oc_none", "night_oc_none"]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${T.t(tbl === "day_oc_none" ? "日勤OC" : "夜間OC")} ${T.t("なし")}（${v.join("・")}）`); } } // 「OC なし」の指定も固定の一部
-      for (const [key, tg] of Object.entries(prev.month.fixed_tags || {})) { const [sl, who] = key.split("|"), [dd, kk] = sl.split(":"); if (dd !== nk) continue; // 固定の印（日付を翌月 1 日から当月 1 日へ）。引き継いだ固定に付いている印だけ
+      for (const [key, tg] of Object.entries(prev.month.fixed_tags || {})) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (dd !== nk) continue; // 固定の印（日付を翌月 1 日から当月 1 日へ）。引き継いだ固定に付いている印だけ
         if ([].concat((nmn.fixed[kk] || {})[1] || []).includes(who)) { (nmn.fixed_tags ||= {})[`1:${kk}|${who}`] = tg; got.push(`${who}(${tg})`); } }
       if (got.length) notes.push(T.t("前月の翌月1日欄の固定指定を {m}/1 の固定に引き継ぎ: {list}", { m: nmn.month, list: got.join(T.listSep()) }));
     }

@@ -18,7 +18,7 @@ T.rules.register({
     for (const n of ctx.names) { if (P.isExempt(n)) continue; // 解く側と同じ対象（当番候補だけ。候補から外した人に目安を当てない）
       const tot = P.slots.filter(s => ctx.worked(n, s)).length, q = P.quota(n);
       const fc = P.fixedWorkCount(n), lo = P.countLo(n), hi = P.countHi(n), ub = Math.max(hi, fc), lim = P.hasCountLimit(n); // 固定指定で上限を超える分は許容（固定指定により許容として表示）
-      const fixedDays = () => [...P.fixedWorkKeys].filter(k => k.endsWith("|" + n)).map(k => +k.split(":")[0]);
+      const fixedDays = () => [...P.fixedWorkKeys].filter(k => k.slice(k.indexOf("|") + 1) === n).map(k => +k.split(":")[0]);
       if (tot < lo || tot > ub) { if (lim) ctx.viol("COUNT_OUT_OF_LIMIT", { who: n, total: tot, lo: Math.max(0, lo), hi }, null, n); else ctx.viol("QUOTA_OUT_OF_RANGE", { who: n, total: tot, quota: q, tol: prm.tol }, null, n); }
       else if (tot > hi) { if (lim) ctx.viol("COUNT_LIMIT_OVER_BY_FIXED", { who: n, total: tot, hi, fixed: fc }, fixedDays(), n); else ctx.viol("QUOTA_OVER_BY_FIXED", { who: n, total: tot, quota: q, tol: prm.tol, fixed: fc }, fixedDays(), n); } }
   },

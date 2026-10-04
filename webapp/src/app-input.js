@@ -41,12 +41,12 @@
 <p><button id="btnPurgeUnknown">${esc(T.t("名簿にない人の入力をこの月から削除"))}</button></p></div>`); }
     h.push(`<div class="box"><h3>${esc(T.t("暦"))}</h3>
 <b>${esc(T.t("{y}年{m}月", { y: m.year, m: m.month }))}</b> <span class="note">${esc(T.t("（月の切替はヘッダーの月の一覧で）"))}</span>　
-<label>${esc(T.t("祝日・施設の休日（土日以外、日付をカンマ区切り）"))} <input data-path="holidays" data-type="days" value="${(m.holidays || []).join(", ")}" style="width:14em"></label> <button id="btnAutoHol">${esc(T.t("暦から自動入力"))}</button>${(m.closure_days || []).length ? ` <span class="note">${esc(T.t("施設の休日: {days}", { days: (m.closure_days || []).join(", ") }))}</span>` : ""}
+<label>${esc(T.t("祝日・施設の休日（土日以外、日付をカンマ区切り）"))} <input data-path="holidays" data-type="days" value="${esc((m.holidays || []).join(", "))}" style="width:14em"></label> <button id="btnAutoHol">${esc(T.t("暦から自動入力"))}</button>${(m.closure_days || []).length ? ` <span class="note">${esc(T.t("施設の休日: {days}", { days: (m.closure_days || []).join(", ") }))}</span>` : ""}
 <label><input type="checkbox" data-path="next_month_first_day_is_holiday" ${m.next_month_first_day_is_holiday ? "checked" : ""}> ${esc(T.t("翌月1日は休日"))}</label>
 ${on("cath_requirement") ? `<br><span class="note">${esc(T.t("専門業務の配置が不要な日（0件確定、学会など。日付をカンマ区切り。必要人数を0にする。専門外来の担当1名は確保）"))}</span>
-<label>${esc(L("{other}"))} <input data-path="cath_off_days_A" data-type="days" value="${(m.cath_off_days_A || []).join(", ")}" style="width:10em"></label>
-<label>${esc(L("{charge}"))} <input data-path="cath_off_days_I" data-type="days" value="${(m.cath_off_days_I || []).join(", ")}" style="width:10em"></label>` : ""}
-${on("weekend_balance") ? `<label>${esc(T.t("週末担当の許容差（組。空欄＝共通ルール {v}）", { v: R.weekend_balance_max_diff }))} <input type="number" data-path="exceptions.weekend_balance_max_diff" value="${m.exceptions?.weekend_balance_max_diff ?? ""}" style="width:4em"></label>` : ""}
+<label>${esc(L("{other}"))} <input data-path="cath_off_days_A" data-type="days" value="${esc((m.cath_off_days_A || []).join(", "))}" style="width:10em"></label>
+<label>${esc(L("{charge}"))} <input data-path="cath_off_days_I" data-type="days" value="${esc((m.cath_off_days_I || []).join(", "))}" style="width:10em"></label>` : ""}
+${on("weekend_balance") ? `<label>${esc(T.t("週末担当の許容差（組。空欄＝共通ルール {v}）", { v: R.weekend_balance_max_diff }))} <input type="number" data-path="exceptions.weekend_balance_max_diff" value="${esc(m.exceptions?.weekend_balance_max_diff ?? "")}" style="width:4em"></label>` : ""}
 ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.allow_chief_duty ? "checked" : ""}> ${esc(L(T.t("{reserve}（原則配置しない）を当番候補に含める")))}</label>` : ""}</div>`);
     let at = null, P0 = null; try { at = T.autoTargets(R, m); P0 = new T.Problem(R, m); } catch (e) { }
     const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share", workerNames = A.workNames();
@@ -55,8 +55,8 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
 <p class="note">${at ? esc(at.lines[0]) : ""}　${share ? esc(T.t("目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。", { need: P0.shareInfo.need, w: P0.shareInfo.W })) + " " : ""}${esc(T.t("目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）±1します。空欄＝目安どおり。", { tol: R.quota_tolerance ?? 1 }))}</p>
 <table class="grid"><tr><th></th>${workerNames.map(n => `<th>${esc(n)}</th>`).join("")}</tr>
 <tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
-<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${bal[n] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
+<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${esc(bal[n] ?? 0)}" style="width:3.5em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${esc(m.targets?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
 <tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${esc(m.count_min?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>
 <tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${esc(m.count_max?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
 ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人は、目安±{tol} の代わりにその範囲が必須になります（その月だけ。翌月へは引き継ぎません）。固定指定が上限を超える分は許容します。入れすぎると解なしになるので、偏りが気になる人だけに使ってください。", { tol: R.quota_tolerance ?? 1 }))}</p>` : ""}
@@ -70,18 +70,20 @@ ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人
     const pm = m.prev_month || {}, ld = pm.last_days || [];
     // 取り込む日数は連勤の規則で決まる（T.prevLookback）。1 枠に複数名の施設は、勤務者を「・」区切りで書く
     const LB = Math.max(T.prevLookback(R), ld.length), multi = T.isMultiWork(R) || ld.some(e => e && ["day", "night"].some(k => Array.isArray(e[k]) && e[k].length > 1)), ocOn = on("oncall"); // 前月が複数名の配置なら、当月が 1 名でも複数名の欄で見せる（1 名の欄に配列を渡すと空になり、読み戻しで消える）
-    const who = (v, f) => multi ? `<input data-f="${f}" data-multi value="${esc([].concat(v || []).join("・"))}" style="width:14em">` : A.nameSel(v, `data-f="${f}"`);
-    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}"><td><input type="number" data-f="date" value="${e.date ?? ""}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
-      (ocOn ? `<td><input data-f="day_oc" value="${esc((e.day_oc || []).join("・"))}" style="width:8em"></td>` : "") + `<td>${who(e.night, "night")}</td>` +
-      (ocOn ? `<td><input data-f="night_oc" value="${esc((e.night_oc || []).join("・"))}" style="width:8em"></td>` : "") + `</tr>`; };
+    // 未変更の名簿は区切り文字で再解釈しない。元の配列は欄に持たせ、日付だけの変更や空行にも追随する。
+    const listInput = (v, f, work = false) => { const ns = [].concat(v || []), shown = ns.join("・"); return `<input data-f="${f}" ${work ? "data-multi" : ""} data-prev-names="${esc(JSON.stringify(ns))}" data-shown="${esc(shown)}" value="${esc(shown)}" style="width:${work ? 14 : 8}em">`; };
+    const who = (v, f) => multi ? listInput(v, f, true) : A.nameSel(v, `data-f="${f}"`);
+    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(e.date ?? "")}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
+      (ocOn ? `<td>${listInput(e.day_oc, "day_oc")}</td>` : "") + `<td>${who(e.night, "night")}</td>` +
+      (ocOn ? `<td>${listInput(e.night_oc, "night_oc")}</td>` : "") + `</tr>`; };
     h.push(`<div class="box"><h3>${esc(T.t("前月末の接続（前月の最後の{n}日）", { n: LB }))}</h3><table class="grid"><tr><th>${esc(T.t("前月の日付"))}</th><th>${esc(shiftLabel(R, "day"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("日勤OC（・区切り）"))}</th>` : ""}<th>${esc(shiftLabel(R, "night"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("夜間OC（・区切り）"))}</th>` : ""}</tr>${Array.from({ length: LB }, (_, i) => ldRow(i)).join("")}</table>
 <p class="note">${esc(T.t("連勤の上限・明け・隣接する勤務の規則が、月をまたいで効くように使います。前月の保存データから取り込むと自動で入ります。"))}</p>
 ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当")))} ${A.nameSel(pm.last_weekend_charge, 'data-path="prev_month.last_weekend_charge"', A.iNames())}　${esc(T.t("その1つ前の土日"))} ${A.nameSel(pm.prev_weekend_charge, 'data-path="prev_month.prev_weekend_charge"', A.iNames())}</p>` : ""}
 <p><button id="btnImportPrev">${esc(T.t("前月の保存データから接続・履歴・累計を取り込む"))}</button> <span class="note">${esc(T.t("翌月作成時にも自動で入ります。前月を後から計算し直したときはこのボタンで更新してください（月またぎの担当も自動で固定します）。"))}</span></p></div>`);
     const hs = m.history || {};
     if (on("period_charge")) h.push(`<div class="box"><h3>${esc(L(T.t("前月までの履歴（{charge}）")))}</h3><table class="grid"><tr><th></th>${A.iNames().map(n => `<th>${esc(n)}</th>`).join("")}</tr>
-<tr><th>${esc(T.t("土日担当の累計（組。分割は0.5、月またぎは当月側で数える）"))}</th>${A.iNames().map(n => `<td><input type="number" step="0.5" data-hist="weekend_charge:${esc(n)}" value="${hs.weekend_charge?.[n] ?? 0}" style="width:4em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("祝日担当の累計"))}</th>${A.iNames().map(n => `<td><input type="number" data-hist="holiday_charge:${esc(n)}" value="${hs.holiday_charge?.[n] ?? 0}" style="width:4em"></td>`).join("")}</tr></table></div>`);
+<tr><th>${esc(T.t("土日担当の累計（組。分割は0.5、月またぎは当月側で数える）"))}</th>${A.iNames().map(n => `<td><input type="number" step="0.5" data-hist="weekend_charge:${esc(n)}" value="${esc(hs.weekend_charge?.[n] ?? 0)}" style="width:4em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("祝日担当の累計"))}</th>${A.iNames().map(n => `<td><input type="number" data-hist="holiday_charge:${esc(n)}" value="${esc(hs.holiday_charge?.[n] ?? 0)}" style="width:4em"></td>`).join("")}</tr></table></div>`);
     { const flags = T.dayFlags ? T.dayFlags.activeFor(R) : [], N = A.daysIn(+m.year, +m.month), hol = new Set((m.holidays || []).map(Number)), hasData = Object.values(m.day_flags || {}).some(v => [].concat(v || []).length) || Object.values(m.day_notes || {}).some(v => v); // 日ごとの区分（プラグインが登録）と予定
       const hdr = `<tr><th>${esc(T.t("日付"))}</th>${flags.map(f => `<th>${f.source ? `<span class="plug">${esc(T.t("プラグイン"))}</span> ` : ""}${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : String(f.label))}</th>`).join("")}<th>${esc(T.t("予定（行事など）"))}</th></tr>`;
       const rowsH = []; for (let d = 1; d <= N; d++) { const w = A.dowOf(+m.year, +m.month, d), holiday = w >= 5 || hol.has(d), fl = [].concat((m.day_flags || {})[d] || []);
@@ -92,6 +94,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       h.push(`<div class="box" data-rmonth="${esc(def.id)}"><h3>${def.source ? `<span class="plug">${esc(T.t("プラグイン"))}</span> ` : ""}${esc(T.ruleLabel(R, def))}</h3>${inner}</div>`); }
     h.push(`<div class="box"><h3>${esc(T.t("メモ（確認事項など。JSONに保存されます）"))}</h3><textarea data-path="notes" rows="4" style="width:100%">${esc(m.notes || "")}</textarea></div>`);
     $("#monthSettings").innerHTML = h.join(""); $("#monthSettings").dataset.names = A.names().join("|"); // 読み戻し時に名簿の一致を確認する
+    $("#monthSettings").querySelectorAll("[data-prev-names]").forEach(el => { el.dataset.shown = el.value; }); // input の表示値（改行等の正規化後）を比較基準にする
   }
 
   function readSettingsMonth() {
@@ -120,13 +123,17 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     m.history ||= {}; if (root.querySelector("[data-bal]")) { const els = [...root.querySelectorAll("[data-bal]")], b = keepHidden(m.history.work_balance, new Set(els.map(el => el.dataset.bal))); for (const el of els) if (el.value !== "" && +el.value !== 0) b[el.dataset.bal] = +el.value; m.history.work_balance = b; }
     m.prev_month = m.prev_month || {};
     if (root.querySelector("tr[data-ld]")) { const oldByDate = {}; for (const e of m.prev_month.last_days || []) oldByDate[+e.date] = e; m.prev_month.last_days = [];
-      root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => g(f).split(/[・,、|\n]+/).filter(Boolean);
+      root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => {
+          const input = el(f); if (input && input.dataset.prevNames !== undefined && input.value === input.dataset.shown) { try { const ns = JSON.parse(input.dataset.prevNames); if (Array.isArray(ns)) return ns; } catch (e) { } }
+          const ns = g(f).split(/[・,、|\n]+/).filter(Boolean); if (input) { input.dataset.prevNames = JSON.stringify(ns); input.dataset.shown = input.value; } return ns; };
         const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
-        const date = g("date"); if (!date) return; const e = { date: +date }, old = oldByDate[+date] || {};
+        const date = g("date"); if (!date) return; const e = { date: +date }; let old = oldByDate[+date] || {};
+        if (tr.dataset && tr.dataset.prevOc !== undefined) { try { old = JSON.parse(tr.dataset.prevOc) || {}; } catch (e) { } } // 非表示の OC も、変更後の日付ではなく描画した行から引き継ぐ
         const dw = w("day"), nw = w("night");
         if (dw.length) { e.day = dw; e.day_oc = el("day_oc") ? list("day_oc") : (old.day_oc || []); } if (nw.length) { e.night = nw; e.night_oc = el("night_oc") ? list("night_oc") : (old.night_oc || []); } // OC の欄が無い（オンコールを使わない設定）ときは前の値を残す
+        if (tr.dataset) tr.dataset.prevOc = JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }); // 勤務を消した行の非表示 OC は、後で勤務を入れ直しても復活させない
         m.prev_month.last_days.push(e); }); }
-    if (root.querySelector("[data-hist]")) { const els = [...root.querySelectorAll("[data-hist]")].map(el => [el, ...el.dataset.hist.split(":")]);
+    if (root.querySelector("[data-hist]")) { const els = [...root.querySelectorAll("[data-hist]")].map(el => { const [kind, ...ns] = el.dataset.hist.split(":"); return [el, kind, ns.join(":")]; }); // 種別の後ろは ':' を含めて氏名
       for (const k of ["weekend_charge", "holiday_charge"]) { const mineEls = els.filter(x => x[1] === k); if (!mineEls.length) continue; const h = keepHidden(m.history[k], new Set(mineEls.map(x => x[2]))); for (const [el, , n] of mineEls) if (el.value !== "") h[n] = +el.value; m.history[k] = h; } }
     root.querySelectorAll("[data-rmonth]").forEach(box => { const mu = ((T.RULE_BY_ID[box.dataset.rmonth] || {}).ui || {}).month; if (mu && mu.read) try { mu.read(m, box); } catch (e) { /* プラグインの欄の読み戻しの失敗は、その欄の分だけ前の値のまま */ } }); // 規則（プラグイン）の月ごとの欄
     A.save();
@@ -233,7 +240,7 @@ ${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m
 <p class="note">${esc(T.t("（1 枠に複数名の施設や平日にも日勤がある施設では、固定と不可の選択肢は勤務帯と枠の人数の設定に従います。）"))} ${esc(T.t("午前・午後: 外来・病棟番・外勤を置く。「不在」＝長期休暇・出張などでその時間帯に勤務しない申告（専門業務の候補から除外。夜勤・OCの翌日制約や不可には影響しないので、夜勤も無理なら不可を別に申告）。不可・避の欄: 「日夜両方」＝その日の日勤・夜勤とそのOCの不可（前夜からの担当は含めない。未明から不可なら前日も不可にする）、「日勤帯」＝日勤とそのOCのみ不可、「夜勤」＝その日から始まる夜勤・夜間OCの不可（日付だけの申告はこれ）。希望＝その日の夜勤の希望。固定＝その日の枠にこの人を必ず置く（作成責任者の指定。休日は日勤帯と夜間を別々に固定でき、日勤＋夜間OC のような組合せも指定できる。同じ枠に2人は置けない）。「避：…」＝できれば避けたい日（調整目標。その時間帯の勤務・OCを減点で避けるが、申告した人の勤務回数が参照解（避けたい日を無視した計算）の回数を下回る分には大きな減点が付き、申告で負担は減らない。曜日の希望、例えば「平日夜勤は水曜に」は、他の曜日の夜勤を「避：夜勤」にする。曜日パターンの「避：…」は平日だけに展開し、土日祝はここで個別に指定する。平日は夜勤だけ選べる。平日の日中の不在は午前・午後の「不在」で申告する）"))}</p>
 <details><summary>${esc(T.t("曜日パターン（下書き。展開するとカレンダーを上書き）"))}</summary>
 <table class="grid" id="patTbl"><tr><th>${esc(T.t("種別"))}</th><th>${esc(T.t("曜日"))}</th><th>${esc(T.t("時間帯（避：…では無視。避：…は平日だけに展開）"))}</th><th>${esc(T.t("第n曜日（例 2,4。空欄＝毎週）"))}</th><th>${esc(T.t("翌月へ引き継ぐ"))}</th><th></th></tr>
-${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS()), it.kind, 'data-f="kind"')}</td><td>${A.sel(DOWS.map((d, i) => [d, dowJa(i)]), it.dow, 'data-f="dow"')}</td><td>${A.sel(Object.entries(PARTS()), it.part || "full", 'data-f="part"')}</td><td><input data-f="nth" value="${(it.nth || []).join(",")}" style="width:6em"></td><td style="text-align:center"><input type="checkbox" data-f="carry" ${it.carry ? "checked" : ""} title="${esc(T.t("翌月を作るとき、このパターンを引き継いで展開する（避けたい日の曜日希望などに）"))}"></td><td><button data-act="patDel">${esc(T.t("削除"))}</button></td></tr>`).join("")}
+${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS()), it.kind, 'data-f="kind"')}</td><td>${A.sel(DOWS.map((d, i) => [d, dowJa(i)]), it.dow, 'data-f="dow"')}</td><td>${A.sel(Object.entries(PARTS()), it.part || "full", 'data-f="part"')}</td><td><input data-f="nth" value="${esc((it.nth || []).join(","))}" style="width:6em"></td><td style="text-align:center"><input type="checkbox" data-f="carry" ${it.carry ? "checked" : ""} title="${esc(T.t("翌月を作るとき、このパターンを引き継いで展開する（避けたい日の曜日希望などに）"))}"></td><td><button data-act="patDel">${esc(T.t("削除"))}</button></td></tr>`).join("")}
 </table>
 <p><button data-act="patAdd">${esc(T.t("行を追加"))}</button> <button data-act="patExpand">${esc(T.t("パターンをカレンダーに展開（{who} の業務と避けたい日を上書き）", { who: n }))}</button> <label><input type="checkbox" id="patHol" ${m.duties_on_holidays ? "checked" : ""}> ${esc(T.t("土日祝にも展開する"))}</label> <button data-act="calClear">${esc(T.t("{who} の業務を全消去", { who: n }))}</button></p>
 </details></div>`;
@@ -270,7 +277,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       for (const k of ["day", "night"]) for (const [d, ns] of Object.entries(fx[k] || {})) if ([].concat(ns || []).includes(n)) existingWork.add(`${+d}:${k}`); // 設定変更で人数超過になった既存の固定は保持し、入力チェックで直してもらう
       const dropArr = (tbl, d) => { if (!tbl[d]) return; tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; };
       const dropWork = (tbl, d) => { if (!tbl || tbl[d] === undefined) return; const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; }; // 勤務者の固定（文字列か配列）から自分を外す
-      const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|")[1] === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
+      const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|").slice(1).join("|") === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
       fx.day_oc ||= {}; fx.night_oc ||= {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d; if (el.dataset.k === "day") { dropWork(fx.day, d); dropArr(fx.day_oc, d); } else { dropWork(fx.night, d); dropArr(fx.night_oc, d); } });
       { // 期間責任者の固定: この欄が「期間責任者」として出していた日だけ読み戻す（日勤と両方固定で日勤を出していた日は、この欄では表現していないので変えない）
         const selOf = {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) selOf[+el.dataset.d] = el; });
@@ -398,7 +405,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         for (const [n, tg] of parts) if (n && tg) tags[`${d}:${k}|${n}`] = tg;
         if (ns.length) fx[k][d] = ns.length === 1 ? ns[0] : ns; } else if (k === "charge") fx.weekend_charge[d] = v;
     });
-    for (const key of Object.keys(tags)) { const [sl, who] = key.split("|"), [dd, kk] = sl.split(":"); if (!(fx[kk] && [].concat(fx[kk][+dd] || []).includes(who))) delete tags[key]; } // 実際の固定と結び付かない印は残さない（1 名の欄で外した人の印・全消去の後の印）
+    for (const key of Object.keys(tags)) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (!(fx[kk] && [].concat(fx[kk][+dd] || []).includes(who))) delete tags[key]; } // 実際の固定と結び付かない印は残さない（1 名の欄で外した人の印・全消去の後の印）
     m.fixed = fx; m.fixed_tags = tags;
     root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { el.dataset.shown = el.value; });
     root.querySelectorAll("[data-extras]").forEach(el => { const [tbl, d] = el.dataset.extras.split(":"), k = tbl === "day_oc" ? "day" : "night", val = x => (root.querySelector(`select[data-fx="${k}${x}"][data-d="${d}"]`) || {}).value || ""; el.textContent = extrasText(fx[tbl][+d], [val("I"), val("Y")]); }); // 欄の横の「＋名前」も、読み戻した結果に合わせる

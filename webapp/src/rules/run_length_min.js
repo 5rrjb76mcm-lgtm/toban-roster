@@ -36,7 +36,7 @@ T.rules.register({
       ctx.add("run_short", P.softW("run_length_min"), short); }
   },
   ui: {
-    render(R, h) { return `<label>${h.esc(h.tx("連勤を始めたら"))} <input type="number" min="2" max="31" id="setRunMin" value="${(R.run_length || {}).min ?? 3}" style="width:4em"> ${h.esc(h.tx("日は続ける"))}</label>`; },
+    render(R, h) { return `<label>${h.esc(h.tx("連勤を始めたら"))} <input type="number" min="2" max="31" id="setRunMin" value="${h.esc((R.run_length || {}).min ?? 3)}" style="width:4em"> ${h.esc(h.tx("日は続ける"))}</label>`; },
     read(R, el) { const mn = +((el("#setRunMin") || {}).value) || 0; if (mn) R.run_length = Object.assign({}, R.run_length, { min: mn }); },
   },
   summary(P, prm, tv) { return tv("始めたら {n} 日は続ける", { n: prm.min }); },

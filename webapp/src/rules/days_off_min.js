@@ -37,9 +37,9 @@ T.rules.register({
 　<label><input type="checkbox" id="setAkeOff" ${d.ake_is_off !== false ? "checked" : ""}> ${esc(tx("夜勤の翌日（明け）も休みに数える"))}</label></p>
 <p class="note">${esc(tx("その人がカレンダーで「有給」を付けた日は、その日数だけ休みに加わります。2 交代の病棟では、明けは休みに数えないのが普通です。"))}</p>`;
       if (d.basis === "holidays") return head + `<p class="note">${esc(T.t("いまの月では土日祝が {n} 日です。", { n: hol ?? "?" }))}</p>`;
-      return head + `<label>${esc(tx("1 週の所定労働時間"))} <input type="number" min="1" max="80" step="0.5" id="setHrWeek" value="${d.hours_per_week ?? 40}" style="width:4.5em"> ${esc(tx("時間"))}</label>
-　<label>${esc(tx("1 日"))} <input type="number" min="1" max="24" step="0.5" id="setHrDay" value="${d.hours_per_day ?? 8}" style="width:4em"> ${esc(tx("時間"))}</label>
-　<label>${esc(tx("最低日数を直接指定"))} <input type="number" min="0" max="31" id="setOffMin" value="${d.min != null && d.min !== "auto" ? d.min : ""}" placeholder="${esc(tx("暦から自動"))}" style="width:5.5em"></label>
+      return head + `<label>${esc(tx("1 週の所定労働時間"))} <input type="number" min="1" max="80" step="0.5" id="setHrWeek" value="${h.esc(d.hours_per_week ?? 40)}" style="width:4.5em"> ${esc(tx("時間"))}</label>
+　<label>${esc(tx("1 日"))} <input type="number" min="1" max="24" step="0.5" id="setHrDay" value="${h.esc(d.hours_per_day ?? 8)}" style="width:4em"> ${esc(tx("時間"))}</label>
+　<label>${esc(tx("最低日数を直接指定"))} <input type="number" min="0" max="31" id="setOffMin" value="${h.esc(d.min != null && d.min !== "auto" ? d.min : "")}" placeholder="${esc(tx("暦から自動"))}" style="width:5.5em"></label>
 <p class="note">空欄なら暦の日数から決めます（暦日数 − 所定労働日数。所定労働日数は 暦日数 × 週の時間 ÷ 7 ÷ 1日の時間 の切り捨て）。
 いまの月（${N} 日）では <b>${T.minDaysOff(R, N)} 日</b>。勤務の枠に入らない日を休みとして数えます（日中の業務は見ません）。</p>`; },
     read(R, el) { const d = Object.assign({}, R.days_off);
