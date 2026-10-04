@@ -184,6 +184,13 @@
   const isWorkCandidate = (doc, allowChief, reserveRoleId) => !!doc && isDutyCandidate(doc, allowChief) && (!reserveRoleId || doc.team !== reserveRoleId || !!allowChief);
 
   const numericValue = v => typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  // number欄は、読込値が不正な文字列などだとDOM上では空になる。未編集なら元の値を保持し、入力検査へ渡す。
+  // ユーザーが入力・消去した欄だけ空欄の意味を適用する。initial はHTMLの元のvalue属性（数値文字列の別表記も保持）。
+  function numberInputValue(value, previous, { initial = null, edited = false, empty = null } = {}) {
+    if (value !== "") return Number(value);
+    if (!edited && previous != null && previous !== "" && ((initial != null && initial !== "") || !Number.isFinite(numericValue(previous)) || numericValue(previous) < 0)) return previous;
+    return empty;
+  }
   function isValidMonth(m) {
     if (!m || typeof m !== "object" || Array.isArray(m)) return false;
     const y = numericValue(m.year), mo = numericValue(m.month);
@@ -296,7 +303,13 @@
 
       // 勤務回数の目安の決め方: absolute=名簿の quota（月◯回）／share=名簿の比重 share でその月の必要な延べ人数を按分（buildCalendar の後で計算）
       this.quotaMode = ((rules.profile || {}).quota_mode === "share") ? "share" : "absolute";
-      this.shareQuotas = null; this.targets = {};
+      this.shareQuotas = null; this.absoluteQuotas = {}; this.targets = {};
+      // 小数の目安はそのまま保持する。空欄は既定の0回、不正な値は0回へ読み替えず入力箇所を示す。
+      if (this.quotaMode === "absolute") for (const n of this.names) {
+        const v = this.doctors[n].quota, q = v == null || v === "" ? 0 : numericValue(v);
+        if (!Number.isFinite(q) || q < 0) throw new Error(T.t("設定の {field} は0以上の有限の数にしてください（勤務回数の目安。小数も使えます）", { field: `doctors[${n}].quota` }));
+        this.absoluteQuotas[n] = q;
+      }
       this.tol = +(rules.quota_tolerance ?? 1);
 
       this.duties = {}; for (const n of this.names) this.duties[n] = (month.regular_duties || {})[n] || [];
@@ -375,7 +388,11 @@
       // 目安（P.quota）と当月の目標（P.targets。月の設定の targets で上書き）。相対のときは枠の数から按分するので暦の後
       if (this.quotaMode === "share") this.shareQuotas = shareQuotas(this);
       for (const n of this.names) this.targets[n] = this.quota(n);
-      for (const [n, t] of Object.entries(month.targets || {})) this.targets[n] = +t;
+      for (const [n, t] of Object.entries(month.targets || {})) { if (t == null || t === "") continue;
+        const q = numericValue(t);
+        if (!Number.isFinite(q) || q < 0) throw new Error(T.t("月の設定の {field} は0以上の有限の数にしてください（当月の勤務目標。小数も使えます）", { field: `targets[${n}]` }));
+        this.targets[n] = q;
+      }
       // 当月の勤務回数の下限・上限（人ごと。月の設定の count_min / count_max）。入れた人は、目安±許容幅の代わりにこの範囲が必須になる（規則 quota_range）。空欄の側は目安±許容幅のまま
       this.countMin = {}; this.countMax = {};
       for (const [key, out] of [["count_min", this.countMin], ["count_max", this.countMax]]) for (const [n, v] of Object.entries(month[key] || {})) { if (v === "" || v == null) continue;
@@ -395,7 +412,7 @@
     date(d) { return new Date(this.year, this.month - 1, d); }
     dow(d) { return (this.date(d).getDay() + 6) % 7; } // Mon=0
     isWeekend(d) { return this.dow(d) >= 5; }
-    quota(n) { return this.quotaMode === "share" ? +((this.shareQuotas || {})[n] || 0) : +(this.doctors[n] || {}).quota || 0; } // 勤務回数の目安（月）
+    quota(n) { return this.quotaMode === "share" ? +((this.shareQuotas || {})[n] || 0) : this.absoluteQuotas[n] ?? 0; } // 勤務回数の目安（月）
     countOf(s) { return workerCount(this.rules, s[1], this.isHoliday(s[0])); } // その枠に置く勤務者の人数（幅があるときは上限）
     countMinOf(s) { return workerCount(this.rules, s[1], this.isHoliday(s[0]), true); } // その枠に置く勤務者の人数の下限（幅が無ければ countOf と同じ）
     // その枠の人数の理想値（positions.work.ideal。書いていなければ null）。下限〜上限に収める。ずれは規則 count_target で減点
@@ -963,15 +980,22 @@
     const lines = [T.t("目標配分の対象 {slots} 枠、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
     let diff = S - Q;
     const tol = P.tol;
-    if (diff < 0) {
+    const eps = 1e-9; // 浮動小数点の加減算の残りだけで、次の人を動かしたり未調整の警告を出したりしない
+    if (diff < -eps) {
       const order = [...docs].sort((a, b) => b.q - a.q || b.b - a.b || b.y - a.y);
-      for (let k = 0; k < tol && diff < 0; k++) for (const d of order) { if (diff >= 0) break; if (targets[d.n] - 1 < lo(d.n) || targets[d.n] - 1 > hi(d.n)) continue; targets[d.n]--; diff++; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
-    } else if (diff > 0) {
+      for (let k = 0; k < tol && diff < -eps; k++) for (const d of order) { if (diff >= -eps) break;
+        const step = Math.min(1, -diff, targets[d.n] - lo(d.n)), next = targets[d.n] - step;
+        if (step <= 0 || next > hi(d.n)) continue;
+        targets[d.n] = next; diff += step; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: next, bal: (d.b >= 0 ? "+" : "") + d.b })); }
+    } else if (diff > eps) {
       const order = [...docs].sort((a, b) => b.q - a.q || a.b - b.b || a.y - b.y);
-      for (let k = 0; k < tol && diff > 0; k++) for (const d of order) { if (diff <= 0) break; if (targets[d.n] + 1 < lo(d.n) || targets[d.n] + 1 > hi(d.n)) continue; targets[d.n]++; diff--; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
+      for (let k = 0; k < tol && diff > eps; k++) for (const d of order) { if (diff <= eps) break;
+        const step = Math.min(1, diff, hi(d.n) - targets[d.n]), next = targets[d.n] + step;
+        if (step <= 0 || next < lo(d.n)) continue;
+        targets[d.n] = next; diff -= step; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: next, bal: (d.b >= 0 ? "+" : "") + d.b })); }
     }
-    if (diff !== 0) lines.push(T.t("±{tol} の範囲では {n} 枠分を調整しきれません（目安の見直しが必要）", { tol, n: Math.abs(diff) }));
-    if (S === Q) lines.push(T.t("調整不要（目安どおり）"));
+    if (Math.abs(diff) > eps) lines.push(T.t("±{tol} の範囲では {n} 枠分を調整しきれません（目安の見直しが必要）", { tol, n: Math.abs(diff) }));
+    if (Math.abs(S - Q) <= eps) lines.push(T.t("調整不要（目安どおり）"));
     // 変更のない人は targets に入れない（目安と同じ）
     for (const d of docs) if (targets[d.n] === d.q) delete targets[d.n];
     return { targets, lines, slots: S, quotaSum: Q };
@@ -1034,7 +1058,7 @@
   T.rulesSummary = rulesSummary;
   T.RULE_GROUPS = RULE_GROUPS; T.term = term; T.ruleLabel = (rules, def) => term(T.t ? T.t(def.label) : def.label, rules); T.minDaysOff = minDaysOff;
   T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets; T.isValidMonth = isValidMonth; T.requireMonth = requireMonth;
-  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate;
+  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate; T.numberInputValue = numberInputValue;
   T.kindJa = k => KINDS[k] || k; // 互換（日本語固定）
   T.kindLabel = k => (T.t ? T.t(KINDS[k] || k) : (KINDS[k] || k)); // 表示言語で読む
 })(globalThis.T = globalThis.T || {});

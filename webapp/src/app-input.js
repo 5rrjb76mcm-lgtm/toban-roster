@@ -52,11 +52,11 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
     const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share", workerNames = A.workNames();
     const quotaOf = n => P0 ? P0.quota(n) : (R.doctors.find(d => d.name === n) || {}).quota;
     h.push(`<div class="box"><h3>${esc(T.t("当月の勤務目標"))}</h3>
-<p class="note">${at ? esc(at.lines[0]) : ""}　${share ? esc(T.t("目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。", { need: P0.shareInfo.need, w: P0.shareInfo.W })) + " " : ""}${esc(T.t("目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）±1します。空欄＝目安どおり。", { tol: R.quota_tolerance ?? 1 }))}</p>
+<p class="note">${at ? esc(at.lines[0]) : ""}　${share ? esc(T.t("目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。", { need: P0.shareInfo.need, w: P0.shareInfo.W })) + " " : ""}${esc(T.t("目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）最大1ずつ増減し、残りが1未満ならその分だけ調整します。目安・目標は小数も使えます。空欄＝目安どおり。", { tol: R.quota_tolerance ?? 1 }))}</p>
 <table class="grid"><tr><th></th>${workerNames.map(n => `<th>${esc(n)}</th>`).join("")}</tr>
 <tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
 <tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${esc(bal[n] ?? 0)}" style="width:3.5em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${esc(m.targets?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
+<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="any" data-target="${esc(n)}" value="${esc(m.targets?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
 <tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${esc(m.count_min?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>
 <tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${esc(m.count_max?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
 ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人は、目安±{tol} の代わりにその範囲が必須になります（その月だけ。翌月へは引き継ぎません）。固定指定が上限を超える分は許容します。入れすぎると解なしになるので、偏りが気になる人だけに使ってください。", { tol: R.quota_tolerance ?? 1 }))}</p>` : ""}
@@ -111,7 +111,10 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     if (m.exceptions && m.exceptions.weekend_balance_max_diff === undefined) delete m.exceptions.weekend_balance_max_diff;
     // 人ごとの表（当月の目標・累計・担当の履歴）は、欄を出している人の分だけ書き換える。欄を出していない人（一時的に配置禁止にした人・役割を変えた人）の値は残す。出ている欄を空にしたときだけ消える
     const keepHidden = (old, shown) => Object.fromEntries(Object.entries(old || {}).filter(([n]) => !shown.has(n)));
-    { const els = [...root.querySelectorAll("[data-target]")], t = keepHidden(m.targets, new Set(els.map(el => el.dataset.target))); for (const el of els) if (el.value !== "") t[el.dataset.target] = +el.value; m.targets = t; }
+    { const els = [...root.querySelectorAll("[data-target]")], t = keepHidden(m.targets, new Set(els.map(el => el.dataset.target))); for (const el of els) {
+      const v = T.numberInputValue(el.value, m.targets?.[el.dataset.target], { initial: el.getAttribute?.("value"), edited: el.dataset.numericEdited === "1" });
+      if (v != null) t[el.dataset.target] = v;
+    } m.targets = t; }
     for (const [attr, key] of [["cmin", "count_min"], ["cmax", "count_max"]]) { const els = [...root.querySelectorAll(`[data-${attr}]`)]; if (!els.length) continue; // 当月の下限・上限（欄を出していないとき＝規則が「なし」は前の値のまま）
       const t = keepHidden(m[key], new Set(els.map(el => el.dataset[attr]))); for (const el of els) if (el.value !== "") t[el.dataset[attr]] = +el.value; m[key] = t; }
     if (root.querySelector("[data-dflag],[data-dnote]")) { // 日ごとの区分・予定（画面に出ている分だけ読み戻す。列の無い区分＝プラグインを読んでいない区分は、そのまま残す）
@@ -141,7 +144,8 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    root.addEventListener("change", ev => { undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
+    root.addEventListener("input", ev => { if (ev.target.dataset?.target !== undefined) ev.target.dataset.numericEdited = "1"; });
+    root.addEventListener("change", ev => { if (ev.target.dataset?.target !== undefined) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
       undoPoint("月別条件の変更"); readSettingsMonth(); const m = state.month; const id = b.id, del = b.dataset.del;

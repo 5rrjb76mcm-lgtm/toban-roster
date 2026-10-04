@@ -72,6 +72,24 @@
       fixedInvolved: (days, n) => [].concat(days).some(d => fxW(d, n)),
       relaxed: k => relax.has(k),
       facts: {}, provide(name, v) { ctx.facts[name] = v; }, use(name) { if (!(name in ctx.facts)) throw new Error(`事実 ${name} がまだ用意されていません`); return ctx.facts[name]; },
+      // 整数の勤務回数 x と小数目標 t=k+f の距離。小数は目的関数だけに置き、制約の許容誤差でずれを消さない。
+      // z=[x>=k+1] を整数境界で決め、整数部分の距離も等式として固定する（小さい重みでも採点値がぶれない）。
+      fractionalCountDeviation(n, target, prefix, shortfall = false) {
+        const x = total[n], N = slots.length;
+        if (target >= N) return LP.sub(target, x);
+        if (target <= 0) return shortfall ? 0 : LP.sub(x, target);
+        const k = Math.floor(target), f = target - k, z = lp.aux(prefix + "cut"), d = lp.auxInt(prefix, 0, N);
+        const times = (expr, c) => LP.addTo(LP.E(), expr, c);
+        lp.add(x, "<=", LP.E(k, times(z, N))); lp.add(x, ">=", times(z, k + 1));
+        lp.add(d, ">=", LP.sub(k, x));
+        if (shortfall) {
+          lp.add(d, "<=", LP.E(LP.sub(k, x), times(z, N))); lp.add(d, "<=", LP.E(N, times(z, -N)));
+          return LP.E(d, f, times(z, -f));
+        }
+        lp.add(d, ">=", LP.sub(x, k));
+        lp.add(d, "<=", LP.E(LP.sub(k, x), times(z, 2 * N))); lp.add(d, "<=", LP.E(LP.sub(x, k), 2 * N, times(z, -2 * N)));
+        return LP.E(d, f, times(z, -2 * f));
+      },
       // 3 状態の仕掛け: expr sense rhs を規則 id の状態に従って入れる
       //   必須: 制約。ただし fixed が真（固定指定が絡む）なら、減点付きで許す（重み fixed_conflict）
       //   減点: 超過分の補助変数 v（aux 名は opts.aux、上限 opts.ub）を作り、P.softW(id) を掛けて目的関数へ

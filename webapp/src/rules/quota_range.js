@@ -11,7 +11,8 @@ T.rules.register({
   solve(ctx, prm) {
     const { lp, P } = ctx;
     for (const n of ctx.names) { if (P.isExempt(n)) continue;
-      lp.add(ctx.total(n), ">=", P.countLo(n)); lp.add(ctx.total(n), "<=", Math.max(P.countHi(n), P.fixedWorkCount(n))); } // 固定指定で上限を超える場合はその数まで許す
+      // 回数は整数なので同値の整数境界を使う。小数境界が整数に近いときも、ソルバーの許容誤差で範囲外の回数を通さない。
+      lp.add(ctx.total(n), ">=", Math.ceil(P.countLo(n))); lp.add(ctx.total(n), "<=", Math.floor(Math.max(P.countHi(n), P.fixedWorkCount(n)))); } // 固定指定で上限を超える場合はその数まで許す
   },
   check(ctx, prm) {
     const { P } = ctx;
@@ -27,6 +28,8 @@ T.rules.register({
   diagnoseHint: "      → 月の設定 → 当月の勤務目標 か、設定の目安を見直す（不可日が多すぎる{person}がいないか確認）",
   messages: {
     QUOTA_OUT_OF_RANGE: { en: "{who}: {total} shifts, outside the target {quota} ± {tol}", ja: "{who}: 勤務{total}回が目安{quota}±{tol}の範囲外" },
+    LINT_QUOTA_NO_INTEGER: { en: "{who}: the required range {lo}–{hi} contains no whole number of shifts", ja: "{who}: 必須の範囲 {lo}〜{hi} 回に整数の勤務回数がありません" },
+    LINT_QUOTA_NO_INTEGER_HINT: { en: "Review the quota, tolerance, or this month's count limits so that a whole number of shifts is possible", ja: "整数の勤務回数が入るよう、目安・許容幅・当月の下限と上限を見直してください" },
     COUNT_OUT_OF_LIMIT: { en: "{who}: {total} shifts, outside this month's limits {lo}–{hi}", ja: "{who}: 勤務{total}回が当月の範囲 {lo}〜{hi} 回の外" },
     COUNT_LIMIT_OVER_BY_FIXED: { en: "{who}: {total} shifts, above this month's upper limit {hi} (because of {fixed} hand-fixed assignments)", ja: "{who}: 勤務{total}回が当月の上限 {hi} 回を超える（固定指定 {fixed} 件のため）" },
     LINT_COUNT_LIMIT_MIN_OVER_MAX: { en: "{who}: this month's lower limit {min} is above the upper limit {max}", ja: "{who}: 当月の下限 {min} 回が上限 {max} 回より大きい" },
@@ -43,6 +46,8 @@ T.rules.register({
     for (const [n, ds] of Object.entries(ctx.fixedWork())) { if (P.isExempt(n)) continue; const q = P.quota(n); if (ds.length > P.countHi(n)) { if (P.hasCountLimit(n)) ctx.push("LINT_FIXED_OVER_LIMIT", { who: n, count: ds.length, max: P.countHi(n) }); else ctx.push("LINT_FIXED_OVER_QUOTA", { who: n, count: ds.length, quota: q, tol: prm.tol }); } }
     for (const n of P.dutyNames) if (!P.isExempt(n) && P.countMin[n] != null && P.countMax[n] != null && P.countMin[n] > P.countMax[n]) ctx.push("LINT_COUNT_LIMIT_MIN_OVER_MAX", { who: n, min: P.countMin[n], max: P.countMax[n] });
     if (!P.isHard("quota_range")) return;
+    for (const n of P.dutyNames) if (!P.isExempt(n)) { const lo = Math.max(0, P.countLo(n)), hi = Math.max(P.countHi(n), P.fixedWorkCount(n));
+      if (Math.ceil(lo) > Math.floor(hi)) ctx.push("LINT_QUOTA_NO_INTEGER", { who: n, lo, hi }); }
     { // 全体の枠数と勤務回数の合計（新しい施設で最初に合わないのがここ。個別の条件より先に指摘する）
       // 不足は最小人数、超過は最大人数と比較する。理想人数は必須条件ではない。
       // 最小人数を超えて実勤務を固定した枠は、その固定人数が必須（OC・翌月・不存在枠は含めない）。
@@ -55,7 +60,7 @@ T.rules.register({
           const hi = P.isHard("fixed_only") ? f : P.slots.length;
           return [f, P.isRole(n, "reserve") ? Math.min(hi, +P.workAllowed(n)) : hi]; }
         if (P.isRole(n, "reserve")) return [0, +P.workAllowed(n)];
-        return [Math.max(0, P.countLo(n)), Math.max(P.countHi(n), P.fixedWorkCount(n))]; }); // 当月の下限・上限を入れた人はその範囲
+        return [Math.max(0, Math.ceil(P.countLo(n))), Math.floor(Math.max(P.countHi(n), P.fixedWorkCount(n)))]; }); // 実勤務回数は整数。目安そのものは丸めず、実現できる回数を合計する
       const lo = bounds.reduce((a, b) => a + b[0], 0), hi = bounds.reduce((a, b) => a + b[1], 0);
       if (hi < needMin) ctx.push("LINT_CAPACITY_HIGH", { need: needMin, total: hi, tol: prm.tol });
       if (lo > needMax) ctx.push("LINT_CAPACITY_LOW", { need: needMax, total: lo, tol: prm.tol }); }

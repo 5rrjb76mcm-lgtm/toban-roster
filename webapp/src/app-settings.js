@@ -59,7 +59,7 @@
     const cell = (c, d) => `<td data-col="${esc(c.key)}">${c.render(d, R, h)}</td>`;
     const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(T.normalizeRolesOf(R).map(x => [x.id, x.label]), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(d.years ?? "")}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
-      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(d.share ?? 1)}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
+      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(d.share ?? 1)}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
       `<td>${A.sel([["", tx("配置する")], ["fixed_only", tx("固定したときだけ")], ["no_unless_needed", tx("原則配置しない")], ["never", tx("配置禁止")]], d.duty || "", 'data-f="duty"')}</td>` +
       at("duty").map(c => cell(c, d)).join("") +
@@ -250,7 +250,24 @@
     if (!shown) h.push(`<p class="note">${esc(tx("使う規則がありません。「施設の構成を作る」の「使う規則」で選んでください。"))}</p>`);
     $("#hardRules").innerHTML = h.join("");
   }
-  function readHardRules(R) {
+  // 役割の表は読み戻しの最初に一括検査する。不正な識別子・役目で、名簿や月の入力を一部だけ書き換えない。
+  function stageRoles(R) {
+    const rows = [...document.querySelectorAll("#roleTbl tr[data-ri]")], renames = new Map();
+    if (!rows.length) return { roles: null, renames };
+    const oldRoles = T.normalizeRolesOf(R);
+    const roles = rows.map(tr => {
+      const g = k => tr.querySelector(`[data-${k}]`), id = g("rid").value.trim();
+      // 空欄も検査に渡す。行を読み飛ばして役割を削除してしまわない。
+      const r = { id, label: g("rlabel").value.trim() || id, refs: g("rref").value ? [g("rref").value] : [] };
+      if (g("rstandby").checked) r.standby = true;
+      const prev = oldRoles[+tr.dataset.ri];
+      if (prev && prev.id !== id) renames.set(prev.id, id);
+      return r;
+    });
+    T.normalizeRolesOf({ profile: { roles } }); // 本体と同じ識別子・役目の検査を、実際の設定に触れずに行う
+    return { roles, renames };
+  }
+  function readHardRules(R, roleEdit) {
     const el = s => document.querySelector(s); // 「なし」の規則は設定欄を出さないので、無い欄は前の値のまま残す
     for (const def of (T.RULE_DEFS || [])) { // プラグインが宣言した値と、プラグインの設定欄
       for (const p of def.params || []) { const x = el(`#hardRules [data-prm="${p.key}"]`); if (!x) continue; R[p.key] = x.value === "" ? null : Math.max(p.min ?? -Infinity, +x.value || 0); }
@@ -269,20 +286,8 @@
       const split = v => [...new Set(String(v || "").split(/[・,、\n]+/).map(x => x.trim()).filter(Boolean))];
       if (ft) { const v = split(ft.value); const old = [].concat(R.profile.fixed_tags || []); R.profile.fixed_tags = v.map(l => old.find(o => typeof o === "object" && o.label === l) || l); if (!v.length) delete R.profile.fixed_tags; }
       if (df) { const v = split(df.value); const old = [].concat(R.profile.day_flags || []); R.profile.day_flags = v.map(l => old.find(o => typeof o === "object" && (o.label === l || o.id === l)) || l); if (!v.length) delete R.profile.day_flags; } }
-    const roleRen = {}; // この回に変えた役割の識別子（旧 → 新）。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
-    { const roles = [], oldRoles = T.normalizeRolesOf(R);
-      document.querySelectorAll("#roleTbl tr[data-ri]").forEach(tr => {
-        const g = k => tr.querySelector(`[data-${k}]`);
-        const id = g("rid").value.trim(); if (!id) return;
-        // 表示名は施設が使う言語 1 つで持つ（同梱のプロファイルは出発点なので {ja, en} で配っているが、
-        // 施設が名前を付け直したらその 1 本になる）
-        const r = { id, label: g("rlabel").value.trim() || id, refs: g("rref").value ? [g("rref").value] : [] };
-        if (g("rstandby").checked) r.standby = true;
-        const prev = oldRoles[+tr.dataset.ri];
-        if (prev && prev.id !== id) { renameRole(prev.id, id); roleRen[prev.id] = id; } // 識別子を変えたら名簿・オンコール構成・固定「OCなし」も追随させる。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
-        roles.push(r);
-      });
-      if (roles.length) R.profile.roles = roles;
+    const roleRen = roleEdit.renames; // 検査済みの旧 → 新。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
+    { if (roleEdit.roles) { renameRoles(roleRen); R.profile.roles = roleEdit.roles; }
       { const old = T.normalizeShiftsOf(R), shifts = [];
         document.querySelectorAll("#shiftTbl tr[data-shift]").forEach(tr => {
           const id = tr.dataset.shift, o = old.find(x => x.id === id) || {}, lab = tr.querySelector("[data-slabel]").value.trim();
@@ -338,11 +343,15 @@
       }
       if (Object.keys(d).length) R.docx = d; else delete R.docx;
     }
-    { const rn = k => roleRen[k] || k; // 役割の識別子を変えた回は、画面の行・列の旧い識別子を新しい識別子に読み替える（直した表を旧い識別子で上書きしない）
+    { const rn = k => roleRen.get(k) || k; // 役割の識別子を変えた回は、画面の行・列の旧い識別子を新しい識別子に読み替える（直した表を旧い識別子で上書きしない）
       if (el("#ocReqTbl")) { const oc = {}; document.querySelectorAll("#ocReqTbl tr[data-t]").forEach(tr => { const row = {}; tr.querySelectorAll("[data-oc]").forEach(x => { x.dataset.oc = rn(x.dataset.oc); row[x.dataset.oc] = +x.value || 0; }); tr.dataset.t = rn(tr.dataset.t); oc[tr.dataset.t] = row; }); R.oncall_requirement = oc; } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
   }
-  function readSettings() {
-    const R = state.rules; const oldNames = R.doctors.map(d => d.name);
+  function readSettings(undoLabel) {
+    const R = state.rules; let roleEdit;
+    try { roleEdit = stageRoles(R); }
+    catch (e) { A.toast(T.t("役割の変更を取り消しました: {err}", { err: e && e.message || e })); A.renderSettings(); return false; }
+    if (undoLabel) pushUndo(undoLabel); // 不正な役割の編集は、既存の取り消し履歴にも触れない
+    const oldNames = R.doctors.map(d => d.name);
     const prevDocs = Object.fromEntries(R.doctors.map(d => [d.name, d])), cols = T.rules.columns(R), acc = {};
     for (const c of cols) if (c.begin) acc[c.key] = c.begin(R);
     // 名簿の読み戻しの順: (1) 行の氏名を確定する（氏名は個人の識別子なので一意にする。変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）
@@ -364,7 +373,8 @@
     const cur = Object.fromEntries(R.doctors.map(d => [d.name, d])); const docs = [];
     for (const { tr, g, old, name } of rows) {
       const prev = cur[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
-      const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota: g("quota") ? (+g("quota").value || 0) : (+prev.quota || 0) }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
+      const q = g("quota"), quota = q ? T.numberInputValue(q.value, prev.quota, { initial: q.getAttribute?.("value"), edited: q.dataset?.numericEdited === "1", empty: 0 }) : (prev.quota ?? 0);
+      const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
       if (g("share")) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
       // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま。氏名は確定した名前で読む（改名の適用はこの後）
       for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
@@ -375,19 +385,21 @@
     for (const c of cols) if (c.end) c.end(R, acc[c.key]);
     for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
       replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; state.renames = backup.renames; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
-      A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return; }
+      A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return false; }
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
-    readHardRules(R);
+    readHardRules(R, roleEdit);
     A.ensureMonth(state.month); A.save();
   }
   // 役割の識別子を変える: 名簿・オンコール構成の表・固定「OCなし」の記録をまとめて置き換える
-  function renameRole(oldId, newId) {
-    const R = state.rules, m = state.month;
-    for (const d of R.doctors) if (d.team === oldId) d.team = newId;
-    const oc = R.oncall_requirement || {}, out = {};
-    for (const [row, v] of Object.entries(oc)) { const r2 = {}; for (const [col, x] of Object.entries(v || {})) r2[col === oldId ? newId : col] = x; out[row === oldId ? newId : row] = r2; }
-    R.oncall_requirement = out;
-    for (const k of ["day_oc_none", "night_oc_none"]) { const tbl = (m.fixed || {})[k]; if (!tbl) continue; for (const d of Object.keys(tbl)) tbl[d] = [].concat(tbl[d] || []).map(x => x === oldId ? newId : x); }
+  function renameRoles(renames) {
+    if (!renames.size) return;
+    noteUndoRoleRenames(renames);
+    const R = state.rules, m = state.month, rn = id => renames.get(id) || id;
+    for (const d of R.doctors) d.team = rn(d.team);
+    // 複数行の入れ替え・連続した改名も、元の識別子に一度だけ適用する（途中で別の役割と混ざらない）。
+    R.oncall_requirement = Object.fromEntries(Object.entries(R.oncall_requirement || {}).map(([row, v]) =>
+      [rn(row), Object.fromEntries(Object.entries(v || {}).map(([col, x]) => [rn(col), x]))]));
+    for (const k of ["day_oc_none", "night_oc_none"]) { const tbl = (m.fixed || {})[k]; if (!tbl) continue; for (const d of Object.keys(tbl)) tbl[d] = [].concat(tbl[d] || []).map(rn); }
   }
   // 改名は月データ・設定の複製に対して行い（本体の追随とプラグインの追随の両方）、全部成功したときだけ採用する。プラグインの追随（columns の rename / 規則の rename）が失敗したら何も変えずに false を返す
   const replaceInto = (target, src) => { for (const k of Object.keys(target)) delete target[k]; Object.assign(target, src); };
@@ -451,7 +463,7 @@
     return { rules: R, leftover };
   }
   async function exportProfile() {
-    readSettings();
+    if (readSettings() === false) return;
     const withRoster = !!($("#setExportRoster") || {}).checked;
     let ex; try { ex = profileForExport(withRoster); } catch (e) { return alert(e && e.message || e); } // share の失敗など: 書き出さない
     const R = ex.rules, id = ((R.profile || {}).id || "custom").replace(/[^\w.-]+/g, "-");
@@ -492,16 +504,21 @@
   // ヘッダーの「元に戻す」は、設定の変更に加えて月別条件の入力（職員別カレンダーの不可・希望・固定、月の設定、固定配置）も戻す。入力の画面は変更の直前に pushUndo(label, { auto: true }) を呼ぶ。
   // auto の記録は、処理の直後に何も変わっていなければ捨てる（職員の切替など）。戻すときは、記録の直後の内容からその後に記録の無い変更（別の PC の変更の統合など）が入っていれば戻さない
   const undoStack = [], UNDO_MAX = 50;
+  // ID集合が同じ入れ替え（X↔Y）も改名。実際に追随した操作を記録し、単なる役割の表示順の変更とは区別する。
+  function noteUndoRoleRenames(renames) { const entry = undoStack[undoStack.length - 1]; if (entry && entry.after === null && renames.size) entry.rolesRenamed = true; }
   const monthSig = m => { const x = Object.assign({}, m); delete x.doc_versions; return JSON.stringify(A.canon(x)); }; // 月の中身の比較（版の記録と、画面の読み戻しが補う空値・集合の並びは差にしない）
   const unchangedSince = entry => { const o = JSON.parse(entry.snap); return monthSig(o.month) === monthSig(state.month) && A.rulesSig(o.rules) === A.rulesSig(state.rules) && JSON.stringify(o.result) === JSON.stringify(state.result); };
+  // この操作で実際に行った改名だけを覚える。設定JSON・プロファイルの置換や並べ替えは改名ではない。
+  // 保存で state.renames が確定・消去された後にも取り消せるよう、元の記録の配列から独立した写しにする。
+  const undoRenames = entry => entry.renames || (entry.renames = entry.renameLog.slice(entry.renameStart).map(pair => pair.slice()));
   function pushUndo(label, opts = {}) {
     const snap = JSON.stringify({ rules: state.rules, month: state.month, result: state.result });
     if (undoStack.length && undoStack[undoStack.length - 1].snap === snap) {
       if (undoStack[undoStack.length - 1].after === null) return; // 同じ処理内の重複だけまとめる
       undoStack.pop(); // 前の無変化の操作は、新しい操作の auto / after を引き継がせず置き換える
     }
-    const entry = { snap, label, after: null, auto: !!opts.auto }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
-    queueMicrotask(() => { if (entry.after !== null) return; entry.after = monthSig(state.month); entry.afterRules = A.rulesSig(state.rules); // 変更を行った処理が終わった直後の月と設定
+    const renameLog = (state.renames ||= []), entry = { snap, label, after: null, auto: !!opts.auto, renameLog, renameStart: renameLog.length }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
+    queueMicrotask(() => { if (entry.after !== null) return; undoRenames(entry); entry.after = monthSig(state.month); entry.afterRules = A.rulesSig(state.rules); // 変更を行った処理が終わった直後の月と設定
       if (entry.auto && unchangedSince(entry)) { const i = undoStack.indexOf(entry); if (i >= 0) undoStack.splice(i, 1); renderUndo(); } });
     renderUndo();
   }
@@ -524,12 +541,20 @@
       A.ensureMonth(state.month); A.save(); A.renderAll();
       return A.toast(T.t("元に戻しました（{what}）", { what: T.term(tx(last.label), state.rules) }));
     }
-    // 行の並べ替えは改名ではない。逆改名を記録すると、未保存の改名と連結されて別人の入力を統合してしまう。
-    const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name).sort()) !== JSON.stringify((state.rules.doctors || []).map(d => d.name).sort());
+    // 名簿の位置から本人の対応を推測しない。実際の改名は操作の逆順で戻し、残る追加・削除は氏名で照合する。
+    const renames = undoRenames(last), cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name);
+    const namesChanged = renames.length > 0 || JSON.stringify(cur.slice().sort()) !== JSON.stringify(old.slice().sort());
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
-    if (namesChanged) { const cur = (state.rules.doctors || []).map(d => d.name), old = (o.rules.doctors || []).map(d => d.name);
-      if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); });
-      else { for (const n of old) if (!cur.includes(n)) noteRename(T.GONE + n, n); for (const n of cur) if (!old.includes(n)) noteRename(n, T.GONE + n); } } // 名簿から外した人が戻る・足した人が消えることも記録する（外した後の改名を追える） // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
+    const roleIds = R => JSON.stringify(T.normalizeRolesOf(R).map(r => r.id).sort());
+    if (!monthUntouched && (last.rolesRenamed || roleIds(o.rules) !== roleIds(state.rules))) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 役割の識別子を変えた後に月別条件も変更されているため、設定だけを戻すと固定OCなしの役割との対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); }
+    if (namesChanged) {
+      const restored = new Set(cur);
+      for (const [from, to] of renames.slice().reverse()) { noteRename(to, from); restored.delete(to); if (!String(from).startsWith(T.GONE)) restored.add(from); }
+      const baseNames = (state.baseRules && state.baseRules.doctors || []).map(d => d.name);
+      // 未保存のプロファイル置換を戻しただけなら、元からいた人を新しく足した別人と扱わない。
+      for (const n of old) if (!restored.has(n) && T.renameOrigin(state.renames, baseNames, n) === null) noteRename(T.GONE + n, n);
+      for (const n of restored) if (!old.includes(n)) noteRename(n, T.GONE + n);
+    }
     state.rules = o.rules;
     if (monthUntouched) { state.month = keepVersions(o.month); state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();
@@ -550,8 +575,8 @@
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）
-      pushUndo(mod ? mod.ui.acts[act] : { add: "名簿に追加", del: "名簿から削除", up: "名簿の並べ替え", down: "名簿の並べ替え", roleAdd: "役割を追加", roleDel: "役割を削除" }[act] || "設定の変更");
-      readSettings(); const R = state.rules, tr = b.closest("tr"), i = tr ? +tr.dataset.i : -1;
+      if (readSettings(mod ? mod.ui.acts[act] : { add: "名簿に追加", del: "名簿から削除", up: "名簿の並べ替え", down: "名簿の並べ替え", roleAdd: "役割を追加", roleDel: "役割を削除" }[act] || "設定の変更") === false) return;
+      const R = state.rules, tr = b.closest("tr"), i = tr ? +tr.dataset.i : -1;
       if (mod) { mod.ui.act(R, act, b); A.save(); renderSettings(); return; }
       if (b.dataset.act === "roleAdd" || b.dataset.act === "roleDel") { // 役割の追加・削除
         const roles = T.normalizeRolesOf(R).map(x => ({ id: x.id, label: x.labelRaw ?? x.label, refs: [...x.refs], standby: x.standby }));
@@ -573,10 +598,12 @@
       A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); // 名簿が変わったので他の画面も描き直す
     });
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnExportProfile") exportProfile(); });
+    $("#settings").addEventListener("input", ev => { if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1"; });
     $("#settings").addEventListener("change", ev => {
+      if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1";
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
-      if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { pushUndo(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更"); readSettings(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
+      if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { if (readSettings(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return; renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
     $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
     // 既定に戻すのは重みだけ（医師の表・版の表記・その他の設定はそのまま）
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnLoadProfile") loadProfileById($("#setProfile").value); });    $("#btnResetRules").addEventListener("click", () => { if (confirm(T.t("調整目標の重みを既定（配布時の値）に戻します。{person}の表や他の設定は変わりません"))) { pushUndo("重みを既定に戻す"); state.rules.weights = JSON.parse(JSON.stringify(T.DEFAULT_RULES.weights || {})); A.save(); renderSettings(); A.toast(T.t("重みを既定に戻しました")); } });
