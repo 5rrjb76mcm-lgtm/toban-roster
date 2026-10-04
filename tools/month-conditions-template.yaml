@@ -11,6 +11,8 @@ next_month_first_day_is_holiday: false
 #   Dr P: {am: "", pm: ""}
 
 targets: {}                  # 当月の勤務目標（省略時は共通ルールの目安）。例 {Dr N: 4}
+count_min: {}                # 当月の勤務回数の下限（人ごと・必須。省略時は目安−許容幅）。例 {Dr G: 2}
+count_max: {}                # 当月の勤務回数の上限（人ごと・必須。省略時は目安＋許容幅。固定指定が超える分は許容）。例 {Dr F: 2}
 
 regular_duties:              # 全医師分。kind: outpatient=外来, ward=病棟番, external=外勤 / part: am|pm|full / nth: 第n曜日
   Dr B: []

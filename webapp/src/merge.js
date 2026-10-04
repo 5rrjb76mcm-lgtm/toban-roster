@@ -3,7 +3,7 @@
   const J = v => JSON.stringify(v);
   // flatten が個別に扱う月データの項目（と、版の履歴・旧形式の項目）。ここに無いトップレベルの項目（プラグインの規則の ui.month が書く m.local_<施設> など）は、値全体を 1 項目（x:<名前>）として 3 者比較する
   const KNOWN = new Set(["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id", "exceptions", "holidays", "plugins_used", "closure_days",
-    "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
+    "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "count_min", "count_max", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
     "doc_versions", "next_month_first_day_duties", "allow_split_weekend"]);
   // 月データを「項目キー → 値」に展開する。集合は要素ごと、表は1マスごとに分ける
   function flatten(m) {
@@ -19,6 +19,8 @@
     for (const d of m.cath_off_days_I || []) f[`cathoffI:${d}`] = "1";
     for (const d of m.cath_off_days || []) { f[`cathoffA:${d}`] = "1"; f[`cathoffI:${d}`] = "1"; }
     for (const [n, v] of Object.entries(m.targets || {})) put(`target:${n}`, v);
+    for (const [n, v] of Object.entries(m.count_min || {})) if (v !== undefined && v !== null && v !== "") f[`cmin:${n}`] = J(v); // 当月の下限・上限（0 回も有効な値）
+    for (const [n, v] of Object.entries(m.count_max || {})) if (v !== undefined && v !== null && v !== "") f[`cmax:${n}`] = J(v);
     for (const [n, dd] of Object.entries(m.duty_days || {})) for (const [d, e] of Object.entries(dd || {})) for (const part of ["am", "pm"]) put(`duty:${n}:${+d}:${part}`, (e || {})[part]);
     // 不可・避は医師×日で1つの項目。値: night/allday/day/avoid_night/avoid_day/avoid_allday（有給は _paid を付ける）。
     // 同じ日に別の時間帯の条件が両方あるとき（日勤帯の不可と夜勤の避など）は、"day+avoid_night" のように並べた値にして、どちらも落とさない。
@@ -60,7 +62,7 @@
     const P = k => (f[k] === undefined ? undefined : JSON.parse(f[k]));
     for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) { const v = P("s:" + k); if (v !== undefined) m[k] = v; else if (k === "notes") m[k] = ""; else if (["duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty"].includes(k)) m[k] = false; }
     m.exceptions = {}; { const v = P("s:exceptions.weekend_balance_max_diff"); if (v !== undefined) m.exceptions.weekend_balance_max_diff = v; }
-    m.holidays = []; m.closure_days = []; m.cath_off_days_A = []; m.cath_off_days_I = []; m.targets = {}; m.duty_days = {}; m.unavailable_night = {}; m.unavailable_other = []; m.avoid = []; m.wishes = { weekend_dayshift: [], night_on: {}, day_on: {} };
+    m.holidays = []; m.closure_days = []; m.cath_off_days_A = []; m.cath_off_days_I = []; m.targets = {}; m.count_min = {}; m.count_max = {}; m.duty_days = {}; m.unavailable_night = {}; m.unavailable_other = []; m.avoid = []; m.wishes = { weekend_dayshift: [], night_on: {}, day_on: {} };
     m.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; m.confirmed_pm_external_night = []; m.history = { weekend_charge: {}, holiday_charge: {}, work_balance: {} };
     m.prev_month = { last_days: [], last_weekend_charge: null, prev_weekend_charge: null }; m.regular_duties = {};
     m.fixed_tags = {}; m.day_flags = {}; m.day_notes = {}; m.person_days = {}; delete m.plugins_used; // 新しい項目も空から作り直す（template の値が残ると、削除が復活し往復で重複する）
@@ -71,7 +73,7 @@
       else if (p[0] === "closure") m.closure_days.push(+p[1]);
       else if (p[0] === "cathoffA") m.cath_off_days_A.push(+p[1]);
       else if (p[0] === "cathoffI") m.cath_off_days_I.push(+p[1]);
-      else if (p[0] === "target") m.targets[p[1]] = v;
+      else if (p[0] === "target") m.targets[p[1]] = v; else if (p[0] === "cmin") m.count_min[p.slice(1).join(":")] = v; else if (p[0] === "cmax") m.count_max[p.slice(1).join(":")] = v;
       else if (p[0] === "duty") ((m.duty_days[p[1]] ||= {})[+p[2]] ||= {})[p[3]] = v;
       else if (p[0] === "cal") for (const one of String(v).split("+")) { const paid = /_paid$/.test(one), pv = one.replace(/_paid$/, ""); // 並べた値は 1 つずつ戻す
         if (pv === "night") (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
@@ -106,7 +108,7 @@
     switch (p[0]) {
       case "s": return ({ year: "年", month: "月", duties_on_holidays: "土日祝の定期業務", next_month_first_day_is_holiday: "翌月1日は休日", next_first_day_in_calendar: "カレンダーの翌月1日欄あり", allow_chief_duty: "予備の役割を候補に含める", doc_label: "表題", profile_id: "施設", notes: "メモ", "exceptions.weekend_balance_max_diff": "週末担当の許容差", "prev_month.last_weekend_charge": "前月最後の週末担当", "prev_month.prev_weekend_charge": "前月その前の週末担当" })[p.slice(1).join(":")] || k;
       case "hol": return `祝日 ${day(p[1])}`; case "plugin": return `使ったプラグインの規則 ${p.slice(1).join(":")}`; case "closure": return `施設休日 ${day(p[1])}`; case "cathoffA": return `専門業務の配置不要（対の役割） ${day(p[1])}`; case "cathoffI": return `専門業務の配置不要（期間責任者） ${day(p[1])}`;
-      case "target": return `${p[1]} の当月目標`; case "duty": return `${p[1]} ${day(p[2])} ${p[3] === "am" ? "午前" : "午後"}の業務`;
+      case "target": return `${p[1]} の当月目標`; case "cmin": return `${p.slice(1).join(":")} の当月の下限`; case "cmax": return `${p.slice(1).join(":")} の当月の上限`; case "duty": return `${p[1]} ${day(p[2])} ${p[3] === "am" ? "午前" : "午後"}の業務`;
       case "cal": return `${p[1]} ${day(p[2])} の不可・避`;
       case "wkwish": return `${p[1]} の土日日勤希望`; case "wish": return `${p[1]} ${day(p[2])} の当直希望`; case "wishd": return `${p[1]} ${day(p[2])} の日勤希望`;
       case "fd": return `${day(p[1])} 日勤の固定 ${p[2]}`; case "fn": return `${day(p[1])} 夜勤の固定 ${p[2]}`; case "ftag": return `${day(p[1])} 固定の印 ${p[3]}`; case "dflag": return `${day(p[1])} 日の区分 ${p.slice(2).join(":")}`; case "dnote": return `${day(p[1])} 日の予定`; case "pday": return `${p[2]} ${day(p[3])} ${p[1]}`; case "fc": return `${day(p[1])} 期間責任者の固定`;

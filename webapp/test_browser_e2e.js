@@ -459,6 +459,23 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await page.click("#btnUndo"); assert.strictEqual(await page.evaluate(k => T.app.state.rules.weights[k], key), w0);
     await ctx.close();
   });
+  await test("当月の下限・上限: 月の設定の表で人ごとに入れられ、計算の入力になる（入れた範囲が必須）。保存・開き直しで残り、「下限・上限を消す」で消える。ヘッダーの「元に戻す」でも戻る", async () => {
+    const { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="monthSettings"]');
+    const [a, b] = await page.evaluate(() => T.app.workNames().filter(n => { const P = new T.Problem(T.app.state.rules, T.app.state.month); return !P.isExempt(n); }).slice(0, 2));
+    const sig0 = await page.evaluate(() => T.app.inputSig());
+    const cmax = page.locator(`#monthSettings [data-cmax="${a}"]`), cmin = page.locator(`#monthSettings [data-cmin="${b}"]`); assert.ok(await cmax.count() && await cmin.count(), "下限・上限の行がある");
+    await cmax.fill("2"); await cmax.dispatchEvent("change"); await page.locator(`#monthSettings [data-cmin="${b}"]`).fill("3"); await page.locator(`#monthSettings [data-cmin="${b}"]`).dispatchEvent("change");
+    let st = await page.evaluate(() => ({ min: T.app.state.month.count_min, max: T.app.state.month.count_max, sig: T.app.inputSig() })); assert.deepStrictEqual(st.max, { [a]: 2 }); assert.deepStrictEqual(st.min, { [b]: 3 }); assert.notStrictEqual(st.sig, sig0, "計算の入力が変わる");
+    assert.deepStrictEqual(await page.evaluate(([x, y]) => { const P = new T.Problem(T.app.state.rules, T.app.state.month); return [P.countHi(x), P.countLo(y)]; }, [a, b]), [2, 3], "入れた値が必須の範囲になる");
+    await waitSaved(page); let saved = JSON.parse(fs.text("A/202611/202611_data.json")).month; assert.deepStrictEqual([saved.count_max, saved.count_min], [{ [a]: 2 }, { [b]: 3 }], "保存した JSON に入る");
+    const re = await reopen(ctx, fs), ctx2 = re.ctx; page = re.page; await start(page); await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="monthSettings"]');
+    assert.strictEqual(await page.locator(`#monthSettings [data-cmax="${a}"]`).inputValue(), "2", "開き直しても欄に出る"); assert.strictEqual(await page.locator(`#monthSettings [data-cmin="${b}"]`).inputValue(), "3");
+    await page.click("#btnClearLimits"); st = await page.evaluate(() => ({ min: T.app.state.month.count_min, max: T.app.state.month.count_max })); assert.deepStrictEqual([st.min, st.max], [{}, {}], "「下限・上限を消す」で消える");
+    await page.click("#btnUndo"); st = await page.evaluate(() => ({ min: T.app.state.month.count_min, max: T.app.state.month.count_max })); assert.deepStrictEqual([st.max, st.min], [{ [a]: 2 }, { [b]: 3 }], "ヘッダーの「元に戻す」で戻る");
+    await waitSaved(page); saved = JSON.parse(fs.text("A/202611/202611_data.json")).month; assert.deepStrictEqual([saved.count_max, saved.count_min], [{ [a]: 2 }, { [b]: 3 }]);
+    await ctx2.close();
+  });
   await test("結果の職員別カレンダーの休みの日数: 検算と同じ数え方（OC だけの日は休み。明けの扱いは設定に従う）", async () => {
     const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
     const asg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "data/js_assignment.json"), "utf8"));

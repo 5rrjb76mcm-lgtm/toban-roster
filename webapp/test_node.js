@@ -79,6 +79,19 @@ const pyScore = file => { const m = py(['score', '--json', file, '--time', Strin
             `期間責任者が日の途中で交代（${d} 日の夜間を別の人に）: JS ${js.status} ${js.objective} / Python ${mm ? mm[1] + ' ' + mm[2] : '例外: ' + out.trim().split('\n').pop()} / 減点 ${pen.total}（交代 ${pen.items.charge_handover}）/ 検算の違反 ${chk.V.length}`);
           done = true; break; } } }
     ok(done, '期間責任者の交代の割当を 1 つ作って突き合わせた'); }
+  // 8) 当月の勤務回数の下限・上限（人ごと。月の count_min / count_max）: 範囲の外になる割当は JS・Python とも採点できず（解なし）、その範囲で解き直した割当は Python の採点と JS の点が一致する
+  { const a = res.asg, A0 = T.check(P, a).A, people = P.dutyNames.filter(n => !P.isExempt(n)), tot = n => P.slots.filter(s => A0.worked(n, s)).length;
+    const who = people.find(n => tot(n) >= 1 && tot(n) - 1 >= P.quota(n) - P.tol), who2 = people.find(n => n !== who && tot(n) + 1 <= P.quota(n) + P.tol);
+    if (who && who2) { const m2 = Object.assign(JSON.parse(JSON.stringify(month)), { count_max: { [who]: tot(who) - 1 }, count_min: { [who2]: tot(who2) + 1 } }), P2 = new T.Problem(rules, m2);
+      const mFile = path.join(os.tmpdir(), '202611.json'); fs.writeFileSync(mFile, JSON.stringify(m2));
+      const score = file => { let out; try { out = execFileSync(PY, [TOBAN, 'score', '--json', file, '--time', String(sec), mFile, '--rules', rulesPath], { encoding: 'utf8', cwd: path.dirname(TOBAN), stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); } return { out, mm: out.match(/採点: 状態 (\w+)、減点の合計 ([-\d.eE+]+|None)/) }; };
+      const jsOld = T.solve(P2, highs, { timeLimit: sec, pin: a }), pyOld = score(jsFile);
+      ok(!/Traceback/.test(pyOld.out) && pyOld.mm && jsOld.status !== 'Optimal' && pyOld.mm[1] !== 'OPTIMAL', `下限・上限の外になる割当: JS ${jsOld.status} / Python ${pyOld.mm ? pyOld.mm[1] : '例外: ' + pyOld.out.trim().split('\n').pop()}（どちらも採点不可）`);
+      const r2 = T.solve(P2, highs, { timeLimit: sec }), f2 = path.join(os.tmpdir(), 'toban_js_limits.json'); fs.writeFileSync(f2, JSON.stringify(r2.asg || {}));
+      const py2 = score(f2), A2 = r2.asg ? T.check(P2, r2.asg) : null, t2 = n => P2.slots.filter(s => A2.A.worked(n, s)).length;
+      ok(r2.status === 'Optimal' && A2.V.length === 0 && t2(who) <= m2.count_max[who] && t2(who2) >= m2.count_min[who2] && !/Traceback/.test(py2.out) && py2.mm && py2.mm[1] === 'OPTIMAL' && Math.abs(+py2.mm[2] - r2.objective) < 1e-6,
+        `下限・上限の範囲で解き直した割当: JS ${r2.status} ${r2.objective} / Python ${py2.mm ? py2.mm[1] + ' ' + py2.mm[2] : '例外: ' + py2.out.trim().split('\n').pop()}（上限を入れた人 ${A2 ? t2(who) : '?'}≦${m2.count_max[who]}、下限を入れた人 ${A2 ? t2(who2) : '?'}≧${m2.count_min[who2]}）`);
+    } else ok(false, '下限・上限の突き合わせに使う人が見つからない'); }
   console.log(fail ? '突き合わせ: 不一致あり' : '突き合わせ: すべて一致');
   process.exit(fail);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -34,7 +34,7 @@
 <p><button id="btnRulesRevertProfile">${esc(T.t("設定をこの月の施設（{got}）に戻す", { got }))}</button> <span class="note">${esc(T.t("同梱のプロファイルにある施設だけ戻せます。施設が自分で作ったプロファイルは、設定タブの「プロファイルのファイルを読み込む」で戻してください"))}</span></p>
 <p class="note">${esc(T.t("月データはブラウザ内にも残るので、フォルダの月を消しても無くなりません。まっさらにするには、ページを読み直して開始画面の「ブラウザ内の保存を消して最初から始める」を押します"))}</p></div>`); }
     { const refs = T.monthNameRefs(m), unknown = Object.keys(refs).filter(n => !R.doctors.some(d => d.name === n)); // 名簿にない人の入力（名簿から外した・プロファイルを読み込んだ後の残り）
-      const KIND = { fixed: "固定指定", unavailable: "不可", wishes: "希望", avoid: "避けたい日", duty_days: "業務のカレンダー", regular_duties: "定期業務", targets: "当月の目標", confirmed_pm_external_night: "午後外勤日の確認" };
+      const KIND = { fixed: "固定指定", unavailable: "不可", wishes: "希望", avoid: "避けたい日", duty_days: "業務のカレンダー", regular_duties: "定期業務", targets: "当月の目標", count_limits: "当月の下限・上限", confirmed_pm_external_night: "午後外勤日の確認" };
       if (unknown.length) h.push(`<div class="box warn"><h3>${esc(T.t("名簿にない人の入力が残っています"))}</h3>
 <p>${esc(T.t("名簿から外した後や、施設プロファイルを読み込んだ後に残った入力です。名簿にいない人の入力は計算に使われませんが、固定指定は入力チェックで指摘されます。同じ人の改名なら、名簿の氏名を書き換えると月の入力も追随します。"))}</p>
 <ul>${unknown.map(n => `<li>${esc(n)}: ${esc(refs[n].map(k => T.t(KIND[k] || k)).join(T.listSep()))}</li>`).join("")}</ul>
@@ -56,8 +56,11 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
 <table class="grid"><tr><th></th>${workerNames.map(n => `<th>${esc(n)}</th>`).join("")}</tr>
 <tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
 <tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${bal[n] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr></table>
-<p><button id="btnAutoTargets">${esc(T.t("自動調整"))}</button> <button id="btnClearTargets">${esc(T.t("目安どおりに戻す"))}</button>　<span class="note">${esc(T.t("自動調整の案"))}: ${at ? esc(at.lines.slice(1).join(T.listSep())) : ""}</span></p></div>`);
+<tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
+<tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${m.count_min?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${m.count_max?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
+${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人は、目安±{tol} の代わりにその範囲が必須になります（その月だけ。翌月へは引き継ぎません）。固定指定が上限を超える分は許容します。入れすぎると解なしになるので、偏りが気になる人だけに使ってください。", { tol: R.quota_tolerance ?? 1 }))}</p>` : ""}
+<p><button id="btnAutoTargets">${esc(T.t("自動調整"))}</button> <button id="btnClearTargets">${esc(T.t("目安どおりに戻す"))}</button>${on("quota_range") ? ` <button id="btnClearLimits">${esc(T.t("下限・上限を消す"))}</button>` : ""}　<span class="note">${esc(T.t("自動調整の案"))}: ${at ? esc(at.lines.slice(1).join(T.listSep())) : ""}</span></p></div>`);
     const fx = m.fixed || {};
     const fixedRows = [];
     for (let d = 1; d <= A.daysIn(+m.year, +m.month) + 1; d++) { const parts = []; const wt = (k, n) => (m.fixed_tags || {})[`${d}:${k}|${n}`] ? `${n}(${m.fixed_tags[`${d}:${k}|${n}`]})` : n; if ([].concat(fx.day?.[d] || []).length) parts.push(`${shiftLabel(R, "day")} ${[].concat(fx.day[d]).map(n => wt("day", n)).join(T.nameSep())}`); if ([].concat(fx.night?.[d] || []).length) parts.push(`${shiftLabel(R, "night")} ${[].concat(fx.night[d]).map(n => wt("night", n)).join(T.nameSep())}`); if (fx.day_oc?.[d]?.length) parts.push(`${T.t("日勤OC")} ${fx.day_oc[d].join(T.nameSep())}`); if (fx.night_oc?.[d]?.length) parts.push(`${T.t("夜間OC")} ${fx.night_oc[d].join(T.nameSep())}`); if (fx.weekend_charge?.[d]) parts.push(`${L(T.t("{charge}担当"))} ${fx.weekend_charge[d]}`); if (jr && (fx.day_oc_none?.[d] || []).includes(jr)) parts.push(L(T.t("{shift} {junior}OCなし", { shift: shiftLabel(R, "day") }))); if (jr && (fx.night_oc_none?.[d] || []).includes(jr)) parts.push(L(T.t("{shift} {junior}OCなし", { shift: shiftLabel(R, "night") }))); if (parts.length) fixedRows.push(`<span class="chip">${d > A.daysIn(+m.year, +m.month) ? esc(T.t("翌月1日")) : esc(T.t("{d}日", { d }))} ${esc(parts.join(T.listSep()))}</span>`); }
@@ -106,6 +109,8 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     // 人ごとの表（当月の目標・累計・担当の履歴）は、欄を出している人の分だけ書き換える。欄を出していない人（一時的に配置禁止にした人・役割を変えた人）の値は残す。出ている欄を空にしたときだけ消える
     const keepHidden = (old, shown) => Object.fromEntries(Object.entries(old || {}).filter(([n]) => !shown.has(n)));
     { const els = [...root.querySelectorAll("[data-target]")], t = keepHidden(m.targets, new Set(els.map(el => el.dataset.target))); for (const el of els) if (el.value !== "") t[el.dataset.target] = +el.value; m.targets = t; }
+    for (const [attr, key] of [["cmin", "count_min"], ["cmax", "count_max"]]) { const els = [...root.querySelectorAll(`[data-${attr}]`)]; if (!els.length) continue; // 当月の下限・上限（欄を出していないとき＝規則が「なし」は前の値のまま）
+      const t = keepHidden(m[key], new Set(els.map(el => el.dataset[attr]))); for (const el of els) if (el.value !== "" && Number.isFinite(+el.value)) t[el.dataset[attr]] = Math.max(0, Math.round(+el.value)); m[key] = t; }
     if (root.querySelector("[data-dflag],[data-dnote]")) { // 日ごとの区分・予定（画面に出ている分だけ読み戻す。列の無い区分＝プラグインを読んでいない区分は、そのまま残す）
       const shown = new Set([...root.querySelectorAll("[data-dflag]")].map(el => el.dataset.dflag)), old = m.day_flags || {}; m.day_flags = {}; m.day_notes = {};
       for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
@@ -140,6 +145,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       if (id === "btnRulesRevertProfile") { A.loadProfileById(m.profile_id); return; }
       if (id === "btnAutoTargets") { const at = T.autoTargets(state.rules, m); m.targets = at.targets; A.toast(at.lines.join(" / ")); }
       else if (id === "btnClearTargets") m.targets = {};
+      else if (id === "btnClearLimits") { m.count_min = {}; m.count_max = {}; }
       else if (id === "btnAutoHol") { const a = A.autoCalendar(+m.year, +m.month); m.holidays = a.holidays; m.closure_days = a.closure; m.next_month_first_day_is_holiday = a.nextFirst; A.toast(T.t("祝日・施設の休日: {days}{note}", { days: a.holidays.join(", ") || T.t("なし"), note: a.nextFirst ? T.t("（翌月1日は休日）") : "" })); }
       else if (id === "btnImportPrev") { A.importPrevious(); return; }
       else if (id === "pmExtAdd") { if ($("#pmExtDay").value && $("#pmExtName").value) (m.confirmed_pm_external_night ||= []).push({ day: +$("#pmExtDay").value, name: $("#pmExtName").value }); }

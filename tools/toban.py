@@ -79,6 +79,9 @@ class Problem:
         for n, t in (month.get("targets") or {}).items():
             self.targets[n] = int(t)
         self.tol = int(rules.get("quota_tolerance", 1))
+        # 当月の勤務回数の下限・上限（人ごと。月の count_min / count_max）。入れた人は目安±許容幅の代わりにこの範囲が必須（JS の P.countLo / P.countHi と同じ）
+        self.count_min = {n: int(v) for n, v in (month.get("count_min") or {}).items() if v is not None and v != ""}
+        self.count_max = {n: int(v) for n, v in (month.get("count_max") or {}).items() if v is not None and v != ""}
 
         self.duties = {n: (month.get("regular_duties") or {}).get(n, []) or [] for n in self.names}
         self.duty_days = month.get("duty_days") if isinstance(month.get("duty_days"), dict) else None
@@ -373,6 +376,12 @@ class Problem:
     def is_fixed_eng(self, s, n):
         return (tuple(s), n) in self.fixed_eng_keys
 
+    def count_lo(self, n):
+        return self.count_min.get(n, int(self.doctors[n]["quota"]) - self.tol)
+
+    def count_hi(self, n):
+        return self.count_max.get(n, int(self.doctors[n]["quota"]) + self.tol)
+
     def fixed_work_count(self, n):
         return sum(1 for (_, m) in self.fixed_work_keys if m == n)
 
@@ -537,9 +546,9 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             M.Add(total[n] <= 1)
             obj.append(W.get("chief_duty", 1000) * total[n])
             continue
-        tol = P.tol if "quota" not in relax else 99
-        M.Add(total[n] >= q - tol)
-        M.Add(total[n] <= max(q + tol, P.fixed_work_count(n)))  # 固定指定で目安+1を超える場合はその数まで許す
+        if "quota" not in relax:
+            M.Add(total[n] >= P.count_lo(n))
+            M.Add(total[n] <= max(P.count_hi(n), P.fixed_work_count(n)))  # 固定指定で上限を超える場合はその数まで許す
         dev = M.NewIntVar(0, len(P.slots) + int(P.targets[n]), f"dev_{n}")  # ずれの上限: 全枠に入っても枠の数、目標側は目標（JS 版 quota_target と同じ）
         M.Add(dev >= total[n] - P.targets[n])
         M.Add(dev >= P.targets[n] - total[n])
@@ -1115,11 +1124,12 @@ def check(P: Problem, asg: dict):
                 V.append(f"{n}: 部長の勤務が{tot}回（月1回まで）")
             continue
         fc = P.fixed_work_count(n)
-        ub = max(q + P.tol, fc)  # 固定指定で目安+1を超える分は許容（固定指定により許容として表示）
-        if tot < q - P.tol or tot > ub:
-            V.append(f"{n}: 勤務{tot}回が目安{q}±{P.tol}の範囲外")
-        elif tot > q + P.tol:
-            V.append(f"{n}: 勤務{tot}回が目安{q}±{P.tol}を超える（固定指定 {fc} 件のため）")
+        lo, hi, lim = P.count_lo(n), P.count_hi(n), (n in P.count_min or n in P.count_max)
+        ub = max(hi, fc)  # 固定指定で上限を超える分は許容（固定指定により許容として表示）
+        if tot < lo or tot > ub:
+            V.append(f"{n}: 勤務{tot}回が当月の範囲 {max(0, lo)}〜{hi} 回の外" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}の範囲外")
+        elif tot > hi:
+            V.append(f"{n}: 勤務{tot}回が当月の上限 {hi} 回を超える（固定指定 {fc} 件のため）" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}を超える（固定指定 {fc} 件のため）")
     # 4 実勤務の連続
     first_prev = min([s[0] for s in P.prev_slots], default=1)
     for n in names:

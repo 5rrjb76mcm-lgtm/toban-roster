@@ -370,10 +370,19 @@
       if (this.quotaMode === "share") this.shareQuotas = shareQuotas(this);
       for (const n of this.names) this.targets[n] = this.quota(n);
       for (const [n, t] of Object.entries(month.targets || {})) this.targets[n] = +t;
+      // 当月の勤務回数の下限・上限（人ごと。月の設定の count_min / count_max）。入れた人は、目安±許容幅の代わりにこの範囲が必須になる（規則 quota_range）。空欄の側は目安±許容幅のまま
+      this.countMin = {}; this.countMax = {};
+      for (const [key, out] of [["count_min", this.countMin], ["count_max", this.countMax]]) for (const [n, v] of Object.entries(month[key] || {})) { if (v === "" || v == null) continue;
+        const x = numericValue(v); if (!Number.isInteger(x) || x < 0) throw new Error(T.t("月の設定の {field} は0以上の整数にしてください（当月の勤務回数の下限・上限。空欄は目安±許容幅）", { field: `${key}[${n}]` }));
+        out[n] = x; }
       this.prm = {}; for (const def of RULE_DEFS) if (def.read) this.prm[def.id] = def.read(this, rules); // プラグインごとの値（docs/rule-modules.md §4）
     }
 
     dutyAllowed(n) { return isDutyCandidate(this.doctors[n], this.allowChief); }
+    // 当月の勤務回数の必須の範囲（下限・上限）。月の設定で入れた値があればそれ、無ければ目安±許容幅。hasCountLimit: 月の設定で下限か上限を入れた人か
+    countLo(n) { return this.countMin[n] ?? this.quota(n) - this.tol; }
+    countHi(n) { return this.countMax[n] ?? this.quota(n) + this.tol; }
+    hasCountLimit(n) { return this.countMin[n] != null || this.countMax[n] != null; }
     workAllowed(n) { return isWorkCandidate(this.doctors[n], this.allowChief, this.refId("reserve")); }
     // 履歴込み週末担当の上限（整数変数の範囲に使う。履歴は組数なので日数換算で2倍）
     histWeekendBound() { const h = Object.values(this.histWeekend).map(Number).filter(x => !isNaN(x)); return 2 * Math.max(0, ...h) + 2 * (this.periods || []).length + 4; }
@@ -634,6 +643,7 @@
     const out = {}, add = (n, kind) => { if (!n) return; (out[n] ||= []); if (!out[n].includes(kind)) out[n].push(kind); };
     const keysOf = (o, kind) => { for (const [n, v] of Object.entries(o || {})) if (v && (!Array.isArray(v) || v.length) && (typeof v !== "object" || Array.isArray(v) || Object.keys(v).length)) add(n, kind); };
     keysOf(m.duty_days, "duty_days"); keysOf(m.regular_duties, "regular_duties"); keysOf(m.unavailable_night, "unavailable"); keysOf((m.wishes || {}).night_on, "wishes");
+    for (const key of ["count_min", "count_max"]) for (const [n, v] of Object.entries(m[key] || {})) if (v !== null && v !== undefined && v !== "" && Number.isFinite(+v)) add(n, "count_limits"); // 当月の下限・上限（0 回も有効な値）
     for (const [n, v] of Object.entries(m.targets || {})) if (v !== null && v !== undefined && v !== "" && Number.isFinite(+v)) add(n, "targets"); // 当月の目標は 0 回も有効な入力（0 を「無い」と数えない）
     keysOf((m.wishes || {}).day_on, "wishes");
     for (const u of m.unavailable_other || []) add(u.name, "unavailable");
@@ -651,7 +661,7 @@
   function purgeMonthNames(m, names) {
     const bad = new Set(names); let c = 0;
     const dropKeys = o => { for (const n of Object.keys(o || {})) if (bad.has(n)) { delete o[n]; c++; } };
-    dropKeys(m.duty_days); dropKeys(m.regular_duties); dropKeys(m.unavailable_night); dropKeys(m.targets); dropKeys((m.wishes || {}).night_on); dropKeys((m.wishes || {}).day_on);
+    dropKeys(m.duty_days); dropKeys(m.regular_duties); dropKeys(m.unavailable_night); dropKeys(m.targets); dropKeys(m.count_min); dropKeys(m.count_max); dropKeys((m.wishes || {}).night_on); dropKeys((m.wishes || {}).day_on);
     const filt = (arr, f) => { if (!Array.isArray(arr)) return arr; const out = arr.filter(f); c += arr.length - out.length; return out; };
     m.unavailable_other = filt(m.unavailable_other, u => !bad.has(u.name)); m.avoid = filt(m.avoid, u => !bad.has(u.name)); m.confirmed_pm_external_night = filt(m.confirmed_pm_external_night, u => !bad.has(u.name));
     if (m.wishes) m.wishes.weekend_dayshift = filt(m.wishes.weekend_dayshift, n => !bad.has(n));
@@ -688,7 +698,7 @@
   function renameMonthName(m, oldN, newN, opts = {}) { // opts.inputsOnly: 当月の入力だけ（履歴・前月末の接続は記録なので触らない。名簿から外した人の印を付けるときに使う）
     const mv = o => { if (o && o[oldN] !== undefined) { o[newN] = o[oldN]; delete o[oldN]; } };
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
-    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.wishes?.night_on); mv(m.wishes?.day_on); if (!opts.inputsOnly) { mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance); }
+    mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.count_min); mv(m.count_max); mv(m.wishes?.night_on); mv(m.wishes?.day_on); if (!opts.inputsOnly) { mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance); }
     for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
     if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, who] = key.split("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印
     (m.unavailable_other || []).forEach(u => { if (u.name === oldN) u.name = newN; }); (m.confirmed_pm_external_night || []).forEach(u => { if (u.name === oldN) u.name = newN; });
@@ -898,7 +908,7 @@
     m.wishes ||= { weekend_dayshift: [], night_on: {} }; m.wishes.night_on ||= {}; m.wishes.day_on ||= {}; m.wishes.weekend_dayshift ||= [];
     m.fixed ||= {}; for (const k of ["night", "day", "weekend_charge", "day_oc", "night_oc", "day_oc_none", "night_oc_none"]) m.fixed[k] ||= {};
     m.fixed_tags ||= {}; m.day_flags ||= {}; m.day_notes ||= {}; m.person_days ||= {};
-    m.exceptions ||= {}; m.targets ||= {}; m.holidays ||= []; m.closure_days ||= []; m.unavailable_other ||= []; m.confirmed_pm_external_night ||= [];
+    m.exceptions ||= {}; m.targets ||= {}; m.count_min ||= {}; m.count_max ||= {}; m.holidays ||= []; m.closure_days ||= []; m.unavailable_other ||= []; m.confirmed_pm_external_night ||= [];
     m.prev_month ||= { last_days: [], last_weekend_charge: null, prev_weekend_charge: null };
     if (Array.isArray(m.avoid) && !m.avoid.length) delete m.avoid;
     if (Array.isArray(m.plugins_used) && m.plugins_used.length) { const alias = {}; for (const def of RULE_DEFS) for (const a of def.aliases || []) alias[a] = def.id; m.plugins_used = [...new Set(m.plugins_used.map(id => alias[id] || id))]; } // 規則の id を aliases で移行したら、計算に使った規則の記録も現行の id へ（解決できない id は欠落の検出のため残す）
@@ -943,15 +953,16 @@
     const docs = P.dutyNames.filter(n => !P.isExempt(n) && P.quota(n) > 0).map(n => ({ n, q: P.quota(n), y: +(P.doctors[n].years || 0), b: +(bal[n] || 0) })); // 予備・固定配置専用の任意の目安で通常職員の目標を動かさない
     const S = targetWorkNeed(P), Q = docs.reduce((a, d) => a + d.q, 0); // 按分と同じ対象人数
     const targets = {}; docs.forEach(d => targets[d.n] = d.q);
+    const lo = n => Math.max(0, P.countLo(n)), hi = n => P.countHi(n); // 当月の下限・上限を入れた人は、その範囲の外へ目標を動かさない
     const lines = [T.t("目標配分の対象 {slots} 枠、目安合計 {quota}、差 {diff}", { slots: S, quota: Q, diff: S - Q })];
     let diff = S - Q;
     const tol = P.tol;
     if (diff < 0) {
       const order = [...docs].sort((a, b) => b.q - a.q || b.b - a.b || b.y - a.y);
-      for (let k = 0; k < tol && diff < 0; k++) for (const d of order) { if (diff >= 0) break; targets[d.n]--; diff++; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
+      for (let k = 0; k < tol && diff < 0; k++) for (const d of order) { if (diff >= 0) break; if (targets[d.n] - 1 < lo(d.n)) continue; targets[d.n]--; diff++; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
     } else if (diff > 0) {
       const order = [...docs].sort((a, b) => b.q - a.q || a.b - b.b || a.y - b.y);
-      for (let k = 0; k < tol && diff > 0; k++) for (const d of order) { if (diff <= 0) break; targets[d.n]++; diff--; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
+      for (let k = 0; k < tol && diff > 0; k++) for (const d of order) { if (diff <= 0) break; if (targets[d.n] + 1 > hi(d.n)) continue; targets[d.n]++; diff--; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
     }
     if (diff !== 0) lines.push(T.t("±{tol} の範囲では {n} 枠分を調整しきれません（目安の見直しが必要）", { tol, n: Math.abs(diff) }));
     if (S === Q) lines.push(T.t("調整不要（目安どおり）"));

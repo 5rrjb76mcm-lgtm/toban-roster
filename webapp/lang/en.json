@@ -415,6 +415,13 @@
     "目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）±1します。空欄＝目安どおり。": "This month's target is set within the standing target ± {tol}. \"Adjust automatically\" works down from the largest target (at equal targets, from the smallest running imbalance, then the most years), moving each by 1. Empty means the standing target.",
     "累計の過不足（前月まで、実績−目安）": "Running imbalance up to last month (actual − target)",
     "当月の目標": "This month's target",
+    "当月の下限（必須。空欄＝目安−{tol}）": "This month's lower limit (hard; blank = target − {tol})",
+    "当月の上限（必須。空欄＝目安＋{tol}）": "This month's upper limit (hard; blank = target + {tol})",
+    "下限・上限を入れた人は、目安±{tol} の代わりにその範囲が必須になります（その月だけ。翌月へは引き継ぎません）。固定指定が上限を超える分は許容します。入れすぎると解なしになるので、偏りが気になる人だけに使ってください。": "For people with a lower or upper limit, that range is required instead of target ± {tol} (this month only; not carried to the next month). Fixed assignments above the upper limit are tolerated. Too many limits make the month unsolvable, so use them only where the imbalance matters.",
+    "下限・上限を消す": "Clear limits",
+    "当月の下限・上限": "this month's limits",
+    "（当月の下限・上限を入れた人: {list}）": " (people with this month's limits: {list})",
+    "月の設定の {field} は0以上の整数にしてください（当月の勤務回数の下限・上限。空欄は目安±許容幅）": "Set {field} in the month settings to a nonnegative integer (this month's lower/upper work-count limit; blank = target ± tolerance)",
     "自動調整": "Adjust automatically",
     "目安どおりに戻す": "Back to the standing target",
     "自動調整の案": "Proposed adjustment",
@@ -1119,6 +1126,14 @@
     "UNAVAIL_ALLDAY_NIGHT": "{day}: {who} declared the whole day unavailable but is on duty that night",
     "RESERVE_ASSIGNED": "{who}: {reserve} is assigned to shifts ({count})",
     "QUOTA_OUT_OF_RANGE": "{who}: {total} shifts, outside the target {quota} ± {tol}",
+    "COUNT_OUT_OF_LIMIT": "{who}: {total} shifts, outside this month's limits {lo}–{hi}",
+    "COUNT_LIMIT_OVER_BY_FIXED": "{who}: {total} shifts, above this month's upper limit {hi} (because of {fixed} hand-fixed assignments)",
+    "LINT_COUNT_LIMIT_MIN_OVER_MAX": "{who}: this month's lower limit {min} is above the upper limit {max}",
+    "LINT_COUNT_LIMIT_MIN_OVER_MAX_HINT": "Month settings → this month's targets → fix the lower or the upper limit",
+    "LINT_FIXED_OVER_LIMIT": "{who}: {count} hand-fixed work assignments, above this month's upper limit {max}",
+    "LINT_FIXED_OVER_LIMIT_HINT": "The fixed assignments take priority (allowed, shown as tolerated). Raise the upper limit or reduce the fixed assignments if this is not intended",
+    "LINT_PERSON_TOO_FEW_SLOTS_LIMIT": "{who} can work only {count} slots, fewer than this month's lower limit {min}",
+    "LINT_PERSON_TOO_FEW_SLOTS_LIMIT_HINT": "Lower the limit, or review this person's unavailable days",
     "QUOTA_OVER_BY_FIXED": "{who}: {total} shifts, above the target {quota} ± {tol} (because of {fixed} hand-fixed assignments)",
     "SAME_DAY_DOUBLE": "{day}: {who} on both day and night",
     "CONSECUTIVE_DAYS": "{day}→{next}: {who} works on consecutive days",
@@ -1359,7 +1374,7 @@
     "monthly": {
       "kind": "box",
       "title": "Each month",
-      "html": "<ol>\n        <li>In the month list in the header, choose <b>+ Create next month</b>. The carry-over from the end of last month (the last few days where run-length rules are used), running totals and weekday patterns marked to carry forward are brought across.</li>\n        <li><b>1 Month → Month</b>: holidays (can be filled in from the facility's calendar), this month's target counts, and anything already fixed.</li>\n        <li><b>1 Month → Per-person calendar</b>: for each person, unavailable days, paid leave, days to avoid if possible, wishes, fixed assignments and, where used, daytime duties. <b>Fixed assignments</b> lets you enter everything already decided, slot by slot.</li>\n        <li><b>2 Solve</b>. The input is checked first and any contradiction is reported by name with a suggested fix — including how many days are off when the head count does not match the slots. If there is no solution, the conflicting rules are diagnosed.</li>\n        <li><b>3-1 Result</b> shows the verification and totals; <b>3-2</b> shows each person's calendar, with post-night days and days off. The status line at the top of the result gathers the four things you need to decide whether to adopt it: saved or not, solved from the current input or not, verification with the current settings (violations and allowances due to fixed assignments), and whether optimality is proven or the time ran out. Set the label to Final when the roster is agreed.</li>\n        <li>To adjust after publishing, solve again with <b>Keep the current result and change as little as possible</b> (on by default). Changed slots are shown in red in the docx and the report.</li>\n      </ol>\n      <p class=\"note\">\"Days to avoid if possible\" are avoided by penalty. A penalty also applies when the person's shift count falls below what it would be without the request, so requests are unlikely to reduce anyone's load (this is a penalty, not a guarantee).</p>"
+      "html": "<ol>\n        <li>In the month list in the header, choose <b>+ Create next month</b>. The carry-over from the end of last month (the last few days where run-length rules are used), running totals and weekday patterns marked to carry forward are brought across.</li>\n        <li><b>1 Month → Month</b>: holidays (can be filled in from the facility's calendar), this month's target counts, and anything already fixed. Where an uneven work count matters, enter \"This month's lower limit\" / \"upper limit\" for that person in the same table: that range becomes required for this month only (blank = target ± tolerance).</li>\n        <li><b>1 Month → Per-person calendar</b>: for each person, unavailable days, paid leave, days to avoid if possible, wishes, fixed assignments and, where used, daytime duties. <b>Fixed assignments</b> lets you enter everything already decided, slot by slot.</li>\n        <li><b>2 Solve</b>. The input is checked first and any contradiction is reported by name with a suggested fix — including how many days are off when the head count does not match the slots. If there is no solution, the conflicting rules are diagnosed.</li>\n        <li><b>3-1 Result</b> shows the verification and totals; <b>3-2</b> shows each person's calendar, with post-night days and days off. The status line at the top of the result gathers the four things you need to decide whether to adopt it: saved or not, solved from the current input or not, verification with the current settings (violations and allowances due to fixed assignments), and whether optimality is proven or the time ran out. Set the label to Final when the roster is agreed.</li>\n        <li>To adjust after publishing, solve again with <b>Keep the current result and change as little as possible</b> (on by default). Changed slots are shown in red in the docx and the report.</li>\n      </ol>\n      <p class=\"note\">\"Days to avoid if possible\" are avoided by penalty. A penalty also applies when the person's shift count falls below what it would be without the request, so requests are unlikely to reduce anyone's load (this is a penalty, not a guarantee).</p>"
     },
     "trouble": {
       "kind": "box",
