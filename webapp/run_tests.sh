@@ -31,6 +31,7 @@ run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_settings_import_node.js
 run test_role_edit_preservation_node.js
+run test_role_delete_preservation_node.js
 run test_undo_roster_order_node.js
 run test_undo_profile_identity_node.js
 run test_undo_month_node.js
@@ -41,6 +42,7 @@ run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
 run test_import_previous_node.js
+run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
 run test_absent_assignment_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
@@ -55,6 +57,7 @@ run test_infer_node.js "$HP"
 run test_prevconn_node.js "$HP"
 run test_period_slots_node.js "$HP"
 run test_period_charge_next_slot_node.js "$HP"
+run test_oc_period_boundary_node.js "$HP"
 run test_charge_day_split_node.js "$HP"
 if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"

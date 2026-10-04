@@ -57,7 +57,10 @@
     const at = k => cols.filter(c => (c.at || "duty") === k);
     const head = [["氏名", "役割", compOn ? "何年目" : "経験年数"].map(tx), at("years").map(c => tx(c.label)), quotaOn ? [tx(share ? "比重" : "目安（月）")] : [], at("quota").map(c => tx(c.label)), [tx("当番")], at("duty").map(c => tx(c.label)), [""]].flat();
     const cell = (c, d) => `<td data-col="${esc(c.key)}">${c.render(d, R, h)}</td>`;
-    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(T.normalizeRolesOf(R).map(x => [x.id, x.label]), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(d.years ?? "")}" style="width:3.5em"></td>` +
+    const roles = T.normalizeRolesOf(R).map(x => [x.id, x.label]);
+    // 未指定・読み込んだ不明な役割も選択肢として残す。該当する option が無いと先頭の役割が選ばれ、無関係な編集の読み戻しで別の役割へ移ってしまう。
+    const roleOpts = d => [["", "―"], ...roles, ...(d.team && !roles.some(([id]) => id === d.team) ? [[d.team, d.team + tx("（現在は使わない値）")]] : [])];
+    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(roleOpts(d), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(d.years ?? "")}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
       (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(d.share ?? 1)}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
@@ -584,6 +587,7 @@
         else { const i = +b.closest("tr").dataset.ri; const gone = roles[i]; if (!gone) return;
           const used = R.doctors.filter(d => d.team === gone.id).map(d => d.name);
           if (used.length && !confirm(T.t("役割「{role}」は {n} 名（{who}）が使っています。削除すると名簿の役割が空欄になります。よろしいですか", { role: gone.label, n: used.length, who: used.slice(0, 3).join(T.nameSep()) + (used.length > 3 ? T.t(" ほか") : "") }))) return;
+          for (const d of R.doctors) if (d.team === gone.id) d.team = ""; // 確認で案内したとおり未指定へ。別の役割は利用者が明示的に選ぶ。
           roles.splice(i, 1); }
         (R.profile ||= {}).roles = roles;
         T.fillDefaultRules(R); A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); return;
