@@ -27,8 +27,9 @@ T.rules.register({
     for (const n of ctx.names) { if (P.isRole(n, "charge")) continue; for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1 && ctx.has([d, "night"]) && ctx.has([d + 1, "day"])) pen([d, "night"], [d + 1, "night"], n); }
     if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny()) { const N = P.N, firstK = P.nextFirstSlotKind(), cross = P.lastCrossingPeriod();
       for (const n of ctx.names) {
-        if (P.nextFixedEngaged(n, firstK) && ctx.has([N, "night"]) && !(P.isRole(n, "charge") && cross && firstK === "day")) lp.objAdd(W.oc_consecutive, lastTerm(n, firstK));
-        if (!P.isRole(n, "charge") && firstK === "day" && P.nextFixedEngaged(n, "night") && ctx.has([N, "night"])) lp.objAdd(W.oc_consecutive, lastTerm(n, "night"));
+        // 同じ土日の期間責任者は、翌月の最初の実在枠が夜間でも免除。存在しない翌月の枠の古い固定は数えない。
+        if (P.nextSlotExists(firstK) && P.nextFixedEngaged(n, firstK) && ctx.has([N, "night"]) && !(P.isRole(n, "charge") && cross)) lp.objAdd(W.oc_consecutive, lastTerm(n, firstK));
+        if (!P.isRole(n, "charge") && firstK === "day" && P.nextSlotExists("night") && P.nextFixedEngaged(n, "night") && ctx.has([N, "night"])) lp.objAdd(W.oc_consecutive, lastTerm(n, "night"));
       } }
   },
   penalty(ctx) {
@@ -44,8 +45,8 @@ T.rules.register({
     for (const n of ctx.names) if (!P.isRole(n, "charge")) for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1 && ctx.has([d, "night"]) && ctx.has([d + 1, "day"])) ctx.add("oc_consecutive", W.oc_consecutive, pos(Ev(n, [d, "night"]) + Ev(n, [d + 1, "night"]) - 1, n, [d, "night"], [d + 1, "night"]));
     if (P.nextFixedAny()) { const N = P.N, firstK = P.nextFirstSlotKind(), cross = P.lastCrossingPeriod();
       for (const n of ctx.names) {
-        if (P.nextFixedEngaged(n, firstK) && ctx.has([N, "night"]) && !(P.isRole(n, "charge") && cross && firstK === "day")) ctx.add("oc_consecutive", W.oc_consecutive, lastTerm(n, firstK));
-        if (!P.isRole(n, "charge") && firstK === "day" && P.nextFixedEngaged(n, "night") && ctx.has([N, "night"])) ctx.add("oc_consecutive", W.oc_consecutive, lastTerm(n, "night"));
+        if (P.nextSlotExists(firstK) && P.nextFixedEngaged(n, firstK) && ctx.has([N, "night"]) && !(P.isRole(n, "charge") && cross)) ctx.add("oc_consecutive", W.oc_consecutive, lastTerm(n, firstK));
+        if (!P.isRole(n, "charge") && firstK === "day" && P.nextSlotExists("night") && P.nextFixedEngaged(n, "night") && ctx.has([N, "night"])) ctx.add("oc_consecutive", W.oc_consecutive, lastTerm(n, "night"));
       } }
   },
   // 説明資料の第 9 節（調整目標の達成状況）の行

@@ -52,8 +52,9 @@
           if (last.crossing && !last.prevDays.length && PP.dow(N) === 5 && chg(last).length) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
       } else notes.push(T.t("{y}年{m}月 のデータから取り込んだため、前月末の接続は未入力です（月が連続していません）", { y, m: mo }));
       const fw = T.fullWeekendUnits(PP, charge);
-      for (const n of PP.I) { nmn.history.weekend_charge[n] = (prev.month.history?.weekend_charge?.[n] || 0) + fw[n] / 2 + (wps.some(p => p.crossing && p.prevDays.length && chg(p).includes(n)) ? 1 : 0); nmn.history.holiday_charge[n] = (prev.month.history?.holiday_charge?.[n] || 0) + PP.periods.filter(p => p.kind === "holiday" && chg(p).includes(n)).length; }
-      for (const n of PP.dutyNames) { const q = PP.quota(n); if (!q) continue; const v = (pb[n] || 0) + (met[n].total - q); if (v) nmn.history.work_balance[n] = v; else delete nmn.history.work_balance[n]; }
+      // 履歴は旧JSONでは数値文字列の場合もある。加算前に数値へ揃え、累計を文字列連結しない。
+      for (const n of PP.I) { nmn.history.weekend_charge[n] = +(prev.month.history?.weekend_charge?.[n] || 0) + fw[n] / 2 + (wps.some(p => p.crossing && p.prevDays.length && chg(p).includes(n)) ? 1 : 0); nmn.history.holiday_charge[n] = +(prev.month.history?.holiday_charge?.[n] || 0) + PP.periods.filter(p => p.kind === "holiday" && chg(p).includes(n)).length; }
+      for (const n of PP.dutyNames) { const q = PP.quota(n); if (!q) continue; const v = +(pb[n] || 0) + (met[n].total - q); if (v) nmn.history.work_balance[n] = v; else delete nmn.history.work_balance[n]; }
     } else notes.push(T.t("{y}年{m}月 は未計算のため、前月末の接続と実績の累計は取り込めません（履歴は前月までの値）", { y, m: mo }));
     return notes;
   }
