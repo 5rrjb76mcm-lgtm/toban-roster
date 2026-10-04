@@ -57,6 +57,7 @@ weights:
   same_weekday_excess: 15             # 同じ曜日の勤務が月2回を超えた 1回あたり（中）
   consecutive_weekend: 15      # 主担当の連続する週末担当
   split_weekend: 60            # 土日1組を土曜・日曜の2人に分割（均等配分のための例外）
+  charge_handover: 200         # 休日の主担当担当が日の途中で交代（日勤帯と夜間で別の人）1日あたり。固定したとき・ほかに手が無いときだけ起きる大きさ
   weekend_history_spread: 10   # 前月までの履歴を含む週末担当数の最多−最少
   charge_without_dayshift: 5   # 週末担当の主担当医師にその週末の日勤がない
   night_oc_then_duty: 3        # 夜間OC翌日の通常業務

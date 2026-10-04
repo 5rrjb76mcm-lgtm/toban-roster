@@ -67,6 +67,18 @@ const pyScore = file => { const m = py(['score', '--json', file, '--time', Strin
       const mm = out.match(/採点: 状態 (\w+)、減点の合計 ([-\d.eE+]+|None)/); let js; try { js = T.solve(new T.Problem(rules, m2), highs, { timeLimit: sec, pin: a }); } catch (e) { js = { status: 'Error: ' + e.message }; }
       const pyOk = mm && mm[1] === 'OPTIMAL', jsOk = js.status === 'Optimal';
       ok(!/Traceback/.test(out) && mm && pyOk === jsOk && (!pyOk || Math.abs(+mm[2] - js.objective) < 1e-6), `翌月 1 日の${label}: JS ${js.status}${jsOk ? ' ' + js.objective : ''} / Python ${mm ? mm[1] + (pyOk ? ' ' + mm[2] : '') : '例外: ' + out.trim().split('\n').pop()}`); } }
+  // 7) 休日の期間責任者が日の途中で交代する割当（夜間の期間責任者の OC を別の人に替えたもの）: Python の採点と JS の点が一致する（交代は違反ではなく 1 日あたりの減点 charge_handover）
+  { const a = res.asg, I = P.I; let done = false;
+    for (const p of P.periods) { if (done) break; for (const d of p.days) { if (done) break; const nk = `${d}:night`, dk = `${d}:day`; if (!a[nk] || !a[dk]) continue;
+        const cur = (a[nk].oc || []).find(x => I.includes(x)); if (!cur) continue; // 夜間の期間責任者が OC で入っている日だけ
+        for (const z of I) { if (z === cur) continue; const a2 = JSON.parse(JSON.stringify(a)); a2[nk].oc = a2[nk].oc.map(x => x === cur ? z : x);
+          let js; try { js = T.solve(P, highs, { timeLimit: sec, pin: a2 }); } catch (e) { continue; } if (js.status !== 'Optimal') continue; // ほかの必須条件に当たる入れ替えは飛ばす
+          const f2 = path.join(os.tmpdir(), 'toban_js_handover.json'); fs.writeFileSync(f2, JSON.stringify(a2)); let out; try { out = execFileSync(PY, [TOBAN, 'score', '--json', f2, '--time', String(sec), monthPath, '--rules', rulesPath], { encoding: 'utf8', cwd: path.dirname(TOBAN), stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+          const mm = out.match(/採点: 状態 (\w+)、減点の合計 ([-\d.eE+]+|None)/), pen = T.penalty(P, a2), chk = T.check(P, a2);
+          ok(!/Traceback/.test(out) && mm && mm[1] === 'OPTIMAL' && Math.abs(+mm[2] - js.objective) < 1e-6 && Math.abs(pen.total - js.objective) < 1e-6 && chk.V.length === 0 && pen.items.charge_handover === (P.weights.charge_handover ?? 200),
+            `期間責任者が日の途中で交代（${d} 日の夜間を別の人に）: JS ${js.status} ${js.objective} / Python ${mm ? mm[1] + ' ' + mm[2] : '例外: ' + out.trim().split('\n').pop()} / 減点 ${pen.total}（交代 ${pen.items.charge_handover}）/ 検算の違反 ${chk.V.length}`);
+          done = true; break; } } }
+    ok(done, '期間責任者の交代の割当を 1 つ作って突き合わせた'); }
   console.log(fail ? '突き合わせ: 不一致あり' : '突き合わせ: すべて一致');
   process.exit(fail);
 })().catch(e => { console.error(e); process.exit(1); });

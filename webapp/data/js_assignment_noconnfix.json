@@ -36,45 +36,46 @@
   ]
  },
  "5:night": {
-  "work": "Dr J",
+  "work": "Dr S",
   "oc": [
-   "Dr G",
-   "Dr S"
+   "Dr G"
   ]
  },
  "6:night": {
-  "work": "Dr Q",
+  "work": "Dr K",
   "oc": [
-   "Dr F"
+   "Dr H",
+   "Dr R"
   ]
  },
  "7:day": {
-  "work": "Dr S",
+  "work": "Dr E",
+  "oc": [
+   "Dr Q"
+  ]
+ },
+ "7:night": {
+  "work": "Dr Q",
   "oc": [
    "Dr E"
   ]
  },
- "7:night": {
-  "work": "Dr L",
+ "8:day": {
+  "work": "Dr J",
   "oc": [
    "Dr E",
-   "Dr S"
-  ]
- },
- "8:day": {
-  "work": "Dr E",
-  "oc": [
    "Dr N"
   ]
  },
  "8:night": {
-  "work": "Dr N",
+  "work": "Dr M",
   "oc": [
-   "Dr E"
+   "Dr E",
+   "Dr N"
   ]
  },
  "9:night": {
-  "work": "Dr M",
+  "work": "Dr L",
   "oc": [
    "Dr F",
    "Dr Q"
@@ -89,42 +90,43 @@
  "11:night": {
   "work": "Dr Q",
   "oc": [
-   "Dr E"
+   "Dr F"
   ]
  },
  "12:night": {
-  "work": "Dr S",
+  "work": "Dr J",
   "oc": [
-   "Dr G"
+   "Dr G",
+   "Dr S"
   ]
  },
  "13:night": {
   "work": "Dr L",
   "oc": [
    "Dr F",
-   "Dr Q"
+   "Dr P"
   ]
  },
  "14:day": {
   "work": "Dr H",
   "oc": [
-   "Dr P"
+   "Dr S"
   ]
  },
  "14:night": {
-  "work": "Dr P",
+  "work": "Dr S",
   "oc": [
    "Dr H"
   ]
  },
  "15:day": {
-  "work": "Dr Q",
+  "work": "Dr P",
   "oc": [
    "Dr H"
   ]
  },
  "15:night": {
-  "work": "Dr K",
+  "work": "Dr M",
   "oc": [
    "Dr H"
   ]
@@ -136,14 +138,13 @@
   ]
  },
  "17:night": {
-  "work": "Dr M",
+  "work": "Dr Q",
   "oc": [
-   "Dr H",
-   "Dr R"
+   "Dr H"
   ]
  },
  "18:night": {
-  "work": "Dr P",
+  "work": "Dr R",
   "oc": [
    "Dr E"
   ]
@@ -173,7 +174,7 @@
   ]
  },
  "22:day": {
-  "work": "Dr M",
+  "work": "Dr L",
   "oc": [
    "Dr F",
    "Dr R"
@@ -198,8 +199,9 @@
   ]
  },
  "24:night": {
-  "work": "Dr H",
+  "work": "Dr M",
   "oc": [
+   "Dr H",
    "Dr R"
   ]
  },
@@ -210,22 +212,22 @@
   ]
  },
  "26:night": {
-  "work": "Dr J",
+  "work": "Dr K",
   "oc": [
    "Dr G",
    "Dr S"
   ]
  },
  "27:night": {
-  "work": "Dr K",
+  "work": "Dr H",
   "oc": [
-   "Dr H",
    "Dr P"
   ]
  },
  "28:day": {
-  "work": "Dr G",
+  "work": "Dr M",
   "oc": [
+   "Dr G",
    "Dr S"
   ]
  },
@@ -236,21 +238,19 @@
   ]
  },
  "29:day": {
-  "work": "Dr L",
+  "work": "Dr G",
   "oc": [
-   "Dr G",
    "Dr N"
   ]
  },
  "29:night": {
-  "work": "Dr M",
+  "work": "Dr N",
   "oc": [
-   "Dr G",
-   "Dr N"
+   "Dr G"
   ]
  },
  "30:night": {
-  "work": "Dr R",
+  "work": "Dr P",
   "oc": [
    "Dr F"
   ]

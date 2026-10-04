@@ -317,6 +317,8 @@ webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limi
   部品では規則の状態に従う（必須なら禁止、減点なら減点、使わないなら何もしない）。検算（`CONSECUTIVE_NEXT_MONTH`）はもともと必須のときだけだったので、これで解く側と検算がそろった。
 - 段階 3 で: 期間責任者の部品が事実 `charge` を出す。解く側は `{cday, chargedP, fullDays}`（式）、検算は `{map}`（期間 → 日 → 担当者。本体が結果の表示に使う）、
   減点は `{cday, charged, fullDays}`（数）。週末の均等は `needs: ["period_charge"]` でこれを使う。
+  その日の担当（`cday` / `map`）は、その日の最初の枠（日勤帯があれば日勤帯。`T.chargeDaySlots`）に関わる人。同じ日の後の枠が別の人になる「日の途中の交代」は必須の違反ではなく減点（`charge_handover`。1 日あたり、既定 200）で、
+  各枠に関わる期間責任者が 1 名であることは必須のまま。週末の均等・連続・履歴は、その日の担当（最初の枠の人）で数える。
   専門業務の表（`T.cathTable`）・週休日の一覧（`T.restDays`）は説明資料も使うので本体に残し、部品の `check` が呼ぶ。
   避けたい日の参照解（`solveWithAvoidRef`）は本体で、部品は `ctx.opts`（`avoidRef` / `ignoreAvoid`）を見る。定期業務の診断の人ごとの外し（`duties:<氏名>`）は部品が `ctx.relaxed` で見る。
   `lp_same_node.js` の並びをそろえる処理に、目的関数の項の整列を足した（部品にすると項の入る順が変わる。段階 3 の 8 設定はすべて制約の集合が同じ）。

@@ -52,6 +52,7 @@
     const allw = {}; for (const n of P.I) allw[n] = fw[n] + 2 * P.periods.filter(p => p.kind === "weekend" && !p.full && Object.values(charge[p.id]).includes(n)).length;
     const hc = {}; for (const n of P.I) hc[n] = P.periods.filter(p => p.kind === "holiday" && Object.values(charge[p.id]).includes(n)).length;
     const splits = P.periods.filter(p => p.kind === "weekend" && p.full && new Set(Object.values(charge[p.id]).filter(Boolean)).size > 1).map(p => p.name);
+    const handovers = T.chargeHandovers ? T.chargeHandovers(P, A).map(h => `${P.label(h.d)} ${h.who.map(x => x || "―").join("→")}`) : []; // 日の途中で担当が交代した日（最初の枠の人→後の枠の人）
     const wps = P.periods.filter(p => p.kind === "weekend");
     const prevC = (wps.length && wps[0].crossing && wps[0].prevDays.length) ? P.prevPrevWeekendCharge : P.prevLastWeekendCharge;
     const seq = [[prevC ? new Set([prevC]) : new Set(), tx("前月")]].concat(wps.map(p => [new Set(Object.values(charge[p.id]).filter(Boolean)), p.name]));
@@ -60,6 +61,7 @@
     S.push({ id: "s4", title: L("4 週末・祝日の{charge}担当"), html: table(["期間", "区分"].map(tx).concat([L("{charge}担当"), tx("日勤")]), rows4) + `<ul>
 <li>${esc(tv("完全な土日の担当（組。分割は0.5）: {v}（最多−最少 {diff}、許容差 {max}）", { v: T.fmtHalf(fw), diff: fv.length ? (Math.max(...fv) - Math.min(...fv)) / 2 : 0, max: P.weekendMaxDiff }))}</li>
 <li>${esc(tv("分割した土日: {v}（分割は減点 {w}。均等配分に必要なときだけ使われる）", { v: splits.join(T.listSep()) || tx("なし"), w: P.weights?.split_weekend ?? 60 }))}</li>
+<li>${esc(tv("日の途中で担当が交代した日: {v}（交代は 1 日あたり減点 {w}。固定したとき・ほかに手が無いときだけ使われる。その日の担当は最初の枠の人として数える）", { v: handovers.join(T.listSep()) || tx("なし"), w: P.weights?.charge_handover ?? 200 }))}</li>
 <li>${esc(tv("月またぎを含む土日担当（土曜日の日付で1組）: {v}", { v: T.fmtHalf(allw) }))}</li>
 <li>${esc(tv("前月までの履歴込み: {v}（履歴 {h}）", { v: T.fmtHalf(hist), h: T.fmt(P.histWeekend) }))}</li>
 <li>${esc(tv("祝日の担当: {v}（履歴 {h}）", { v: T.fmt(hc), h: T.fmt(P.histHoliday) }))}</li>

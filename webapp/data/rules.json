@@ -145,6 +145,7 @@
   "same_weekday_excess": 15,
   "consecutive_weekend": 15,
   "split_weekend": 60,
+  "charge_handover": 200,
   "weekend_history_spread": 10,
   "charge_without_dayshift": 5,
   "night_oc_then_duty": 3,

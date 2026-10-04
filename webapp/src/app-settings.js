@@ -25,6 +25,7 @@
     weekend_balance_excess: "週末担当の許容差を超えた分（規則を「減点」にしたとき。1日あたり）",
     friday_night_missing: "金曜夜勤の最低回数に足りない分（規則を「減点」にしたとき。1回あたり）",
     consecutive_weekend: "{charge}の連続する週末担当",
+    charge_handover: "休日の{charge}担当が日の途中で交代（日勤帯と夜間で別の人。1日あたり）",
     split_weekend: "土日1組を土曜・日曜の2名に分割",
     weekend_history_spread: "履歴込みの週末担当の偏り（最多−最少）",
     charge_without_dayshift: "週末担当の{charge}にその週末の日勤がない",

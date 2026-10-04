@@ -644,15 +644,25 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 pen_cons((d, "night"), (d + 1, "night"), n)
 
     # 週末・祝日の主担当担当: 日ごとに1名。土日は原則同一人で、均等配分のためだけに土曜・日曜の分割を認める
+    # その日の担当（cday）は、その日の最初の枠（日勤帯があれば日勤帯）に関わる人。後の枠（夜間）が別の人なら「日の途中の交代」で、
+    # 必須ではなく減点（charge_handover）。各枠に関わる主担当は 1 名（必須）。JS の period_charge と同じ
     cday, chargedP, split = {}, {}, {}
     for p in P.periods:
         for d in p["days"]:
+            ds = charge_day_slots(p, d)
             for n in P.I:
                 cday[d, n] = M.NewBoolVar(f"c_{d}_{n}")
-                for s in p["slots"]:
-                    if s[0] == d:
-                        M.Add(Ev(s, n) == cday[d, n])
+                if ds:
+                    M.Add(Ev(ds[0], n) == cday[d, n])
             M.AddExactlyOne(cday[d, n] for n in P.I)
+            if len(ds) > 1:
+                hv = M.NewBoolVar(f"handover_{d}")
+                for s in ds[1:]:
+                    M.Add(sum(Ev(s, n) for n in P.I) == 1)
+                    for n in P.I:
+                        M.Add(Ev(s, n) - cday[d, n] <= hv)
+                        M.Add(cday[d, n] - Ev(s, n) <= hv)
+                obj.append(W.get("charge_handover", 200) * hv)
         if p["kind"] == "weekend" and p["full"]:
             d1, d2 = p["days"]
             split[p["id"]] = M.NewBoolVar(f"split_{p['id']}")
@@ -1044,6 +1054,11 @@ class Asg:
         return n in self.engaged(s)
 
 
+def charge_day_slots(p, d):
+    """期間 p の d 日の枠（日勤帯を先に）。その日の担当は最初の枠の人（JS の T.chargeDaySlots と同じ）"""
+    return sorted([s for s in p["slots"] if s[0] == d], key=lambda s: 0 if s[1] == "day" else 1)
+
+
 def check(P: Problem, asg: dict):
     A = Asg(P, asg)
     V = []
@@ -1131,17 +1146,14 @@ def check(P: Problem, asg: dict):
     for p in P.periods:
         cd = {}
         for d in p["days"]:
-            cs = set()
-            for s in p["slots"]:
-                if s[0] != d:
-                    continue
+            per = []
+            for s in charge_day_slots(p, d):
                 e = {n for n in A.engaged(s) if T.get(n) == "I"}
                 if len(e) != 1:
                     V.append(f"{slab(s)}: 主担当医師の担当が1名でない")
-                cs |= e
-            if len(cs) != 1:
-                V.append(f"{lab(d)}: 主担当担当が日勤・夜勤を通して1名でない {sorted(cs)}")
-            cd[d] = sorted(cs)[0] if len(cs) == 1 else None
+                per.append(sorted(e))
+            # その日の担当は最初の枠の人。後の枠が別の人（日の途中の交代）は違反ではなく減点（charge_handover）
+            cd[d] = per[0][0] if per and len(per[0]) == 1 else None
         charge[p["id"]] = cd
         first = cd.get(p["days"][0])
         prev_i = sorted({n for pd in p["prev_days"] for k in ("day", "night") for n in A.engaged((pd, k)) if T.get(n) == "I"})
@@ -1413,6 +1425,13 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     L.append("")
     L.append(f"- 完全な土日の担当（組。分割は0.5）: {fmt_half(fw)}（最多−最少 {(max(fw.values())-min(fw.values()))/2 if fw else 0:g}、許容差 {P.weekend_max_diff}）")
     L.append(f"- 分割した土日: {'、'.join(splits) if splits else 'なし'}（分割は減点 {(P.rules.get('weights') or {}).get('split_weekend', 60)}。均等配分に必要なときだけ）")
+    hand = []
+    for p in P.periods:
+        for d in p["days"]:
+            who = [next((n for n in P.I if A.eng(n, s)), None) for s in charge_day_slots(p, d)]
+            if len(who) > 1 and any(x != who[0] for x in who[1:]):
+                hand.append(f"{P.label(d)} {'→'.join(x or '―' for x in who)}")
+    L.append(f"- 日の途中で担当が交代した日: {'、'.join(hand) if hand else 'なし'}（交代は 1 日あたり減点 {(P.rules.get('weights') or {}).get('charge_handover', 200)}。固定したとき・ほかに手が無いときだけ）")
     L.append(f"- 月またぎを含む土日担当（土曜日の日付で1組）: {fmt_half(allw)}")
     L.append(f"- 前月までの履歴込み: {fmt_half({n: 2*P.hist_weekend.get(n,0)+allw[n] for n in P.I})}（履歴 {fmt(P.hist_weekend)}）")
     L.append(f"- 祝日の担当: {fmt(hc)}（履歴 {fmt(P.hist_holiday)}）")
