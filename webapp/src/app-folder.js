@@ -97,6 +97,7 @@
     if (rulesPick === "theirs") { state.rules = f.data.rules; state.renames = []; } // 相手の名簿を採る: 改名の記録は消す
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
     A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）
+    if (A.clearUndo) A.clearUndo(); // 統合の前の写しへ「元に戻す」と、相手の変更を手元から落としたまま保存してしまう（共通の元は相手の版に進んでいる）
     A.ensureMonth(state.month); A.persist(); A.renderAll();
     A.toast(T.t("別のPCの変更と自動で統合しました（自分 {mine} 件、相手 {theirs} 件、衝突 {n} 件）。入力が変わったので必要なら再計算してください", { mine: r.mineChanges, theirs: r.theirChanges, n: r.conflicts.length })
       + (lostResult ? T.t("。計算結果は、氏名を採用した名簿に対応付けられないので外しました。もう一度「計算する」を押してください") : ""));
@@ -491,7 +492,7 @@
   const versionSig = (label, S = state) => { const m = Object.assign({}, S.month); delete m.doc_versions; const r = S.result || {};
     return A.sigOf(JSON.stringify([A.canon(S.rules), A.canon(m), A.canon({ asg: r.asg, base_asg: r.mark_changes ? r.base_asg : null, avoid_ref: r.avoid_ref, status: r.status }), label, S.lang || T.lang(), T.BUILD_ID || null, T.plugins && T.plugins.stamp ? T.plugins.stamp() : null])); };
   // 月データを状態に当てる。opts.fromFolder（既定 true）: 接続中のフォルダから読んだ内容だけを「そのフォルダに保存済み」にする。外部の JSON（「JSONを読込」）は接続先に対する変更なので未保存のまま
-  // （自動保存・統合の確認を経てフォルダに書かれる）。どちらも設定タブの「元に戻す」の履歴は捨てる（別の月・別の内容に対して古い写しを当てない）
+  // （自動保存・統合の確認を経てフォルダに書かれる）。どちらもヘッダーの「元に戻す」の履歴は捨てる（別の月・別の内容に対して古い写しを当てない）
   // 現在の月を JSON としてダウンロードする。フォルダ接続中は、フォルダへの保存の状態（保存済みか・統合の共通の元）を進めない（ダウンロードは別の出口。未保存の変更は自動保存でフォルダに書かれる）
   function downloadMonthJson() {
     A.readAll(); const at = new Date().toISOString(); A.download(A.dataFileName(), new Blob([A.payloadJson(at)], { type: "application/json" }));

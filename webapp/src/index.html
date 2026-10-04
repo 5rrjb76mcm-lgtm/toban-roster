@@ -17,6 +17,7 @@
   </div>
   <div class="hrow">
     <div id="fileCluster"><span id="folderBar"></span><span id="saveState"></span></div>
+    <div id="undoBox"><button id="btnUndo" disabled>元に戻す</button> <span id="undoNote" class="note"></span></div>
   </div>
   <div class="hrow"><!-- タブは常に独立した行（保存状態の文言の長さで折り返しが変わり、見出しの高さが動くのを防ぐ） -->
     <nav>
@@ -53,7 +54,6 @@
   <section class="pane" id="settings" hidden>
     <div class="box setmodes">
       <span class="modesw"><button data-setmode="daily">日々の設定（名簿・規則・重み）</button><button data-setmode="build">施設の構成を作る</button></span>
-      <button id="btnUndo" disabled>元に戻す</button> <span id="undoNote" class="note"></span>
     </div>
     <div class="box" data-modepane="build">
       <h3>施設の構成を作る</h3>

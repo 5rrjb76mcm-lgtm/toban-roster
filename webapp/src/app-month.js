@@ -81,6 +81,7 @@
     try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
+    if (typeof A.pushUndo === "function") A.pushUndo("前月の取り込み", { auto: true });
     state.month = month2;
     A.save(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed();
     A.toast(T.t("{y}年{m}月 から取り込みました。", { y: py, m: pm }) + notes.join(" "));

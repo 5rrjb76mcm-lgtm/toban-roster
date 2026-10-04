@@ -90,6 +90,8 @@ T.rules.register({
     PERIOD_CHARGE_NEXT_LINK: { en: "{period}: the 1st of next month is fixed to {want}, but {charge} duty at the end of the month is {got}", ja: "{period}: 翌月1日の固定 {want} と月末の{charge}担当 {got} が接続していない" },
     LINT_FIXED_CHARGE_NO_SLOT: { en: "{day}: {charge} duty is fixed to {who}, but there are no shift slots", ja: "{day}: {charge}担当 {who} を固定していますが、勤務枠がありません" },
     LINT_FIXED_CHARGE_NO_SLOT_HINT: { en: "Clear the fixed {charge} duty or review the shift settings", ja: "期間責任者の固定を外すか、勤務帯の設定を見直す" },
+    LINT_FIXED_CHARGE_NOT_ONE_IN_DAY: { en: "Fixed assignments put more than one {charge} on {day} ({detail}). {charge} duty is held by one person per day, so this cannot be solved as it is", ja: "固定指定: {day} に{charge}が 2 名以上関与します（{detail}）。{charge}担当は 1 日に 1 名なので、このままでは解なしになります" },
+    LINT_FIXED_CHARGE_NOT_ONE_IN_DAY_HINT: { en: "Make the {charge} the same person across that day's slots (fixed work, on-call and {charge} duty). If the duty really changes hands during the day, set the rule 'period {charge} duty on days off' to off", ja: "同じ日の日勤帯と夜間の{charge}（勤務・OC・{charge}担当の固定）を同じ人にそろえてください。日中と夜で責任者が交代する運用なら、規則「休日・週末に期間責任者を置く」を「なし」にします" },
   },
   // 入力チェック: 期間責任者の役割が無い、翌月 1 日・固定・前月末の接続の矛盾、期間責任者になれる人がいない休日
   lint(ctx, prm) {
@@ -107,6 +109,12 @@ T.rules.register({
       if (!p) { ctx.push("LINT_FIXED_CHARGE_NOT_OFF_DAY", { day: lab(d), who: n }); continue; }
       if (!p.slots.some(s => s[0] === d)) { ctx.push("LINT_FIXED_CHARGE_NO_SLOT", { day: lab(d), who: n }); continue; }
       if (unN(n, d) || unO(n, d)) ctx.push("LINT_FIXED_CHARGE_VS_UNAVAIL", { day: lab(d), who: n }); }
+    // 固定指定どうしの矛盾: 同じ休日の枠ごとに固定した期間責任者の役割の人（勤務・OC・期間責任者の固定）が 2 名以上（日勤帯と夜間で別の人など）。
+    // 解く側は「その日の全枠に同じ 1 名が関与」を固定でも緩めないので解なしになる。診断は「固定指定」としか出ないので、ここで日と人を名指しする
+    for (const p of P.periods) for (const d of p.days) { const slots = p.slots.filter(s => s[0] === d); if (!slots.length) continue;
+      const per = slots.map(s => [s, [...new Set([...P.fixedWorkersOf(s), ...((s[1] === "night" ? P.fixedNightOc : P.fixedDayOc)[d] || [])].filter(n => P.I.includes(n)))]]).filter(x => x[1].length);
+      const all = new Set(per.flatMap(x => x[1])), fc = P.fixedCharge[d]; if (fc && P.I.includes(fc)) all.add(fc);
+      if (all.size > 1) ctx.push("LINT_FIXED_CHARGE_NOT_ONE_IN_DAY", { day: lab(d), detail: per.map(([s, ns]) => `${P.shiftLabel(s[1])} ${ctx.join(ns)}`).concat(fc && P.I.includes(fc) ? [`${T.term(T.t("{charge}担当"), P.rules)} ${fc}`] : []).join(" ／ ") }); }
     // 月またぎの接続: 前月末の期間責任者が翌月1日に不可
     for (const p of P.periods) { if (!p.prevDays.length || !p.slots.length) continue; const d = p.days[0];
       const prevI = P.I.filter(n => p.prevDays.some(pd => { const f = P.prevFixed[`${pd}:day`], g = P.prevFixed[`${pd}:night`]; return (f && (f.work === n || f.oc.includes(n))) || (g && (g.work === n || g.oc.includes(n))); }));

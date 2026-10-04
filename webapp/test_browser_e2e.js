@@ -440,6 +440,25 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     await page.waitForTimeout(1500); assert.strictEqual(fs.text("A/202611/202611_data.json"), nov, "11 月のファイルは不変"); assert.strictEqual(fs.text("A/202701/202701_data.json"), null, "1 月は作られない");
     await ctx.close();
   });
+  await test("ヘッダーの「元に戻す」: 職員別カレンダーの不可日・希望の入力を新しい順に戻せる（職員を切り替えただけでは記録が増えない）。設定の変更も同じボタンで、月別条件のタブから戻せる。保存した JSON まで", async () => {
+    const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    assert.ok(await page.locator("header #btnUndo").isVisible(), "ヘッダーにある"); assert.ok(await page.locator("#btnUndo").isDisabled(), "最初は押せない");
+    const who = await page.evaluate(() => T.app.names()[T.app.state.ui.doctor]), un0 = await page.evaluate(n => JSON.stringify(T.app.state.month.unavailable_night[n] || []), who), wish0 = await page.evaluate(n => JSON.stringify((T.app.state.month.wishes.night_on || {})[n] || []), who);
+    const d1 = await page.evaluate(n => { const m = T.app.state.month; for (let d = 9; d <= 20; d++) if ((T.app.dowOf(m.year, m.month, d) < 5) && !(m.holidays || []).includes(d) && !(m.unavailable_night[n] || []).includes(d) && !(m.unavailable_other || []).some(u => u.name === n && +u.day === d) && !(m.avoid || []).some(u => u.name === n && +(u.day ?? u.date) === d)) return d; }, who);
+    await page.selectOption(`#doctorPane [data-cal="unavail"][data-d="${d1}"]`, "night"); assert.ok((await page.evaluate(n => T.app.state.month.unavailable_night[n], who)).includes(d1)); assert.ok(await page.locator("#btnUndo").isEnabled());
+    assert.ok(/カレンダーの変更/.test(await page.locator("#undoNote").textContent()), "何を戻すかを出す");
+    await page.check(`#doctorPane [data-cal="wish"][data-d="${d1 + 1}"]`); assert.ok(/あと 2 回/.test(await page.locator("#undoNote").textContent()));
+    await page.click("#docNext"); await page.click("#docPrev"); assert.ok(/あと 2 回/.test(await page.locator("#undoNote").textContent()), "職員の切替は記録しない: " + await page.locator("#undoNote").textContent());
+    await page.click("#btnUndo"); assert.strictEqual(await page.evaluate(n => JSON.stringify((T.app.state.month.wishes.night_on || {})[n] || []), who), wish0, "後に入れた希望が先に戻る"); assert.ok((await page.evaluate(n => T.app.state.month.unavailable_night[n], who)).includes(d1), "不可日はまだ残る");
+    assert.strictEqual(await page.locator(`#doctorPane [data-cal="wish"][data-d="${d1 + 1}"]`).isChecked(), false, "画面も戻る");
+    await page.click("#btnUndo"); assert.strictEqual(await page.evaluate(n => JSON.stringify(T.app.state.month.unavailable_night[n] || []), who), un0, "不可日が戻る"); assert.strictEqual(await page.locator(`#doctorPane [data-cal="unavail"][data-d="${d1}"]`).inputValue(), "", "欄も空に戻る"); assert.ok(await page.locator("#btnUndo").isDisabled());
+    await waitSaved(page); const saved = JSON.parse(fs.text("A/202611/202611_data.json")).month; assert.strictEqual(JSON.stringify(saved.unavailable_night[who] || []), un0, "保存した JSON も元のまま"); assert.strictEqual(JSON.stringify((saved.wishes.night_on || {})[who] || []), wish0);
+    await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); const w = page.locator("#weightsTable [data-w]").first(), key = await w.getAttribute("data-w"), w0 = await page.evaluate(k => T.app.state.rules.weights[k], key);
+    await w.fill(String(w0 + 7)); await w.dispatchEvent("change"); assert.strictEqual(await page.evaluate(k => T.app.state.rules.weights[k], key), w0 + 7); await page.click('.tab[data-tab="input"]'); assert.ok(await page.locator("#btnUndo").isEnabled(), "設定の変更も月別条件のタブから戻せる");
+    await page.click("#btnUndo"); assert.strictEqual(await page.evaluate(k => T.app.state.rules.weights[k], key), w0);
+    await ctx.close();
+  });
   await test("結果の職員別カレンダーの休みの日数: 検算と同じ数え方（OC だけの日は休み。明けの扱いは設定に従う）", async () => {
     const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
     const asg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "data/js_assignment.json"), "utf8"));

@@ -49,6 +49,7 @@ details.box summary{cursor:pointer;font-weight:bold}
 #fileCluster{min-height:40px;box-sizing:border-box;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:6px}
 #fileCluster #folderBar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap} #fileCluster .note{color:#dde}
 #saveState{background:transparent}
+#undoBox{min-height:40px;box-sizing:border-box;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);padding:4px 10px;border-radius:6px} #undoBox .note{color:#dde;font-size:12px;max-width:26em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #undoBox button:disabled{opacity:.5}
 
 #toolbar{justify-content:flex-end}
 

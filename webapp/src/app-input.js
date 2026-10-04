@@ -129,10 +129,10 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    root.addEventListener("change", ev => { readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
+    root.addEventListener("change", ev => { undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
-      readSettingsMonth(); const m = state.month; const id = b.id, del = b.dataset.del;
+      undoPoint("月別条件の変更"); readSettingsMonth(); const m = state.month; const id = b.id, del = b.dataset.del;
       if (id === "btnPurgeUnknown") { const unknown = Object.keys(T.monthNameRefs(m)).filter(n => !state.rules.doctors.some(d => d.name === n)); if (!unknown.length) return;
         if (!confirm(T.t("{who} の入力（固定指定・不可・希望・業務・目標）をこの月から消します。よろしいですか", { who: unknown.join("・") }))) return;
         const c = T.purgeMonthNames(m, unknown); A.save(); A.renderAll(); A.toast(T.t("{n} 件の入力を消しました", { n: c })); return; }
@@ -294,10 +294,10 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
 
   function bindDoctor() {
     const root = $("#doctorPane");
-    root.addEventListener("change", ev => { if (ev.target.id === "docSel") { readDoctor(); state.ui.doctor = +ev.target.value; A.save(); renderDoctor(); } else readDoctor(); });
+    root.addEventListener("change", ev => { undoPoint("{person}別カレンダーの変更"); if (ev.target.id === "docSel") { readDoctor(); state.ui.doctor = +ev.target.value; A.save(); renderDoctor(); } else readDoctor(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
-      readDoctor(); const m = state.month, n = curDoctor(), list = A.names();
+      undoPoint("{person}別カレンダーの変更"); readDoctor(); const m = state.month, n = curDoctor(), list = A.names();
       if (b.id === "docPrev") state.ui.doctor = (state.ui.doctor + list.length - 1) % list.length;
       else if (b.id === "docNext") state.ui.doctor = (state.ui.doctor + 1) % list.length;
       else if (b.dataset.act === "patAdd") m.regular_duties[n].push({ kind: "outpatient", dow: "Mon", part: "full" });
@@ -311,6 +311,8 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
 
   // 表示中の画面だけ読み戻す（隠れている画面の DOM は古いことがあり、読み戻すと他の画面で入れた固定などを消してしまう。隠れた画面は表示時に描き直す）
   // 親のタブが隠れていれば読まない（設定タブで改名した後に、描き直していない固定配置の旧名を読み戻さない）
+  // ヘッダーの「元に戻す」のための記録（app-settings.js の pushUndo）。入力を読み戻す直前の状態を覚える。何も変わらなければ記録は残らない
+  function undoPoint(label) { if (typeof A.pushUndo === "function") A.pushUndo(label, { auto: true }); }
   function readAll() { const vis = id => { const e = $("#" + id); return !!e && !e.hidden && !(typeof e.closest === "function" && e.closest("[hidden]")); }; if (vis("monthSettings")) readSettingsMonth(); if (vis("doctorPane")) readDoctor(); if (vis("fixedPane")) readFixed(); }
 
   // ---------- 固定配置（決定済みの配置をまとめて入力する画面。{person}別カレンダーの「固定」欄と同じデータを枠ごとに編集） ----------
@@ -390,8 +392,8 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
   }
   function bindFixed() {
     const root = $("#fixedPane");
-    root.addEventListener("change", () => readFixed());
-    root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
+    root.addEventListener("change", () => { undoPoint("固定配置の変更"); readFixed(); });
+    root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; undoPoint("固定配置の変更"); if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
   }
 
   Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数

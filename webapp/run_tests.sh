@@ -30,6 +30,7 @@ run test_merge_node.js
 run test_profile_export_node.js
 run test_settings_import_node.js
 run test_undo_roster_order_node.js
+run test_undo_month_node.js
 run test_numeric_validation_node.js "$HP"
 run test_save_node.js
 run test_save_exists_node.js
@@ -47,6 +48,7 @@ run test_dutydays_node.js "$HP"
 run test_infer_node.js "$HP"
 run test_prevconn_node.js "$HP"
 run test_period_slots_node.js "$HP"
+run test_charge_day_split_node.js "$HP"
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"

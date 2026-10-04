@@ -487,24 +487,38 @@
   // 積むのはこの画面を開いている間だけ（再読み込みで消える）。月データも一緒に戻す（名簿の変更は月データの氏名にも及ぶため）
   // 履歴は「変更の直前」の写し（設定・月・結果）と、変更の直後の月の写し（after。同じ処理の中で変更が終わった後に取る）。
   // 戻すときに月が after と違っていれば（後から月別条件を入力した）、月と結果は戻さず設定だけ戻す。月・施設・JSON を切り替えたら履歴は捨てる（A.clearUndo）
-  const undoStack = [], UNDO_MAX = 30;
-  function pushUndo(label) {
+  // ヘッダーの「元に戻す」は、設定の変更に加えて月別条件の入力（職員別カレンダーの不可・希望・固定、月の設定、固定配置）も戻す。入力の画面は変更の直前に pushUndo(label, { auto: true }) を呼ぶ。
+  // auto の記録は、処理の直後に何も変わっていなければ捨てる（職員の切替など）。戻すときは、記録の直後の内容からその後に記録の無い変更（別の PC の変更の統合など）が入っていれば戻さない
+  const undoStack = [], UNDO_MAX = 50;
+  const monthSig = m => { const x = Object.assign({}, m); delete x.doc_versions; return JSON.stringify(A.canon(x)); }; // 月の中身の比較（版の記録と、画面の読み戻しが補う空値・集合の並びは差にしない）
+  const unchangedSince = entry => { const o = JSON.parse(entry.snap); return monthSig(o.month) === monthSig(state.month) && A.rulesSig(o.rules) === A.rulesSig(state.rules) && JSON.stringify(o.result) === JSON.stringify(state.result); };
+  function pushUndo(label, opts = {}) {
     const snap = JSON.stringify({ rules: state.rules, month: state.month, result: state.result });
     if (undoStack.length && undoStack[undoStack.length - 1].snap === snap) return;
-    const entry = { snap, label, after: null }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
-    queueMicrotask(() => { if (entry.after === null) entry.after = JSON.stringify(state.month); }); // 変更を行った処理が終わった直後の月
+    const entry = { snap, label, after: null, auto: !!opts.auto }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
+    queueMicrotask(() => { if (entry.after !== null) return; entry.after = monthSig(state.month); entry.afterRules = A.rulesSig(state.rules); // 変更を行った処理が終わった直後の月と設定
+      if (entry.auto && unchangedSince(entry)) { const i = undoStack.indexOf(entry); if (i >= 0) undoStack.splice(i, 1); renderUndo(); } });
     renderUndo();
   }
   function clearUndo() { undoStack.length = 0; renderUndo(); }
   function renderUndo() {
     const b = $("#btnUndo"), note = $("#undoNote"); const last = undoStack[undoStack.length - 1];
     if (b) b.disabled = !last; if (!note) return; // 設定タブを描く前でも呼ばれる（切替時の履歴の破棄など）
-    note.textContent = last ? T.t("直前の変更: {what}（あと {n} 回戻せます）", { what: tx(last.label), n: undoStack.length }) : tx("取り消せる変更はありません");
+    note.textContent = last ? T.t("直前の変更: {what}（あと {n} 回戻せます）", { what: T.term(tx(last.label), state.rules), n: undoStack.length }) : tx("取り消せる変更はありません"); note.title = note.textContent;
   }
   function undo() {
-    const last = undoStack.pop(); if (!last) return;
+    if (A.solving) return A.toast(T.t("計算中は元に戻せません。計算が終わってから操作してください"));
+    let last; while ((last = undoStack.pop()) && last.after !== null && unchangedSince(last)) { } // いまの状態と同じ記録（何も変えなかった操作）は飛ばす。押したのに何も起きない、を作らない
+    renderUndo(); if (!last) return; // ヘッダーのボタンは、どのタブを描いているかに関わらずここで更新する
     const o = JSON.parse(last.snap);
-    const monthUntouched = last.after === null || last.after === JSON.stringify(state.month);
+    const monthUntouched = last.after === null || last.after === monthSig(state.month);
+    const keepVersions = m => { const v = state.month.doc_versions; if (v !== undefined) m.doc_versions = v; else delete m.doc_versions; return m; }; // 版の記録は保存の履歴なので巻き戻さない
+    if (last.auto) { // 月別条件の入力: 記録の直後の内容のままなら、月と結果を入力の前に戻す
+      if (!monthUntouched || (last.afterRules && last.afterRules !== A.rulesSig(state.rules))) { renderUndo(); return A.toast(T.t("この変更は取り消せません: その後に別の経路（別のPCの変更の統合・データの取り込みなど）で内容が変わっています（{what}）", { what: T.term(tx(last.label), state.rules) })); }
+      state.month = keepVersions(o.month); state.result = o.result;
+      A.ensureMonth(state.month); A.save(); A.renderAll();
+      return A.toast(T.t("元に戻しました（{what}）", { what: T.term(tx(last.label), state.rules) }));
+    }
     // 行の並べ替えは改名ではない。逆改名を記録すると、未保存の改名と連結されて別人の入力を統合してしまう。
     const namesChanged = JSON.stringify((o.rules.doctors || []).map(d => d.name).sort()) !== JSON.stringify((state.rules.doctors || []).map(d => d.name).sort());
     if (!monthUntouched && namesChanged) { renderUndo(); return A.toast(T.t("この変更は取り消せません: 名簿の氏名を変えた後に月別条件も変更されているため、設定だけを戻すと氏名の対応が壊れます。手で直してください（{what}）", { what: tx(last.label) })); } // 不整合な状態を作らない（履歴からは外す）
@@ -512,7 +526,7 @@
       if (cur.length === old.length) cur.forEach((n, i) => { if (n !== old[i]) noteRename(n, old[i]); });
       else { for (const n of old) if (!cur.includes(n)) noteRename(T.GONE + n, n); for (const n of cur) if (!old.includes(n)) noteRename(n, T.GONE + n); } } // 名簿から外した人が戻る・足した人が消えることも記録する（外した後の改名を追える） // 改名を戻したことも、改名の記録に足す（統合のときの対応が合うように）
     state.rules = o.rules;
-    if (monthUntouched) { state.month = o.month; state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
+    if (monthUntouched) { state.month = keepVersions(o.month); state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
     A.ensureMonth(state.month); A.save(); A.renderAll();
     A.toast(T.t("元に戻しました（{what}）", { what: tx(last.label) }) + (monthUntouched ? "" : T.t("。月別条件はその後に変更されているので戻していません")));
   }
