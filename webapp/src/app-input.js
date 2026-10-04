@@ -57,8 +57,8 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
 <tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
 <tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${bal[n] ?? 0}" style="width:3.5em"></td>`).join("")}</tr>
 <tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" data-target="${esc(n)}" value="${m.targets?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
-<tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${m.count_min?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${m.count_max?.[n] ?? ""}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
+<tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${esc(m.count_min?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${esc(m.count_max?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
 ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人は、目安±{tol} の代わりにその範囲が必須になります（その月だけ。翌月へは引き継ぎません）。固定指定が上限を超える分は許容します。入れすぎると解なしになるので、偏りが気になる人だけに使ってください。", { tol: R.quota_tolerance ?? 1 }))}</p>` : ""}
 <p><button id="btnAutoTargets">${esc(T.t("自動調整"))}</button> <button id="btnClearTargets">${esc(T.t("目安どおりに戻す"))}</button>${on("quota_range") ? ` <button id="btnClearLimits">${esc(T.t("下限・上限を消す"))}</button>` : ""}　<span class="note">${esc(T.t("自動調整の案"))}: ${at ? esc(at.lines.slice(1).join(T.listSep())) : ""}</span></p></div>`);
     const fx = m.fixed || {};
@@ -110,7 +110,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const keepHidden = (old, shown) => Object.fromEntries(Object.entries(old || {}).filter(([n]) => !shown.has(n)));
     { const els = [...root.querySelectorAll("[data-target]")], t = keepHidden(m.targets, new Set(els.map(el => el.dataset.target))); for (const el of els) if (el.value !== "") t[el.dataset.target] = +el.value; m.targets = t; }
     for (const [attr, key] of [["cmin", "count_min"], ["cmax", "count_max"]]) { const els = [...root.querySelectorAll(`[data-${attr}]`)]; if (!els.length) continue; // 当月の下限・上限（欄を出していないとき＝規則が「なし」は前の値のまま）
-      const t = keepHidden(m[key], new Set(els.map(el => el.dataset[attr]))); for (const el of els) if (el.value !== "" && Number.isFinite(+el.value)) t[el.dataset[attr]] = Math.max(0, Math.round(+el.value)); m[key] = t; }
+      const t = keepHidden(m[key], new Set(els.map(el => el.dataset[attr]))); for (const el of els) if (el.value !== "") t[el.dataset[attr]] = +el.value; m[key] = t; }
     if (root.querySelector("[data-dflag],[data-dnote]")) { // 日ごとの区分・予定（画面に出ている分だけ読み戻す。列の無い区分＝プラグインを読んでいない区分は、そのまま残す）
       const shown = new Set([...root.querySelectorAll("[data-dflag]")].map(el => el.dataset.dflag)), old = m.day_flags || {}; m.day_flags = {}; m.day_notes = {};
       for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
@@ -266,7 +266,9 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         m.wishes.day_on = m.wishes.day_on || {}; const all = ((m.wishes.day_on[n] || []).map(Number).filter(d => !shown.has(d))).concat(wishesDay).sort((a, b) => a - b); if (all.length) m.wishes.day_on[n] = all; else delete m.wishes.day_on[n]; } // 欄を出していない日（日勤の枠が無い日）の希望は残す
       const wk = new Set(m.wishes.weekend_dayshift || []); const cb = $("#wkwish"); if (cb) { if (cb.checked) wk.add(n); else wk.delete(n); } m.wishes.weekend_dayshift = A.names().filter(x => wk.has(x));
       // 固定: 欄を出している日・勤務帯の分だけ、この医師の固定をいったん外してから、カレンダーの選択で入れ直す（欄を出していない日・勤務帯の固定は残す: 日勤を休日だけにした設定で平日の日勤の固定を持っていても、別の日の編集で消えない）
-      const fx = m.fixed; const dropArr = (tbl, d) => { if (!tbl[d]) return; tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; };
+      const fx = m.fixed, existingWork = new Set();
+      for (const k of ["day", "night"]) for (const [d, ns] of Object.entries(fx[k] || {})) if ([].concat(ns || []).includes(n)) existingWork.add(`${+d}:${k}`); // 設定変更で人数超過になった既存の固定は保持し、入力チェックで直してもらう
+      const dropArr = (tbl, d) => { if (!tbl[d]) return; tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; };
       const dropWork = (tbl, d) => { if (!tbl || tbl[d] === undefined) return; const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; }; // 勤務者の固定（文字列か配列）から自分を外す
       const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|")[1] === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
       fx.day_oc ||= {}; fx.night_oc ||= {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d; if (el.dataset.k === "day") { dropWork(fx.day, d); dropArr(fx.day_oc, d); } else { dropWork(fx.night, d); dropArr(fx.night_oc, d); } });
@@ -275,7 +277,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         for (const d of Object.keys(fx.weekend_charge || {})) if (fx.weekend_charge[d] === n) { const el = selOf[+d]; if (el && el.dataset.shown === "charge") delete fx.weekend_charge[d]; } }
       const conflicts = []; let P0 = null; try { P0 = new T.Problem(R, m); } catch (e) { }
       const addWork = (tbl, d, kind) => { const cur = [].concat(tbl[d] || []), cap = P0 ? P0.countOf([d, kind]) : 1; // 枠の人数まで固定できる（1 名の枠は従来どおり衝突）
-        if (cur.length >= cap) { conflicts.push(T.t("{d}日 {slot}は {who} が固定済み", { d, slot: shiftLabel(R, kind), who: cur.join(T.nameSep()) })); return; }
+        if (cur.length >= cap && !existingWork.has(`${d}:${kind}`)) { conflicts.push(T.t("{d}日 {slot}は {who} が固定済み", { d, slot: shiftLabel(R, kind), who: cur.join(T.nameSep()) })); return; }
         cur.push(n); tbl[d] = cur.length === 1 ? cur[0] : cur; };
       root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d, v = el.value; if (!v) return;
         if (v === "day") addWork(fx.day, d, "day");
@@ -348,7 +350,9 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       const SW = (val, k, exists = true) => {
         if (!exists) { const cur = [].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep());
           return cur ? A.sel([["", "―"], [cur, cur + T.t("（現在は使わない値）")]], cur, `data-fx="${k}" data-d="${d}" data-keep`) : ""; } // 枠のない日の旧固定は複数名も印も保持し、空欄でだけ解除する
-        if (multi) return `<input data-fx="${k}" data-d="${d}" data-multi value="${esc([].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep()))}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">`;
+        // 必要人数を減らした後の複数名の固定も、名前と印をすべて見せて明示的に直せるようにする
+        if (multi || [].concat(val || []).length > 1) { const shown = [].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep());
+          return `<input data-fx="${k}" data-d="${d}" data-multi value="${esc(shown)}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">`; }
         const cur = [].concat(val || [])[0] || "", opts = next ? nextNameOpts : nameOpts;
         return S(cur && !opts.some(o => o[0] === cur) ? opts.concat([[cur, cur + T.t("（現在は使わない値）")]]) : opts, cur, k); }; // 候補から外れても既存の固定は消さない（明示的に空欄を選ぶまで保持）
       const yVal = tbl => (juniorId && (fx[tbl + "_none"]?.[d] || []).includes(juniorId)) ? NONE_Y : pick(fx[tbl]?.[d], juniorId);
@@ -366,14 +370,17 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
 <table class="grid fixedgrid"><tr><th>${esc(T.t("日付"))}</th><th>${esc(dayL)}</th><th>${esc(TM("{shift} {charge}OC").replace("{shift}", dayL))}</th><th>${esc(TM("{shift} {junior}OC").replace("{shift}", dayL))}</th><th>${esc(nightL)}</th><th>${esc(TM("{shift} {charge}OC").replace("{shift}", nightL))}</th><th>${esc(TM("{shift} {junior}OC").replace("{shift}", nightL))}</th><th>${esc(TM("{charge}担当（土日祝）"))}</th></tr>${rows.join("")}</table>
 <p class="note">${esc(T.t("名前の後ろに（ ）で印を書くと、勤務表と説明資料に名前(印)で出ます（例: 研修・会議）。"))}</p>
 <p><button data-act="fxClear">${esc(T.t("固定をすべて消去"))}</button> <span class="note">${esc(T.t("入力の矛盾（不可日との衝突、同じ人の勤務とOCの重複など）は「2 計算」の前に具体名で指摘されます。"))}</span></p></div>`;
+    $("#fixedPane").querySelectorAll("input[data-fx][data-multi]").forEach(el => { el.dataset.shown = el.value; }); // 実際の入力欄の値を比較基準にする
   }
   function readFixed() {
     const m = state.month, root = $("#fixedPane"); if (!root.children.length) return;
     // 画面に出ている欄だけを読み戻し、出していない項目（この画面に無い枠の固定など）は残す
     const cur = m.fixed || {}, cp = o => Object.assign({}, o || {});
     const fx = { day: cp(cur.day), night: cp(cur.night), weekend_charge: cp(cur.weekend_charge), day_oc: cp(cur.day_oc), night_oc: cp(cur.night_oc), day_oc_none: cp(cur.day_oc_none), night_oc_none: cp(cur.night_oc_none) };
+    // 未変更の複数名欄は再解釈しない。氏名の括弧や印の区切り文字も、元の構造化データのまま残す。
+    const unchangedMulti = el => el.hasAttribute("data-multi") && el.dataset.shown !== undefined && el.value === el.dataset.shown;
     const TBL = { day: ["day"], night: ["night"], charge: ["weekend_charge"] }; // 勤務者・期間責任者は、出ている欄の分を空にしてから読み戻す
-    root.querySelectorAll("select[data-fx],input[data-fx]").forEach(el => { if (el.hasAttribute("data-keep") && el.value) return; for (const t of TBL[el.dataset.fx] || []) delete fx[t][+el.dataset.d]; });
+    root.querySelectorAll("select[data-fx],input[data-fx]").forEach(el => { if ((el.hasAttribute("data-keep") && el.value) || unchangedMulti(el)) return; for (const t of TBL[el.dataset.fx] || []) delete fx[t][+el.dataset.d]; });
     // OC の欄は役割ごとに 1 人しか出していないので、配列ごと作り直さない: 欄を変えたときだけ、出していた人（または「OC なし」）を新しい値に置き換える。同じ役割の 2 人目・欄の無い役割の OC は残す
     const OC = { dayI: "day_oc", dayY: "day_oc", nightI: "night_oc", nightY: "night_oc" }, jr = roleOf(state.rules, "junior");
     root.querySelectorAll("select[data-fx]").forEach(el => { const tbl = OC[el.dataset.fx]; if (!tbl) return; const d = +el.dataset.d, was = el.dataset.shown, v = el.value; if (was !== undefined && was === v) return;
@@ -383,16 +390,17 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       el.dataset.shown = v; });
     const splitNames = v => [...new Set(String(v || "").split(/[・,、|\n]+/).map(x => x.trim()).filter(Boolean))]; // 「・」区切り → 名前の配列（1 名なら文字列で保存）。名前に空白があるので空白では切らない
     const tags = Object.assign({}, m.fixed_tags || {}); // 固定の印「名前(印)」。出ている欄の分は作り直す
-    root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { const pre = `${+el.dataset.d}:${el.dataset.fx}|`; for (const key of Object.keys(tags)) if (key.startsWith(pre)) delete tags[key]; });
+    root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { if (unchangedMulti(el)) return; const pre = `${+el.dataset.d}:${el.dataset.fx}|`; for (const key of Object.keys(tags)) if (key.startsWith(pre)) delete tags[key]; });
     const nameTag = x => { const mt = x.match(/^(.*?)[\s]*[（(]([^（）()]*)[)）]\s*$/); return mt ? [mt[1].trim(), mt[2].trim()] : [x, ""]; };
     root.querySelectorAll("select[data-fx],input[data-fx]").forEach(el => {
-      const d = +el.dataset.d, k = el.dataset.fx, v = el.value; if (!v || el.hasAttribute("data-keep")) return; // 保持専用の欄は元の配列・氏名・印を再解釈しない
+      const d = +el.dataset.d, k = el.dataset.fx, v = el.value; if (!v || el.hasAttribute("data-keep") || unchangedMulti(el)) return; // 保持専用の欄は元の配列・氏名・印を再解釈しない
       if (k === "day" || k === "night") { const parts = el.hasAttribute("data-multi") ? splitNames(v).map(nameTag) : [[v, ""]]; const ns = [...new Set(parts.map(p => p[0]).filter(Boolean))];
         for (const [n, tg] of parts) if (n && tg) tags[`${d}:${k}|${n}`] = tg;
         if (ns.length) fx[k][d] = ns.length === 1 ? ns[0] : ns; } else if (k === "charge") fx.weekend_charge[d] = v;
     });
     for (const key of Object.keys(tags)) { const [sl, who] = key.split("|"), [dd, kk] = sl.split(":"); if (!(fx[kk] && [].concat(fx[kk][+dd] || []).includes(who))) delete tags[key]; } // 実際の固定と結び付かない印は残さない（1 名の欄で外した人の印・全消去の後の印）
     m.fixed = fx; m.fixed_tags = tags;
+    root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { el.dataset.shown = el.value; });
     root.querySelectorAll("[data-extras]").forEach(el => { const [tbl, d] = el.dataset.extras.split(":"), k = tbl === "day_oc" ? "day" : "night", val = x => (root.querySelector(`select[data-fx="${k}${x}"][data-d="${d}"]`) || {}).value || ""; el.textContent = extrasText(fx[tbl][+d], [val("I"), val("Y")]); }); // 欄の横の「＋名前」も、読み戻した結果に合わせる
     A.save();
   }

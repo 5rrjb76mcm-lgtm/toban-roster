@@ -5,6 +5,8 @@
 // 固定指定（fixed.weekend_charge）、前月末からの接続、翌月 1 日の固定との接続もここ。
 // その日の枠（日勤帯を先に）。解く側・検算・減点・入力チェック・説明資料が同じ並びを使う
 T.chargeDaySlots = (p, d) => p.slots.filter(s => s[0] === d).sort((a, b) => (a[1] === "day" ? 0 : 1) - (b[1] === "day" ? 0 : 1));
+// 前月末も日ごとの最初の実在枠から担当者を決める。夜間だけの前月データでは夜間が最初の枠。
+T.prevChargeSlots = (P, p) => p.prevDays.map(d => T.chargeDaySlots({ slots: P.prevSlots }, d)[0]).filter(Boolean);
 // 割当から、日の途中で期間責任者が交代した日を出す（[{ d, who: [最初の枠の人, 後の枠の人…] }]）。減点と説明資料が使う
 T.chargeHandovers = (P, A) => { const out = [];
   for (const p of P.periods) for (const d of p.days) { const who = T.chargeDaySlots(p, d).map(s => P.I.find(n => A.eng(n, s)) || null); if (who.length > 1 && who.slice(1).some(x => x !== who[0])) out.push({ d, who }); }
@@ -36,7 +38,7 @@ T.rules.register({
     }
     // 月またぎの土日: 前月末（土曜）の担当者が翌月 1 日（日曜）も担当する
     if (!ctx.relaxed("prev_connection")) for (const p of periods) { if (!p.prevDays.length) continue;
-      const prevI = P.I.filter(n => p.prevDays.some(pd => ["day", "night"].some(k => ctx.Wv([pd, k], n) === 1 || ctx.Ov([pd, k], n) === 1)));
+      const prevI = P.I.filter(n => T.prevChargeSlots(P, p).some(s => ctx.Wv(s, n) === 1 || ctx.Ov(s, n) === 1));
       if (prevI.length === 1 && cday[`${p.days[0]}|${prevI[0]}`]) lp.add(cday[`${p.days[0]}|${prevI[0]}`], "=", 1); }
     // 翌月 1 日の固定指定: 月またぎの土日の担当者の接続（期間責任者の固定があればそれを優先）
     if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny()) { const N = P.N, firstK = P.nextFirstSlotKind(), cross = P.lastCrossingPeriod();
@@ -57,7 +59,7 @@ T.rules.register({
     // 週末担当者の日勤
     for (const p of periods) for (const n of P.I) { const v = lp.aux("cd"); lp.add(LP.sub(chargedP[`${p.id}|${n}`], LP.sum(p.slots.filter(s => s[1] === "day").map(s => ctx.work(s, n)))), "<=", v); lp.objAdd(W.charge_without_dayshift, v); }
   },
-  // 検算: 割当から日ごとの担当を決め（その日の枠すべてに関わる期間責任者になれる人）、事実 "charge" として渡す（本体は結果の表示にも使う）
+  // 検算: 割当から日ごとの担当を決め（その日の最初の枠に関わる期間責任者になれる人）、事実 "charge" として渡す（本体は結果の表示にも使う）
   check(ctx) {
     const { P, A } = ctx, charge = {};
     for (const p of P.periods) {
@@ -68,8 +70,8 @@ T.rules.register({
         cd[d] = per[0].length === 1 ? per[0][0] : null; } // その日の担当は最初の枠の人。後の枠が別の人（日の途中の交代）は違反ではなく減点（penalty の charge_handover）
       charge[p.id] = cd;
       const first = cd[p.days[0]];
-      { const prevI = [...new Set(p.prevDays.flatMap(pd => ["day", "night"].flatMap(k => [...A.engaged([pd, k])].filter(n => P.isRole(n, "charge")))))];
-        if (prevI.length === 1 && first && first !== prevI[0]) ctx.viol("PERIOD_CHARGE_PREV_LINK", { period: p.name, who: prevI[0] }); } // 前月末に期間責任者になれる人が2名いる入力はソルバーも接続しない（lint が知らせる）
+      { const prevI = [...new Set(T.prevChargeSlots(P, p).flatMap(s => [...A.engaged(s)].filter(n => P.isRole(n, "charge"))))];
+        if (prevI.length === 1 && first && first !== prevI[0]) ctx.viol("PERIOD_CHARGE_PREV_LINK", { period: p.name, who: prevI[0] }); } // 前月末の最初の枠に期間責任者になれる人が2名いる入力はソルバーも接続しない（lint が知らせる）
       for (const [d, n] of Object.entries(P.fixedCharge)) if (p.days.includes(+d) && cd[+d] !== n) ctx.viol("PERIOD_CHARGE_FIXED_MISMATCH", { day: ctx.lab(+d), who: n });
     }
     { const cross = P.lastCrossingPeriod(); if (cross && P.nextFixedAny()) { const cd = charge[cross.id][P.N]; const want = P.nextFixed.charge || P.I.find(n => P.nextFixedEngaged(n, "day")); if (want && cd && cd !== want) ctx.viol("PERIOD_CHARGE_NEXT_LINK", { period: cross.name, want, got: cd }); } }
@@ -110,19 +112,20 @@ T.rules.register({
   // 入力チェック: 期間責任者の役割が無い、翌月 1 日・固定・前月末の接続の矛盾、期間責任者になれる人がいない休日
   lint(ctx, prm) {
     const { P } = ctx, lab = ctx.lab, unN = ctx.unN, unO = ctx.unO;
+    const unavailable = (n, [d, k]) => k === "night" ? unN(n, d) || unO(n, d) === "allday" : !!unO(n, d);
     if (P.state("period_charge") === "hard" && !P.refId("charge")) ctx.push("LINT_ROLE_REF_MISSING", { ref: T.t("期間の責任者になれる") });
     if (!P.isHard("period_charge")) return;
     if (P.nextFixed.charge && !P.nextSlotExists("day") && !P.nextSlotExists("night")) ctx.push("LINT_FIXED_CHARGE_NO_SLOT", { day: lab(P.N + 1), who: P.nextFixed.charge });
     { const pf = P.nextFixed; const iEng = P.I.filter(n => P.nextFixedEngaged(n, "day"));
       if (pf.charge && iEng.some(n => n !== pf.charge)) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE", { who: pf.charge, others: ctx.join(iEng.filter(n => n !== pf.charge)) }); else if (!pf.charge && iEng.length > 1) ctx.push("LINT_NEXT_FIRST_TWO_CHARGE2", { others: ctx.join(iEng) }); }
-    // 期間責任者は期間中の全枠に勤務かオンコールで関わる。オンコールを付けない勤務帯が期間の日にあると、同じ人が連日勤務するしかなく解なしになりやすい
+    // 期間の各枠には期間責任者の役割の誰かが勤務かオンコールで関わる。オンコールを付けない勤務帯が期間の日にあると、同じ人が連日勤務するしかなく解なしになりやすい
     if (P.state("oncall") !== "off") for (const sh of P.shifts) if (sh.oncall === false && P.periods.some(p => p.slots.some(s => s[1] === sh.id))) ctx.push("LINT_PERIOD_CHARGE_NEEDS_ONCALL", { shift: sh.label });
     for (const [ds, n] of Object.entries(P.fixedCharge)) { const d = +ds;
       if (!P.I.includes(n)) { ctx.push("LINT_FIXED_CHARGE_NOT_ROLE", { day: lab(d), who: n }); continue; }
       const p = P.periods.find(p => p.days.includes(d));
       if (!p) { ctx.push("LINT_FIXED_CHARGE_NOT_OFF_DAY", { day: lab(d), who: n }); continue; }
       if (!p.slots.some(s => s[0] === d)) { ctx.push("LINT_FIXED_CHARGE_NO_SLOT", { day: lab(d), who: n }); continue; }
-      if (unN(n, d) || unO(n, d)) ctx.push("LINT_FIXED_CHARGE_VS_UNAVAIL", { day: lab(d), who: n }); }
+      if (unavailable(n, T.chargeDaySlots(p, d)[0])) ctx.push("LINT_FIXED_CHARGE_VS_UNAVAIL", { day: lab(d), who: n }); }
     // 固定指定と期間責任者（同じ休日の枠ごとに固定した期間責任者の役割の人: 勤務・OC）:
     //  (1) 同じ枠に 2 名以上 → 1 枠に関わる期間責任者は 1 名なので解なし (2) 期間責任者の固定（その日の担当＝最初の枠の人）と、最初の枠に固定した別の人 → 解なし
     //  (3) 日勤帯と夜間で別の人 → 日の途中の交代。計算はできる（減点 charge_handover）。入力の誤りでないかを知らせる
@@ -135,11 +138,12 @@ T.rules.register({
       if (!bad && all.size > 1) ctx.push("LINT_FIXED_CHARGE_HANDOVER", { day: lab(d), detail: (fc ? [`${T.term(T.t("{charge}担当"), P.rules)} ${fc}`] : []).concat(per.filter(x => x[1].length).map(([s, ns]) => `${P.shiftLabel(s[1])} ${ctx.join(ns)}`)).join(" → ") }); }
     // 月またぎの接続: 前月末の期間責任者が翌月1日に不可
     for (const p of P.periods) { if (!p.prevDays.length || !p.slots.length) continue; const d = p.days[0];
-      const prevI = P.I.filter(n => p.prevDays.some(pd => { const f = P.prevFixed[`${pd}:day`], g = P.prevFixed[`${pd}:night`]; return (f && (f.work === n || f.oc.includes(n))) || (g && (g.work === n || g.oc.includes(n))); }));
-      if (prevI.length === 1) { const n = prevI[0]; if (unN(n, d) || unO(n, d)) ctx.push("LINT_PREV_CHARGE_UNAVAIL", { who: n, day: lab(d) }); }
+      const prevI = P.I.filter(n => T.prevChargeSlots(P, p).some(s => P.prevWorked(s, n) || (P.prevFixed[T.Problem.key(s)].oc || []).includes(n)));
+      if (prevI.length === 1) { const n = prevI[0]; if (unavailable(n, T.chargeDaySlots(p, d)[0])) ctx.push("LINT_PREV_CHARGE_UNAVAIL", { who: n, day: lab(d) }); }
       else if (prevI.length > 1) ctx.push("LINT_PREV_CHARGE_TWO", { who: ctx.join(prevI) }); }
-    // 各休日に期間責任者になれる人がいるか
-    for (const p of P.periods) for (const d of p.days) { if (!p.slots.some(s => s[0] === d)) continue; const cands = P.I.filter(n => !unN(n, d) && !unO(n, d) && !P.busy(n, d + 1, "am", ["external"])); if (!cands.length) ctx.push("LINT_NO_CHARGE_CANDIDATE", { day: lab(d) }, { who: ctx.join(P.I) }); }
+    // 日の途中の交代は可能なので、各実在枠に候補がいればよい（全枠に共通する候補を要求しない）。
+    for (const p of P.periods) for (const d of p.days) { const slots = T.chargeDaySlots(p, d);
+      if (slots.some(s => !P.I.some(n => !unavailable(n, s) && !(s[1] === "night" && P.isHard("duty_conflicts") && P.busy(n, d + 1, "am", ["external"]))))) ctx.push("LINT_NO_CHARGE_CANDIDATE", { day: lab(d) }, { who: ctx.join(P.I) }); }
   },
   python: true,
 });

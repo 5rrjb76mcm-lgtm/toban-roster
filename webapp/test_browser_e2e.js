@@ -487,6 +487,34 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
     for (const n of names) assert.strictEqual(shown[n], want[n].off, `${n}: 検算と同じ休みの日数（OC ${want[n].oc} 回・勤務 ${want[n].work} 回）`); assert.ok(names.some(n => want[n].oc > 0), "OC に入っている人がいる");
     await ctx.close();
   });
+  for (const field of ["notes", "holidays", "quota"]) await test(`計算完了時に編集中の ${field} を確定し、古い計算結果を採用せず入力・以前の結果・同期基準を保つ`, async () => {
+    const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page, "フォルダなしで続ける");
+    try {
+      await page.evaluate(() => {
+        const A = T.app, ns = ["Synthetic Alpha", "Synthetic Beta"], R = { profile: { id: "synthetic-pending-input", roles: [{ id: "S", label: "Staff" }], calendar: { holidays: "none", closure: [] }, shifts: [{ id: "day", on: "none" }, { id: "night", on: "all" }] }, doctors: ns.map(name => ({ name, team: "S", quota: 15 })), name_order: ns, weights: {}, rule_states: {} };
+        T.fillDefaultRules(R); for (const d of T.RULE_DEFS) if (d.states.includes("off")) R.rule_states[d.id] = "off"; R.rule_states.quota_target = "soft";
+        Object.assign(A.state, { rules: R, month: T.normalizeMonth({ year: 2026, month: 11, holidays: [], notes: "original" }, R), result: { asg: {}, status: "Optimal", at: "synthetic-old" }, meta: { savedAt: "synthetic-old" } });
+        A.clearUndo(); A.renderAll(); A.highs = {}; window.__oldSolveState = JSON.stringify([A.state.result, A.state.meta]); window.__solveFolderSaves = 0; A.saveToFolder = async () => { window.__solveFolderSaves++; };
+        T.solveWithAvoidRef = async P => { window.__solveEntered = true; return new Promise(resolve => { window.__finishSolve = () => resolve({ status: "Optimal", seconds: 0.1, objective: 0, vars: 1, cons: 1, asg: Object.fromEntries(P.slots.map((s, i) => [T.Problem.key(s), { work: ns[i % 2], oc: [] }])) }); }); };
+      });
+      await page.click('.tab[data-tab="calc"]'); await page.click("#btnSolve"); await page.waitForFunction(() => window.__solveEntered);
+      const pane = field === "quota" ? "settings" : "input";
+      await page.click(`.tab[data-tab="${pane}"]`);
+      if (field === "quota") await page.click('[data-setmode="daily"]');
+      const selector = field === "quota" ? '#doctorTable tr[data-i="0"] [data-f="quota"]' : `[data-path="${field}"]`;
+      const value = field === "quota" ? "14" : field === "holidays" ? "3, 4" : "typed during solve";
+      const input = page.locator(selector); await input.fill(value); // blur/change は起こさず、編集中に計算を終える
+      assert.ok(await input.evaluate(el => document.activeElement === el), "入力欄にフォーカスが残っている");
+      await page.evaluate(() => window.__finishSolve()); await page.waitForFunction(() => !T.app.solving);
+      const st = await page.evaluate(f => ({ value: f === "quota" ? T.app.state.rules.doctors[0].quota : T.app.state.month[f], kept: JSON.stringify([T.app.state.result, T.app.state.meta]) === window.__oldSolveState, saves: window.__solveFolderSaves, log: document.querySelector("#calcLog").textContent }), field);
+      assert.deepStrictEqual(st.value, field === "quota" ? 14 : field === "holidays" ? [3, 4] : value);
+      assert.strictEqual(st.kept, true); assert.strictEqual(st.saves, 0); assert.ok(/この結果は採用しません/.test(st.log)); assert.ok(await page.locator(`#${pane}`).isVisible(), "入力画面から自動遷移しない");
+      await page.click('.tab[data-tab="calc"]'); await page.click(`.tab[data-tab="${pane}"]`); assert.strictEqual(await page.locator(selector).inputValue(), field === "holidays" ? "3, 4" : value, "描き直しても編集中の値が残る");
+      await page.click("#btnUndo");
+      const undone = await page.evaluate(f => f === "quota" ? T.app.state.rules.doctors[0].quota : T.app.state.month[f], field);
+      assert.deepStrictEqual(undone, field === "quota" ? 15 : field === "holidays" ? [] : "original", "採用直前に確定した入力も通常の Undo で戻せる");
+    } finally { await ctx.close(); }
+  });
   closing = true; await browser.close(); srv.close();
   if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log(`実ブラウザの通し試験 ${passed} 本 OK`);
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

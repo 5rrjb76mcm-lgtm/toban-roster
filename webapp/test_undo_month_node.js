@@ -47,6 +47,37 @@ const edit = async (label, fn) => { A.pushUndo(label, { auto: true }); fn(A.stat
   A.undo(); assert.deepStrictEqual(A.state.month.unavailable_night[N[0]], [5]);
   // 7) 何も変えなかった設定の操作の記録（並べ替えの端など）が上に載っていても、1 回押せばその下の変更が戻る
   setup(); A.pushUndo("規則・重みの変更"); A.state.rules.weights.wish_night = 999; await tick(); A.pushUndo("名簿の並べ替え"); await tick(); A.undo(); assert.strictEqual(A.state.rules.weights.wish_night, 30, "変化の無い記録は飛ばして、その下を戻す"); assert.strictEqual(btn().disabled, true);
+  // 8) 無変化の設定操作の後の月入力にも、独立した auto 記録を残す
+  setup(); A.pushUndo("名簿の並べ替え"); await tick();
+  await edit("月別条件の変更", m => { m.notes = "synthetic monthly edit"; });
+  A.undo(); assert.ok(!A.state.month.notes, "無変化の通常記録が月入力の記録を吸収しない");
+  // 9) 同じ無変化記録の後でも、改名とその月入力を一緒に戻せる
+  setup(); A.pushUndo("名簿の並べ替え"); await tick();
+  A.pushUndo("名簿の変更"); assert.strictEqual(A.renameDoctor(N[0], "Synthetic Renamed"), true);
+  A.state.rules.doctors[0].name = "Synthetic Renamed"; A.refreshNameOrder(A.state.rules); await tick();
+  A.undo(); assert.deepStrictEqual(A.names(), N); assert.deepStrictEqual(A.state.month.unavailable_night[N[0]], [5]);
+  assert.ok(!toasts.some(t => /取り消せません/.test(t)), "無変化記録の after で改名を誤拒否しない");
+  // 10) 前の設定変更・無変化操作・月入力の混在は、変更の新しい順に戻る
+  setup(); A.pushUndo("規則・重みの変更"); A.state.rules.weights.wish_night = 999; await tick();
+  A.pushUndo("名簿の並べ替え"); await tick();
+  await edit("月別条件の変更", m => { m.notes = "synthetic edit after settings"; });
+  A.undo(); assert.ok(!A.state.month.notes); assert.strictEqual(A.state.rules.weights.wish_night, 999);
+  A.undo(); assert.strictEqual(A.state.rules.weights.wish_night, 30); assert.strictEqual(btn().disabled, true);
+  // 11) 置き換えた auto 記録も、さらに記録外の変更が入ったら取り消さない
+  setup(); A.pushUndo("名簿の並べ替え"); await tick();
+  await edit("月別条件の変更", m => { m.notes = "synthetic recorded edit"; });
+  A.state.month.unavailable_night[N[1]] = [20]; const later = JSON.stringify(A.state.month); A.undo();
+  assert.strictEqual(JSON.stringify(A.state.month), later); assert.ok(toasts.some(t => /取り消せません/.test(t)));
+  // 12) 同じ処理内の二重記録は一度にまとまり、上限の 50 件は維持する
+  setup(); A.pushUndo("月別条件の変更", { auto: true }); A.pushUndo("月別条件の変更", { auto: true }); A.state.month.notes = "synthetic nested edit"; await tick();
+  assert.ok(/あと 1 回/.test(note()), note()); A.undo(); assert.ok(!A.state.month.notes); assert.strictEqual(btn().disabled, true);
+  setup(); for (let i = 1; i <= 55; i++) await edit("月別条件の変更", m => { m.notes = "synthetic " + i; });
+  assert.ok(/あと 50 回/.test(note()), note()); for (let i = 0; i < 50; i++) A.undo();
+  assert.strictEqual(A.state.month.notes, "synthetic 5"); assert.strictEqual(btn().disabled, true);
+  // 13) 月 JSON の差し替えは履歴を捨て、新しい月の版の記録も戻さない
+  setup(); await edit("月別条件の変更", m => { m.notes = "synthetic old month"; }); A.showTab = () => {};
+  A.applyLoaded({ year: 2026, month: 12, notes: "synthetic replacement", doc_versions: [{ ver: 9, sig: "s9" }] }, "synthetic loaded", { fromFolder: false });
+  assert.strictEqual(btn().disabled, true); A.undo(); assert.strictEqual(A.state.month.month, 12); assert.strictEqual(A.state.month.notes, "synthetic replacement"); assert.deepStrictEqual(A.state.month.doc_versions.map(v => v.ver), [9]);
   assert.ok(/A\.clearUndo\(\)/.test(fs.readFileSync(path.join(__dirname, "src/app-folder.js"), "utf8").split("別のPCの変更と自動で統合しました")[0].slice(-600)), "統合の直前に履歴を捨てる");
   console.log("ヘッダーの「元に戻す」（月別条件の入力・設定の変更を新しい順に戻す、変化なしは記録しない、版の記録は巻き戻さない、記録の無い変更の後は戻さない、計算中は戻さない）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });
