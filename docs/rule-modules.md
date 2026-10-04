@@ -234,6 +234,7 @@ columns: [{ key: "fri", order: 10, at: "duty", label: "金曜夜勤の最低回�
 ```
 webapp/src/rules/
   same_weekday_cap.js
+  dayoff_weekday_cap.js
   friday_night_min.js
   …
 webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limit

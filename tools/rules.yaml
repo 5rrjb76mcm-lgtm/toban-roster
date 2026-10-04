@@ -36,6 +36,7 @@ weekend_dayshift_wish: []                 # 土日どちらかに日勤 1 回を
 # 翌日が休日でない平日の夜勤への、名指しした人の配置
 quota_tolerance: 1                        # 目安±1回
 max_same_weekday_shifts: 2                # 同じ曜日の勤務（日勤＋夜勤）は1人あたり月2回まで。超過は減点（weights.same_weekday_excess）
+dayoff_weekday_max: 2                     # 休日（土日祝）の同じ曜日に当番（勤務・OC）へ入る日数は 1 人あたり月 2 日まで（規則 dayoff_weekday_cap を使うときだけ。既定は「なし」）
 
 # 第6節: 完全な土日の担当回数の最多と最少の差（組）
 weekend_balance_max_diff: 1
@@ -55,6 +56,7 @@ weights:
   chief_duty: 1000             # 部長を勤務に登用する 1回あたり（月1回まで。例外的な登用のときだけ）
   wish_weekend_dayshift: 20    # 土日日勤の希望が未反映
   same_weekday_excess: 15             # 同じ曜日の勤務が月2回を超えた 1回あたり（中）
+  dayoff_weekday_excess: 20           # 休日の同じ曜日に当番へ入る日数が上限を超えた 1 日あたり（規則を「減点」にしたとき）
   consecutive_weekend: 15      # 主担当の連続する週末担当
   split_weekend: 60            # 土日1組を土曜・日曜の2人に分割（均等配分のための例外）
   charge_handover: 200         # 休日の主担当担当が日の途中で交代（日勤帯と夜間で別の人）1日あたり。固定したとき・ほかに手が無いときだけ起きる大きさ

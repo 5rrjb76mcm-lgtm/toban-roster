@@ -62,6 +62,7 @@
     ["fixed", "固定指定"],
     ["unavailable", "不可日"],
     ["consecutive", "連続担当の禁止"],
+    ["dayoff_weekday", "休日の同じ曜日に当番へ入る日数の上限"],
     ["prev_connection", "前月末からの接続（月またぎの土日の期間責任者を前月の担当者にする）"],
   ];
 
@@ -234,7 +235,8 @@
     const lines = []; let step = 0; const total = T.RELAXATIONS.length; const tell = (label, sub) => { try { onProgress && onProgress({ label, step, total, sub }); } catch (e) { } };
     const feasible = async keys => !!(await solve(P, highs, { relax: keys, timeLimit })).asg;
     for (const [k, label] of T.RELAXATIONS) {
-      step++; tell(label, "");
+      step++; { const owners = (T.RULE_DEFS || []).filter(d => d.relax === k); if (owners.length && owners.every(d => P.state(d.id) === "off")) continue; } // その条件を持つ規則が「なし」なら、外しても同じ問題なので試さない
+      tell(label, "");
       const r = await solve(P, highs, { relax: [k], timeLimit });
       if (!r.asg) { if (r.status !== "Infeasible") lines.push({ key: k, label, undecided: true, note: "", items: [] }); continue; } // 時間切れは「判定できず」として残す（解なしと区別）
       let note = "", items = [];

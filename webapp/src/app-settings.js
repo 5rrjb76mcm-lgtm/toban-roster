@@ -17,6 +17,7 @@
     avoid_no_reduction: "避けたい日を申告した人の勤務回数が参照解（避けたい日を無視した計算）を下回る分（1回あたり。実質禁止）",
     wish_weekend_dayshift: "土日日勤の希望の未反映",
     same_weekday_excess: "同じ曜日の勤務が上限を超えた分",
+    dayoff_weekday_excess: "休日の同じ曜日に当番（勤務・OC）へ入る日数が上限を超えた分（1日あたり）",
     same_day_double: "同じ日に2つの枠（規則を「減点」にしたとき。1組あたり）",
     consecutive_days: "連日の実勤務（規則を「減点」にしたとき。1組あたり）",
     rest_day_missing: "外勤があるのに週休日が無い（規則を「減点」にしたとき。1名あたり）",
