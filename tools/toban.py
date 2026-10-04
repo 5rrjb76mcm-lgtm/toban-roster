@@ -16,6 +16,8 @@ import calendar
 import copy
 import datetime as dt
 import json
+import math
+import re
 import os
 import sys
 from collections import defaultdict
@@ -39,6 +41,33 @@ SOFT_OK_PY = {"arrhythmia_pre_workday_night", "same_weekday_cap", "quota_target"
 ALWAYS_ON_PY = ("quota_range", "quota_target", "staff_per_day", "oc_consecutive", "nonadjacent_consecutive",
                 "work_gap", "wish_night", "wish_weekend_dayshift", "avoid_days", "spread_standby",
                 "duty_after_night", "duty_conflicts")  # cath_requirement は循環器内科のプラグインの規則（rule_states で付け外し。表も資格も無ければ「なし」）
+
+
+def _month_count_limits(month, key):
+    # JS の numericValue と同じく数または数値文字列だけ。bool・小数・負数を丸めて別の必須条件にしない。
+    out = {}
+    for name, value in (month.get(key) or {}).items():
+        if value is None or value == "":
+            continue
+        try:
+            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+                raise ValueError()
+            if isinstance(value, str):
+                value = value.strip(" \t\n\r\v\f\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")  # ECMAScript trim
+                if re.fullmatch(r"0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+", value):
+                    number = float(int(value, 0))
+                elif re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
+                    number = float(value)
+                else:
+                    raise ValueError()
+            else:
+                number = float(value)
+            if not math.isfinite(number) or number < 0 or not number.is_integer():
+                raise ValueError()
+        except (ValueError, TypeError, OverflowError):
+            raise ValueError(f"月の設定の {key}[{name}] は0以上の整数にしてください") from None
+        out[name] = int(number)
+    return out
 
 
 class Problem:
@@ -80,8 +109,8 @@ class Problem:
             self.targets[n] = int(t)
         self.tol = int(rules.get("quota_tolerance", 1))
         # 当月の勤務回数の下限・上限（人ごと。月の count_min / count_max）。入れた人は目安±許容幅の代わりにこの範囲が必須（JS の P.countLo / P.countHi と同じ）
-        self.count_min = {n: int(v) for n, v in (month.get("count_min") or {}).items() if v is not None and v != ""}
-        self.count_max = {n: int(v) for n, v in (month.get("count_max") or {}).items() if v is not None and v != ""}
+        self.count_min = _month_count_limits(month, "count_min")
+        self.count_max = _month_count_limits(month, "count_max")
 
         self.duties = {n: (month.get("regular_duties") or {}).get(n, []) or [] for n in self.names}
         self.duty_days = month.get("duty_days") if isinstance(month.get("duty_days"), dict) else None
@@ -190,8 +219,6 @@ class Problem:
             for n in ns: self.fixed_eng_keys.add(((d, "day"), n))
         for d, ns in self.fixed_night_oc.items():
             for n in ns: self.fixed_eng_keys.add(((d, "night"), n))
-        for d, n in self.fixed_charge.items():
-            self.fixed_eng_keys.add(((d, "day"), n)); self.fixed_eng_keys.add(((d, "night"), n))
 
         ex = month.get("exceptions") or {}
         self.weekend_max_diff = int(ex.get("weekend_balance_max_diff", rules.get("weekend_balance_max_diff", 1)))
@@ -206,6 +233,15 @@ class Problem:
 
         self.weights = rules["weights"]
         self.build_calendar()
+        # 期間責任者の固定例外は、有効な規則が拘束する最初の実在枠だけ。
+        if (self.rules.get("rule_states") or {}).get("period_charge", "hard") != "off":
+            for d, n in self.fixed_charge.items():
+                if n not in self.I:
+                    continue
+                period = next((p for p in self.periods if d in p["days"]), {"slots": []})
+                slots = charge_day_slots(period, d)
+                if slots:
+                    self.fixed_eng_keys.add((slots[0], n))
 
     # -- 医師 --
     def duty_allowed(self, n):
@@ -692,7 +728,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
         for p in P.periods:
             if not p["prev_days"]:
                 continue
-            prev_i = [n for n in P.I if any(Wv((pd, k), n) == 1 or Ov((pd, k), n) == 1 for pd in p["prev_days"] for k in ("day", "night"))]
+            prev_i = [n for n in P.I if any(Wv(s, n) == 1 or Ov(s, n) == 1 for s in prev_charge_slots(P, p))]
             if len(prev_i) == 1:
                 M.Add(cday[p["days"][0], prev_i[0]] == 1)
     # 完全な土日の均等配分（担当日数で比較。土日1組=2日、許容差は組数×2）
@@ -1068,6 +1104,11 @@ def charge_day_slots(p, d):
     return sorted([s for s in p["slots"] if s[0] == d], key=lambda s: 0 if s[1] == "day" else 1)
 
 
+def prev_charge_slots(P, p):
+    """前月末も最初の実在枠の担当で接続する。夜間だけなら夜間を使う。"""
+    return [slots[0] for d in p["prev_days"] if (slots := charge_day_slots({"slots": P.prev_slots}, d))]
+
+
 def check(P: Problem, asg: dict):
     A = Asg(P, asg)
     V = []
@@ -1142,15 +1183,10 @@ def check(P: Problem, asg: dict):
     # 5 隣接枠の連続: OC を含む連続は 2026-09-17 から減点（oc_consecutive）。実勤務どうしの連続は 4 で検出済み
     # 翌月1日の固定指定（カレンダーの翌月1日欄）との連続・接続
     if P.next_fixed_any():
-        N, first_k, cross, nl = P.N, P.next_first_slot_kind(), P.last_crossing_period(), lab(P.N + 1)
+        N, nl = P.N, lab(P.N + 1)
         for n in names:
             if P.next_fixed_works(n) and any(A.worked(n, (N, k)) for k in ("day", "night") if (N, k) in P.all_slots_set):
                 V.append(f"{lab(N)}→{nl}: {n} 連日の実勤務（翌月1日の固定）")
-        if cross:
-            cd = [n for n in P.I if any(A.eng(n, (N, k)) for k in ("day", "night") if (N, k) in P.all_slots_set)]
-            want = P.next_fixed["charge"] or next((n for n in P.I if P.next_fixed_engaged(n, "day")), None)
-            if want and len(cd) == 1 and cd[0] != want:
-                V.append(f"{cross['name']}: 翌月1日の固定 {want} と月末の主担当担当 {cd[0]} が接続していない")
     # 6 主担当担当（日ごとに1名。土日の分割は減点付きで常に候補）
     charge = {}  # period id -> {day: name}
     for p in P.periods:
@@ -1166,12 +1202,18 @@ def check(P: Problem, asg: dict):
             cd[d] = per[0][0] if per and len(per[0]) == 1 else None
         charge[p["id"]] = cd
         first = cd.get(p["days"][0])
-        prev_i = sorted({n for pd in p["prev_days"] for k in ("day", "night") for n in A.engaged((pd, k)) if T.get(n) == "I"})
-        if len(prev_i) == 1 and first and first != prev_i[0]:  # 前月末に主担当医師が2名いる入力はソルバーも接続しない（lint 相当の警告で知らせる）
+        prev_i = sorted({n for s in prev_charge_slots(P, p) for n in A.engaged(s) if T.get(n) == "I"})
+        if len(prev_i) == 1 and first and first != prev_i[0]:  # 前月末の最初の枠に主担当医師が2名いる入力はソルバーも接続しない（lint 相当の警告で知らせる）
             V.append(f"{p['name']}: 前月末の主担当担当{prev_i[0]}と接続していない")
         for d, n in P.fixed_charge.items():
             if d in p["days"] and cd.get(d) != n:
                 V.append(f"{lab(d)}: 固定指定の主担当担当{n}と不一致")
+    cross = P.last_crossing_period()
+    if cross and P.next_fixed_any():
+        cd = charge[cross["id"]].get(P.N)
+        want = P.next_fixed["charge"] or next((n for n in P.I if P.next_fixed_engaged(n, "day")), None)
+        if want and cd and cd != want:
+            V.append(f"{cross['name']}: 翌月1日の固定 {want} と月末の主担当担当 {cd} が接続していない")
     fw = full_weekend_units(P, charge)
     if P.weekend_balance_on and fw and max(fw.values()) - min(fw.values()) > 2 * P.weekend_max_diff:
         V.append(f"完全な土日の担当（組）の差が{P.weekend_max_diff}を超える: {fmt_half(fw)}")

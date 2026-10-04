@@ -146,5 +146,41 @@ const PLUG = (id, extra = "") => `T.rules.register({ id: "${id}", api: 1, states
     const m2 = JSON.parse(JSON.stringify(y.A.state.month)); m2.plugins_used = ["local.old.id"]; y.A.state.month = y.T.normalizeMonth(m2, y.rules); await y.A.runSolve();
     assert.strictEqual(y.stat.solverCalls, 1, "旧 id だけの月も欠落と扱わずに計算する: " + y.log().slice(0, 200)); assert.strictEqual(JSON.stringify(y.A.state.month.plugins_used), JSON.stringify(["local.new.id"]), "計算後の記録は現行の id");
   }
+  { // 入力欄がまだ change を発火していなくても、結果を採る前に読み戻し、古い結果・同期基準は保つ
+    const x = context(), oldResult = { asg: { keep: 1 } }, oldMeta = { savedAt: "synthetic-old" };
+    x.A.state.result = oldResult; x.A.state.meta = oldMeta;
+    let pending = null, savedToFolder = 0, shown = 0;
+    x.A.readAll = () => { if (pending !== null) { x.A.state.month.notes = pending; pending = null; } };
+    x.A.saveToFolder = async () => { savedToFolder++; }; x.A.showTab = () => { shown++; };
+    const solve = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...args) => { pending = "edited while solving"; return solve(...args); };
+    await x.A.runSolve();
+    assert.strictEqual(x.A.state.month.notes, "edited while solving"); assert.strictEqual(x.A.state.result, oldResult); assert.strictEqual(x.A.state.meta, oldMeta);
+    assert.strictEqual(savedToFolder, 0); assert.strictEqual(shown, 0); assert.ok(/この結果は採用しません/.test(x.log()));
+    assert.strictEqual(x.A.solving, false); assert.strictEqual(x.el("#btnSolve").disabled, false);
+  }
+  { // 解なし診断の途中の編集も、古い診断を現在の入力の指摘として表示しない
+    const x = context(), oldResult = { asg: { keep: 1 } }, oldMeta = { savedAt: "synthetic-old" };
+    x.A.state.result = oldResult; x.A.state.meta = oldMeta; let pending = false;
+    x.A.readAll = () => { if (pending) { x.A.state.month.notes = "edited during diagnosis"; pending = false; } };
+    x.T.solveWithAvoidRef = async () => ({ asg: null, status: "Infeasible", seconds: 0, vars: 0, cons: 0 });
+    x.T.diagnose = async () => { pending = true; return [{ label: "SYNTHETIC_STALE_DIAGNOSIS", note: "", items: [] }]; };
+    await x.A.runSolve();
+    assert.strictEqual(x.A.state.month.notes, "edited during diagnosis"); assert.strictEqual(x.A.state.result, oldResult); assert.strictEqual(x.A.state.meta, oldMeta);
+    assert.ok(/この結果は採用しません/.test(x.log())); assert.ok(!/SYNTHETIC_STALE_DIAGNOSIS/.test(x.log()));
+    assert.strictEqual(x.A.solving, false); assert.strictEqual(x.el("#btnSolve").disabled, false); assert.strictEqual(x.el("#btnCancel").hidden, true);
+  }
+  { // 通常の change 処理で確定する設定欄も、採用前に確定して変更を検出する
+    const x = context(); let focused = false, commits = 0;
+    x.c.document.activeElement = { matches: () => focused, blur: () => { commits++; focused = false; x.A.state.rules.doctors[0].quota++; } };
+    const solve = x.T.solveWithAvoidRef; x.T.solveWithAvoidRef = async (...args) => { focused = true; return solve(...args); };
+    await x.A.runSolve(); assert.strictEqual(commits, 1); assert.strictEqual(x.A.state.result, null); assert.ok(/この結果は採用しません/.test(x.log()));
+  }
+  { // 採用前の読取りが失敗しても保護区間とボタンを戻し、次回の計算を受け付ける
+    const x = context(), oldResult = { asg: { keep: 1 } }; x.A.state.result = oldResult;
+    let reads = 0; x.A.readAll = () => { if (++reads === 2) throw new Error("synthetic input read failed"); };
+    await assert.rejects(x.A.runSolve(), /synthetic input read failed/);
+    assert.strictEqual(x.A.state.result, oldResult); assert.strictEqual(x.A.solving, false); assert.strictEqual(x.el("#btnSolve").disabled, false); assert.strictEqual(x.el("#btnCancel").hidden, true);
+    x.A.readAll = () => { }; await x.A.runSolve(); assert.notStrictEqual(x.A.state.result, oldResult, "読取りを直した後は通常の結果を採れる");
+  }
   console.log("計算の入口の守り（規則欠落＋lint 例外・lint 例外・計算中のプラグイン読み直し・通常の採用・計算中／計算後の接続で読むプラグイン）OK");
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exitCode = 1; });

@@ -68,8 +68,16 @@
     try { res = await T.solveWithAvoidRef(P, A.highs, { timeLimit, base: baseAsg }); }
     catch (e) { done(); log(/中止/.test(String(e.message)) ? T.t("計算を中止しました。もう一度「計算する」を押すと最初からやり直します") : T.t("計算を続けられませんでした: {e}。もう一度「計算する」を押すと最初からやり直します", { e: e.message })); A.highs = null; return; }
     done();
-    if (A.inputSig() !== runSig) { log(T.t("計算中に月または設定が変わったため、この結果は採用しません。もう一度「計算する」を押してください")); return; }
-    if (T.plugins.generation() !== runGen) { log(T.t("計算中にプラグインが読み直されたため、この結果は採用しません（計算した規則と検算する規則が別になります）。もう一度「計算する」を押してください")); return; }
+    const inputsStillCurrent = () => {
+      // 編集中の欄は change がまだ発火していない。画面を隠す前に通常の確定処理（設定の Undo も含む）を通してから比べる。
+      const active = document.activeElement;
+      if (active && active.matches("input, textarea, select")) active.blur();
+      A.readAll(); // 表示中の月入力だけを読む（隠れている古い DOM は読まない）
+      if (A.inputSig() !== runSig) { log(T.t("計算中に月または設定が変わったため、この結果は採用しません。もう一度「計算する」を押してください")); return false; }
+      if (T.plugins.generation() !== runGen) { log(T.t("計算中にプラグインが読み直されたため、この結果は採用しません（計算した規則と検算する規則が別になります）。もう一度「計算する」を押してください")); return false; }
+      return true;
+    };
+    if (!inputsStillCurrent()) return;
     if (res.avoidRef) log(T.t("参照解（避けたい日を無視）: {list}（{s} 秒）。本計算ではこの回数を基準にします", { list: Object.entries(res.avoidRef).map(([n, c]) => T.t("{n} {c}回", { n, c })).join(T.listSep()), s: (res.refSeconds || 0).toFixed(1) }));
     log(T.t("状態 {st}、{s} 秒、変数 {v}、制約 {c}", { st: res.status, s: res.seconds.toFixed(1), v: res.vars, c: res.cons }));
     if (!res.asg && res.status !== "Infeasible") { // 時間切れなどで整数解が見つからなかった（解なしと証明されたわけではない）
@@ -83,7 +91,9 @@
       const dprog = setInterval(dshow, 500); dshow();
       const ddone = () => { clearInterval(dprog); $("#calcStatus").textContent = ""; $("#btnSolve").disabled = false; $("#btnCancel").hidden = true; };
       let diag; try { diag = await T.diagnose(P, A.highs, 20, pr => { dcur = T.t("「{label}」を外して試行中（{step}/{total}）", { label: T.t(pr.label), step: pr.step, total: pr.total }) + (pr.sub ? T.t("　絞り込み {sub}", { sub: pr.sub }) : ""); dshow(); }); } catch (e) { ddone(); log(T.t("診断を中止しました")); A.highs = null; return; }
-      ddone(); log(T.t("診断 {s} 秒", { s: Math.round((Date.now() - d0) / 1000) }));
+      ddone();
+      if (!inputsStillCurrent()) return;
+      log(T.t("診断 {s} 秒", { s: Math.round((Date.now() - d0) / 1000) }));
       if (!diag.length) log(T.t("- 単一の条件を外しても解なし。複数の条件が同時に衝突しています。上の「入力に矛盾の疑い」から順に直してください。"));
       for (const d of diag) {
         if (d.undecided) { log(T.t("- 「{label}」を外しても時間内に判定できず（解なしとも解ありとも言えません）", { label: T.t(d.label) })); continue; }

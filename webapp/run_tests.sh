@@ -43,15 +43,18 @@ echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; pytho
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
 run test_output_escape_node.js
+run test_docx_abbrev_node.js
 run test_files_node.js
 run test_dutydays_node.js "$HP"
 run test_infer_node.js "$HP"
 run test_prevconn_node.js "$HP"
 run test_period_slots_node.js "$HP"
 run test_charge_day_split_node.js "$HP"
+if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
+run test_fixed_input_preservation_node.js "$HP"
 run test_avoid_reference_node.js "$HP"
 run test_reserve_permission_node.js "$HP"
 run test_reserve_lint_node.js "$HP"
@@ -60,7 +63,9 @@ run test_fixed_only_lint_node.js "$HP"
 run test_fixed_only_targets_node.js "$HP"
 run test_variable_capacity_node.js "$HP"
 run test_count_limits_node.js "$HP"
+run test_count_limits_edges_node.js "$PY"
 run test_dayoff_weekday_node.js "$HP"
+run test_dayoff_fixed_node.js "$HP"
 run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
 run test_spec_examples_node.js

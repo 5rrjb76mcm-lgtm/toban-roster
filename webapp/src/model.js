@@ -342,7 +342,6 @@
       for (const [d, ns] of Object.entries(this.fixedDay)) for (const n of ns) { this.fixedWorkKeys.add(`${d}:day|${n}`); this.fixedEngKeys.add(`${d}:day|${n}`); }
       for (const [d, ns] of Object.entries(this.fixedDayOc)) for (const n of ns) this.fixedEngKeys.add(`${d}:day|${n}`);
       for (const [d, ns] of Object.entries(this.fixedNightOc)) for (const n of ns) this.fixedEngKeys.add(`${d}:night|${n}`);
-      for (const [d, n] of Object.entries(this.fixedCharge)) { this.fixedEngKeys.add(`${d}:day|${n}`); this.fixedEngKeys.add(`${d}:night|${n}`); }
 
       const ex = month.exceptions || {};
       this.weekendMaxDiff = +(ex.weekend_balance_max_diff ?? rules.weekend_balance_max_diff ?? 1);
@@ -366,6 +365,13 @@
         this.weights[k] = n; // 数字の文字列は計算用の写しだけで数にする。設定そのものは変更しない
       }
       this.buildCalendar();
+      // 期間責任者の固定が拘束するのは、その日の最初の実在枠だけ。規則が「なし」なら固定例外も作らない。
+      if (this.on("period_charge")) for (const [d, n] of Object.entries(this.fixedCharge)) {
+        if (!this.I.includes(n)) continue;
+        const period = this.periods.find(p => p.days.includes(+d));
+        const first = (period?.slots || []).filter(s => s[0] === +d).sort((a, b) => (a[1] === "day" ? 0 : 1) - (b[1] === "day" ? 0 : 1))[0];
+        if (first) this.fixedEngKeys.add(`${first[0]}:${first[1]}|${n}`);
+      }
       // 目安（P.quota）と当月の目標（P.targets。月の設定の targets で上書き）。相対のときは枠の数から按分するので暦の後
       if (this.quotaMode === "share") this.shareQuotas = shareQuotas(this);
       for (const n of this.names) this.targets[n] = this.quota(n);
@@ -959,10 +965,10 @@
     const tol = P.tol;
     if (diff < 0) {
       const order = [...docs].sort((a, b) => b.q - a.q || b.b - a.b || b.y - a.y);
-      for (let k = 0; k < tol && diff < 0; k++) for (const d of order) { if (diff >= 0) break; if (targets[d.n] - 1 < lo(d.n)) continue; targets[d.n]--; diff++; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
+      for (let k = 0; k < tol && diff < 0; k++) for (const d of order) { if (diff >= 0) break; if (targets[d.n] - 1 < lo(d.n) || targets[d.n] - 1 > hi(d.n)) continue; targets[d.n]--; diff++; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
     } else if (diff > 0) {
       const order = [...docs].sort((a, b) => b.q - a.q || a.b - b.b || a.y - b.y);
-      for (let k = 0; k < tol && diff > 0; k++) for (const d of order) { if (diff <= 0) break; if (targets[d.n] + 1 > hi(d.n)) continue; targets[d.n]++; diff--; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
+      for (let k = 0; k < tol && diff > 0; k++) for (const d of order) { if (diff <= 0) break; if (targets[d.n] + 1 < lo(d.n) || targets[d.n] + 1 > hi(d.n)) continue; targets[d.n]++; diff--; lines.push(T.t("{who} {from}→{to}（累計 {bal}）", { who: d.n, from: d.q, to: targets[d.n], bal: (d.b >= 0 ? "+" : "") + d.b })); }
     }
     if (diff !== 0) lines.push(T.t("±{tol} の範囲では {n} 枠分を調整しきれません（目安の見直しが必要）", { tol, n: Math.abs(diff) }));
     if (S === Q) lines.push(T.t("調整不要（目安どおり）"));

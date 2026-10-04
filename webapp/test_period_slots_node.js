@@ -129,6 +129,110 @@ let runs = 0, fails = 0;
     assert.ok(T.check(P, asg).VC.some(v => v.code === "PERIOD_CHARGE_FIXED_MISMATCH"));
     assert.equal(T.solve(P, highs, { pin: asg, timeLimit: 10 }).status, "Infeasible");
   });
+  test("previous-month handover connects to the first slot's person", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0; r.weights.charge_handover = 200;
+    const P = problem(r, { prev_month: { last_days: [{ date: 31, day: names[0], night: names[1] }] } });
+    assert.ok(!T.lint(P).some(x => x.code === "LINT_PREV_CHARGE_TWO"), "a valid handover is not an ambiguous charge");
+    const good = assignment(P); good["1:night"].work = names[1];
+    consistent(P, 200, good); // Current-day handover remains allowed; its first slot carries the previous charge.
+    const bad = assignment(P); bad["1:day"].work = names[1]; bad["1:night"].work = names[1];
+    assert.ok(T.check(P, bad).VC.some(x => x.code === "PERIOD_CHARGE_PREV_LINK"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+  });
+  test("previous-month first-slot OC establishes charge and supports multiple workers", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0;
+    const P = problem(r, { prev_month: { last_days: [{ date: 31, day: ["Synthetic Staff"], day_oc: [names[0]], night: names[1] }] } });
+    const bad = assignment(P, () => names[1]);
+    assert.ok(T.check(P, bad).VC.some(x => x.code === "PERIOD_CHARGE_PREV_LINK"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+    consistent(P, 0, assignment(P));
+  });
+  test("previous-month handover availability warning names only the first-slot charge", () => {
+    const r = rulesOf("off_days", "all"), prev_month = { last_days: [{ date: 31, day: names[0], night: names[1] }] };
+    const first = T.lint(problem(r, { prev_month, unavailable_other: [{ name: names[0], day: 1, part: "allday" }] })).filter(x => x.code === "LINT_PREV_CHARGE_UNAVAIL");
+    assert.equal(first.length, 1); assert.equal(first[0].args.who, names[0]);
+    assert.ok(!T.lint(problem(r, { prev_month, unavailable_other: [{ name: names[1], day: 1, part: "allday" }] })).some(x => x.code === "LINT_PREV_CHARGE_UNAVAIL"));
+  });
+  test("ambiguous first-slot carry-over still warns and does not choose a charge", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0;
+    const P = problem(r, { prev_month: { last_days: [{ date: 31, day: names[0], day_oc: [names[1]], night: names[0] }] } });
+    assert.ok(T.lint(P).some(x => x.code === "LINT_PREV_CHARGE_TWO"));
+    assert.ok(!T.check(P, assignment(P)).VC.some(x => x.code === "PERIOD_CHARGE_PREV_LINK"));
+    consistent(P, 0, assignment(P));
+  });
+  test("next-month connection uses the first slot even when the last day has a handover", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0; r.weights.charge_handover = 200;
+    const P = problem(r, { month: 10, fixed: { weekend_charge: { 32: names[0] } } }), good = assignment(P);
+    good["31:night"].work = names[1]; consistent(P, 200, good);
+    const bad = assignment(P); bad["31:day"].work = names[1];
+    assert.ok(T.check(P, bad).VC.some(x => x.code === "PERIOD_CHARGE_NEXT_LINK"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+  });
+  test("split-day availability is feasible without false fixed-charge or candidate warnings", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0; r.weights.charge_handover = 200;
+    const P = problem(r, { fixed: { weekend_charge: { 7: names[0] } }, unavailable_night: { [names[0]]: [7] }, unavailable_other: [{ name: names[1], day: 7, part: "day" }] });
+    const good = assignment(P); good["7:night"].work = names[1]; consistent(P, 200, good);
+    assert.ok(!T.lint(P).some(x => ["LINT_FIXED_CHARGE_VS_UNAVAIL", "LINT_NO_CHARGE_CANDIDATE"].includes(x.code)));
+  });
+  test("previous charge can hand over at night when only its night is unavailable", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0; r.weights.charge_handover = 200;
+    const P = problem(r, { prev_month: { last_days: [{ date: 31, day: names[0], night: names[1] }] }, unavailable_night: { [names[0]]: [1] } });
+    const good = assignment(P); good["1:night"].work = names[1]; consistent(P, 200, good);
+    assert.ok(!T.lint(P).some(x => x.code === "LINT_PREV_CHARGE_UNAVAIL"));
+  });
+  test("unavailable first-slot charge and an uncovered later slot still warn", () => {
+    const r = rulesOf("off_days", "all");
+    const P = problem(r, { fixed: { weekend_charge: { 7: names[0] } }, unavailable_other: [{ name: names[0], day: 7, part: "day" }] });
+    assert.ok(T.lint(P).some(x => x.code === "LINT_FIXED_CHARGE_VS_UNAVAIL"));
+    const fixedResult = T.solve(P, highs, { timeLimit: 10 }); assert.equal(fixedResult.status, "Optimal");
+    assert.ok(T.check(P, fixedResult.asg).WC.some(x => x.code === "UNAVAIL_DAY")); // Actual first-slot fixed conflict remains an explicit exception.
+    const q = problem(r, { unavailable_night: Object.fromEntries(names.map(n => [n, [7]])) });
+    assert.ok(T.lint(q).some(x => x.code === "LINT_NO_CHARGE_CANDIDATE"));
+    assert.equal(T.solve(q, highs, { timeLimit: 10 }).status, "Infeasible");
+  });
+  test("night-only charge ignores daytime unavailability but still respects night unavailability", () => {
+    const r = rulesOf("none", "all"); for (const k in r.weights) r.weights[k] = 0;
+    const extra = { fixed: { weekend_charge: { 7: names[0] } }, unavailable_other: [{ name: names[0], day: 7, part: "day" }] };
+    const P = problem(r, extra); consistent(P, 0, assignment(P));
+    assert.ok(!T.lint(P).some(x => x.code === "LINT_FIXED_CHARGE_VS_UNAVAIL"));
+    const bad = problem(r, { ...extra, unavailable_night: { [names[0]]: [7] } });
+    assert.ok(T.lint(bad).some(x => x.code === "LINT_FIXED_CHARGE_VS_UNAVAIL"));
+    assert.equal(T.solve(bad, highs, { timeLimit: 10 }).status, "Optimal"); // First-slot fixed conflict remains permitted.
+  });
+  test("fixed charge exempts only the first slot, not an unpinned later night", () => {
+    const r = rulesOf("off_days", "all"); for (const k in r.weights) r.weights[k] = 0; r.weights.charge_handover = 200;
+    const P = problem(r, { fixed: { weekend_charge: { 7: names[0] } }, unavailable_night: { [names[0]]: [7] } });
+    const bad = assignment(P);
+    assert.ok(T.check(P, bad).VC.some(x => x.code === "UNAVAIL_NIGHT"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+    const good = assignment(P); good["7:night"].work = names[1]; consistent(P, 200, good);
+    const separatelyFixed = problem(r, { fixed: { weekend_charge: { 7: names[0] }, night: { 7: names[0] } }, unavailable_night: { [names[0]]: [7] } });
+    assert.ok(T.check(separatelyFixed, bad).WC.some(x => x.code === "UNAVAIL_NIGHT"));
+    assert.equal(T.solve(separatelyFixed, highs, { pin: bad, timeLimit: 10 }).status, "Optimal");
+  });
+  test("disabled charge does not exempt either slot from unavailability", () => {
+    const r = rulesOf("off_days", "all"); r.rule_states.period_charge = "off";
+    const P = problem(r, { fixed: { weekend_charge: { 7: names[0] } }, unavailable_night: { [names[0]]: [7] }, unavailable_other: [{ name: names[0], day: 7, part: "day" }] });
+    assert.ok(!P.isFixedEng([7, "day"], names[0])); assert.ok(!P.isFixedEng([7, "night"], names[0]));
+    const bad = assignment(P), check = T.check(P, bad);
+    assert.ok(check.VC.some(x => x.code === "UNAVAIL_DAY")); assert.ok(check.VC.some(x => x.code === "UNAVAIL_NIGHT"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+  });
+  test("charge fixed outside a period does not exempt an unrelated shift", () => {
+    const r = rulesOf("off_days", "all"), P = problem(r, { fixed: { weekend_charge: { 2: names[0] } }, unavailable_night: { [names[0]]: [2] } });
+    assert.ok(T.lint(P).some(x => x.code === "LINT_FIXED_CHARGE_NOT_OFF_DAY"));
+    assert.ok(!P.isFixedEng([2, "night"], names[0]));
+    const bad = assignment(P); assert.ok(T.check(P, bad).VC.some(x => x.code === "UNAVAIL_NIGHT"));
+    assert.equal(T.solve(P, highs, { pin: bad, timeLimit: 10 }).status, "Infeasible");
+  });
+  test("non-charge and unknown charge names do not create fixed exemptions", () => {
+    const r = rulesOf("off_days", "all"), staff = "Synthetic Staff", unknown = "Synthetic Unknown";
+    r.doctors.push({ name: staff, team: "S", quota: 0, years: 1 });
+    const P = problem(r, { fixed: { weekend_charge: { 7: staff, 14: unknown }, night: { 7: staff } } });
+    assert.ok(T.lint(P).some(x => x.code === "LINT_FIXED_CHARGE_NOT_ROLE"));
+    assert.ok(!P.isFixedEng([7, "day"], staff)); assert.ok(!P.isFixedEng([14, "day"], unknown));
+    assert.ok(!P.isFixedEng([14, "night"], unknown)); assert.ok(P.isFixedEng([7, "night"], staff), "keep the separate actual night fixed assignment");
+  });
   T.app = { state: {}, names: () => names.slice(), iNames: () => names.slice(), daysIn: (y, m) => new Date(y, m, 0).getDate() };
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/app-month.js"), "utf8"), { filename: "app-month.js" });
   for (const active of [false, true]) test(`month-end Saturday carryover: ${active ? "active" : "no"} holiday slots`, () => {
@@ -149,6 +253,17 @@ let runs = 0, fails = 0;
       assert.equal(next.prev_month.prev_weekend_charge, null);
       assert.equal(next.notes, "");
     }
+  });
+  test("handover carry-over preserves the first-slot charge in fixed duty and history", () => {
+    const r = rulesOf("off_days", "all"), P = problem(r, { month: 10 }), asg = assignment(P);
+    asg["31:night"].work = names[1]; T.app.state.rules = r;
+    const prev = { rules: r, month: P.m, result: { asg } }, before = JSON.stringify(prev);
+    const next = T.app.fromPrevious(prev, 2026, 11);
+    assert.equal(JSON.stringify(prev), before);
+    assert.equal(next.fixed.weekend_charge[1], names[0]);
+    assert.equal(next.prev_month.last_weekend_charge, names[0]);
+    assert.deepEqual(next.history.weekend_charge, { [names[0]]: 4, [names[1]]: 0 });
+    assert.ok(!T.lint(new T.Problem(r, next)).some(x => x.code === "LINT_PREV_CHARGE_TWO"));
   });
   console.log(`Period slot regression: ${runs - fails} passed, ${fails} failed`); process.exitCode = fails ? 1 : 0;
 })().catch(e => { console.error(e); process.exitCode = 1; });

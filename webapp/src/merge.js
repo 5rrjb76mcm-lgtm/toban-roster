@@ -73,7 +73,7 @@
       else if (p[0] === "closure") m.closure_days.push(+p[1]);
       else if (p[0] === "cathoffA") m.cath_off_days_A.push(+p[1]);
       else if (p[0] === "cathoffI") m.cath_off_days_I.push(+p[1]);
-      else if (p[0] === "target") m.targets[p[1]] = v; else if (p[0] === "cmin") m.count_min[p.slice(1).join(":")] = v; else if (p[0] === "cmax") m.count_max[p.slice(1).join(":")] = v;
+      else if (p[0] === "target") m.targets[p.slice(1).join(":")] = v; else if (p[0] === "cmin") m.count_min[p.slice(1).join(":")] = v; else if (p[0] === "cmax") m.count_max[p.slice(1).join(":")] = v;
       else if (p[0] === "duty") ((m.duty_days[p[1]] ||= {})[+p[2]] ||= {})[p[3]] = v;
       else if (p[0] === "cal") for (const one of String(v).split("+")) { const paid = /_paid$/.test(one), pv = one.replace(/_paid$/, ""); // 並べた値は 1 つずつ戻す
         if (pv === "night") (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
@@ -108,7 +108,7 @@
     switch (p[0]) {
       case "s": return ({ year: "年", month: "月", duties_on_holidays: "土日祝の定期業務", next_month_first_day_is_holiday: "翌月1日は休日", next_first_day_in_calendar: "カレンダーの翌月1日欄あり", allow_chief_duty: "予備の役割を候補に含める", doc_label: "表題", profile_id: "施設", notes: "メモ", "exceptions.weekend_balance_max_diff": "週末担当の許容差", "prev_month.last_weekend_charge": "前月最後の週末担当", "prev_month.prev_weekend_charge": "前月その前の週末担当" })[p.slice(1).join(":")] || k;
       case "hol": return `祝日 ${day(p[1])}`; case "plugin": return `使ったプラグインの規則 ${p.slice(1).join(":")}`; case "closure": return `施設休日 ${day(p[1])}`; case "cathoffA": return `専門業務の配置不要（対の役割） ${day(p[1])}`; case "cathoffI": return `専門業務の配置不要（期間責任者） ${day(p[1])}`;
-      case "target": return `${p[1]} の当月目標`; case "cmin": return `${p.slice(1).join(":")} の当月の下限`; case "cmax": return `${p.slice(1).join(":")} の当月の上限`; case "duty": return `${p[1]} ${day(p[2])} ${p[3] === "am" ? "午前" : "午後"}の業務`;
+      case "target": return `${p.slice(1).join(":")} の当月目標`; case "cmin": return `${p.slice(1).join(":")} の当月の下限`; case "cmax": return `${p.slice(1).join(":")} の当月の上限`; case "duty": return `${p[1]} ${day(p[2])} ${p[3] === "am" ? "午前" : "午後"}の業務`;
       case "cal": return `${p[1]} ${day(p[2])} の不可・避`;
       case "wkwish": return `${p[1]} の土日日勤希望`; case "wish": return `${p[1]} ${day(p[2])} の当直希望`; case "wishd": return `${p[1]} ${day(p[2])} の日勤希望`;
       case "fd": return `${day(p[1])} 日勤の固定 ${p[2]}`; case "fn": return `${day(p[1])} 夜勤の固定 ${p[2]}`; case "ftag": return `${day(p[1])} 固定の印 ${p[3]}`; case "dflag": return `${day(p[1])} 日の区分 ${p.slice(2).join(":")}`; case "dnote": return `${day(p[1])} 日の予定`; case "pday": return `${p[2]} ${day(p[3])} ${p[1]}`; case "fc": return `${day(p[1])} 期間責任者の固定`;

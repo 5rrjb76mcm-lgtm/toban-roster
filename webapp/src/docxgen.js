@@ -46,6 +46,16 @@
       while (k < max && names.some(m => m !== n && cut(m, k) === cut(n, k))) k++;
       out[n] = cut(n, k);
     }
+    // 敬称を除くと同じ氏名になる人は、氏名をそのまま出して区別する。
+    // 戻した氏名が別の略称と重なる場合も解消する（通常の短い略称は保つ）。
+    for (let changed = true; changed;) {
+      changed = false;
+      const groups = new Map();
+      for (const n of names) { if (!groups.has(out[n])) groups.set(out[n], []); groups.get(out[n]).push(n); }
+      for (const group of groups.values()) if (group.length > 1) for (const n of group) {
+        if (out[n] !== String(n)) { out[n] = String(n); changed = true; }
+      }
+    }
     return out;
   }
 

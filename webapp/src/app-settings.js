@@ -496,7 +496,10 @@
   const unchangedSince = entry => { const o = JSON.parse(entry.snap); return monthSig(o.month) === monthSig(state.month) && A.rulesSig(o.rules) === A.rulesSig(state.rules) && JSON.stringify(o.result) === JSON.stringify(state.result); };
   function pushUndo(label, opts = {}) {
     const snap = JSON.stringify({ rules: state.rules, month: state.month, result: state.result });
-    if (undoStack.length && undoStack[undoStack.length - 1].snap === snap) return;
+    if (undoStack.length && undoStack[undoStack.length - 1].snap === snap) {
+      if (undoStack[undoStack.length - 1].after === null) return; // 同じ処理内の重複だけまとめる
+      undoStack.pop(); // 前の無変化の操作は、新しい操作の auto / after を引き継がせず置き換える
+    }
     const entry = { snap, label, after: null, auto: !!opts.auto }; undoStack.push(entry); if (undoStack.length > UNDO_MAX) undoStack.shift();
     queueMicrotask(() => { if (entry.after !== null) return; entry.after = monthSig(state.month); entry.afterRules = A.rulesSig(state.rules); // 変更を行った処理が終わった直後の月と設定
       if (entry.auto && unchangedSince(entry)) { const i = undoStack.indexOf(entry); if (i >= 0) undoStack.splice(i, 1); renderUndo(); } });
