@@ -105,6 +105,8 @@
 sh run_tests.sh /path/to/node_modules/highs
 ```
 
+- `test_input_escape_node.js` — JSON から復元した数値欄・日付の一覧も HTML 属性として無害化されることを、設定・月別入力・規則の欄で検査する（架空の文字列、Python 標準の HTMLParser。ブラウザでの実行試験ではない）
+- `test_delimited_names_node.js` — 氏名に `:`・`|` があるときも、月データの統合・履歴の読み戻し・固定の印・前月末の接続・翌月への引き継ぎ・固定指定の例外判定で人や入力を取り違えないことを架空データで確かめる
 - `test_refine_node.js` — assert 付きの回帰テスト（名簿の正規化、規則の欠損補完、固定指定の検算分類、docx の整形式、統合の往復、避パターン展開）
 - `test_merge_node.js` `test_docx_node.js` `test_dutydays_node.js` `test_infer_node.js` `test_prevconn_node.js` `test_lint_node.js` — 各機能の確認（出力を目視）
 - `test_node.js` — Python 版との突き合わせ（上の 4 条件。外れれば失敗）

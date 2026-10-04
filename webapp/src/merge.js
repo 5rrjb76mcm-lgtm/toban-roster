@@ -37,7 +37,7 @@
     const fx = m.fixed || {};
     for (const [d, ns] of Object.entries(fx.day || {})) for (const n of [].concat(ns || []).filter(Boolean)) f[`fd:${d}:${n}`] = "1"; // 1 枠に複数名を固定できるので人ごとの項目
     for (const [d, ns] of Object.entries(fx.night || {})) for (const n of [].concat(ns || []).filter(Boolean)) f[`fn:${d}:${n}`] = "1";
-    for (const [k, tg] of Object.entries(m.fixed_tags || {})) if (tg) { const [sl, n] = k.split("|"), [d, kind] = sl.split(":"); put(`ftag:${d}:${kind}:${n}`, tg); } // 固定の印
+    for (const [k, tg] of Object.entries(m.fixed_tags || {})) if (tg) { const [sl, ...ns] = k.split("|"), n = ns.join("|"), [d, kind] = sl.split(":"); put(`ftag:${d}:${kind}:${n}`, tg); } // 固定の印（氏名内の | は区切らない）
     for (const [d, ids] of Object.entries(m.day_flags || {})) for (const id of [].concat(ids || []).filter(Boolean)) f[`dflag:${+d}:${id}`] = "1"; // 日ごとの区分
     for (const [d, txt] of Object.entries(m.day_notes || {})) if (txt) put(`dnote:${+d}`, txt); // 日ごとの予定
     for (const [id, byName] of Object.entries(m.person_days || {})) for (const [n, byDay] of Object.entries(byName || {})) for (const [d, v] of Object.entries(byDay || {})) if (v !== "" && v != null) put(`pday:${id}:${n}:${+d}`, v); // 職員別カレンダーの拡張の欄
@@ -54,6 +54,20 @@
     for (const [n, pats] of Object.entries(m.regular_duties || {})) put(`pat:${n}`, pats || []);
     return f;
   }
+  // 氏名には ':' も使える。日付・時間帯など既知の両端だけを区切り、氏名は元に戻す。
+  // 展開キーの形式は変えず、復元と衝突の表示で同じ解釈を使う。
+  function keyParts(k) {
+    const p = k.split(":");
+    switch (p[0]) {
+      case "duty": return [p[0], p.slice(1, -2).join(":"), ...p.slice(-2)];
+      case "cal": case "wish": case "wishd": case "cpm": return [p[0], p.slice(1, -1).join(":"), p[p.length - 1]];
+      case "wkwish": case "pat": return [p[0], p.slice(1).join(":")];
+      case "fd": case "fn": case "fdo": case "fno": case "fdon": case "fnon": case "hist": return [p[0], p[1], p.slice(2).join(":")];
+      case "ftag": return [p[0], p[1], p[2], p.slice(3).join(":")];
+      case "pday": return [p[0], p[1], p.slice(2, -1).join(":"), p[p.length - 1]];
+      default: return p;
+    }
+  }
   // 展開した項目から月データを組み立てる（template は未知の項目の引き継ぎ元）
   function unflatten(f, template) {
     const m = JSON.parse(J(template || {}));
@@ -67,7 +81,7 @@
     m.prev_month = { last_days: [], last_weekend_charge: null, prev_weekend_charge: null }; m.regular_duties = {};
     m.fixed_tags = {}; m.day_flags = {}; m.day_notes = {}; m.person_days = {}; delete m.plugins_used; // 新しい項目も空から作り直す（template の値が残ると、削除が復活し往復で重複する）
     for (const k of Object.keys(f).sort()) {
-      const p = k.split(":"), v = P(k);
+      const p = keyParts(k), v = P(k);
       if (p[0] === "hol") m.holidays.push(+p[1]);
       else if (p[0] === "plugin") (m.plugins_used ||= []).push(p.slice(1).join(":"));
       else if (p[0] === "closure") m.closure_days.push(+p[1]);
@@ -103,7 +117,7 @@
   }
   // 項目キーを人が読める名前にする
   function label(k) {
-    const p = k.split(":");
+    const p = keyParts(k);
     const day = d => `${d}日`;
     switch (p[0]) {
       case "s": return ({ year: "年", month: "月", duties_on_holidays: "土日祝の定期業務", next_month_first_day_is_holiday: "翌月1日は休日", next_first_day_in_calendar: "カレンダーの翌月1日欄あり", allow_chief_duty: "予備の役割を候補に含める", doc_label: "表題", profile_id: "施設", notes: "メモ", "exceptions.weekend_balance_max_diff": "週末担当の許容差", "prev_month.last_weekend_charge": "前月最後の週末担当", "prev_month.prev_weekend_charge": "前月その前の週末担当" })[p.slice(1).join(":")] || k;

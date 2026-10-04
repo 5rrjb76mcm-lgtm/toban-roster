@@ -17,7 +17,7 @@ T.rules.register({
     for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) { let c = 0; for (const s of ss) if (ctx.worked(S[i], s) && ctx.worked(S[j], s)) c++; ctx.limit("pair_cap", c, "<=", prm.max); }
   },
   ui: {
-    render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${c.max ?? 2}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
+    render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(c.max ?? 2)}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
     read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) R.pair_cap = { shift: a ? a.value : "night", max: b ? Math.max(0, +b.value || 0) : 2 }; },
   },
   summary(P, prm, tv) { return tv("{shift}で同じ人と組むのは月 {n} 回まで", { shift: P.shiftLabel(prm.shift), n: prm.max }); },

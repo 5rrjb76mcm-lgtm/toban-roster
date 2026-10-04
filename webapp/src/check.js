@@ -101,7 +101,7 @@
     // 固定指定した枠・医師に関わる違反は「固定指定により許容（要確認）」として分ける（固定指定との不一致そのものは違反のまま）。
     // 判定は文言ではなく、違反に関わる日・医師（VD）と固定指定の集合の照合で行う
     const W = [], V2 = [], WC = [], VC2 = [], fixedByDay = {};
-    for (const k of P.fixedEngKeys) { const [sl, n] = k.split("|"); const d = +sl.split(":")[0]; (fixedByDay[d] ||= new Set()).add(n); }
+    for (const k of P.fixedEngKeys) { const [sl, ...ns] = k.split("|"), n = ns.join("|"); const d = +sl.split(":")[0]; (fixedByDay[d] ||= new Set()).add(n); }
     const NEVER_BY_FIXED = new Set(["FIXED_MISMATCH", "PERIOD_CHARGE_FIXED_MISMATCH", "PERIOD_CHARGE_NEXT_LINK"]); // 固定指定そのものとの不一致は許容しない
     V.forEach((v, i) => {
       const d = VD[i] || { days: [], names: [] };

@@ -8,7 +8,7 @@ T.rules.register({
   lint(ctx, prm) { for (const n of ctx.P.dutyNames) { const ds = ctx.P.wishOffDays(n); if (ds.length > prm.max) ctx.push("LINT_WISH_OFF_OVER", { who: n, count: ds.length, max: prm.max, days: ds.join(T.listSep()) }); } },
   ui: {
     render(R, h) { const { esc, tx, sel } = h, w = R.wish_off || {};
-      return `<label>${esc(tx("上限"))} <input type="number" min="0" max="31" id="setWishOffMax" value="${w.max ?? 3}" style="width:4em"> ${esc(tx("日"))}</label>
+      return `<label>${esc(tx("上限"))} <input type="number" min="0" max="31" id="setWishOffMax" value="${h.esc(w.max ?? 3)}" style="width:4em"> ${esc(tx("日"))}</label>
 　<label>${esc(tx("希望休として数えるもの: "))}${sel([["both", tx("不可 と 避けたい日")], ["unavailable", tx("不可だけ")], ["avoid", tx("避けたい日だけ")]], w.counts || "both", 'id="setWishOffCounts"')}</label>
 <p class="note">${esc(tx("超えた人は入力チェック（計算タブ）で指摘します。どの申告を削るかは本人と決めることなので、自動では外しません。"))}</p>`; },
     read(R, el) { if (el("#setWishOffMax") || el("#setWishOffCounts")) { const w = Object.assign({}, R.wish_off);

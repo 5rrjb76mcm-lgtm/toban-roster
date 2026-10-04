@@ -453,7 +453,7 @@
       return parts.join(T.listSep ? T.listSep() : "・") || t("全員", {});
     }
     // その人の休みの日数（ちょうど／以上の基準）: 土日祝の数（または労働時間から）＋有給の日数
-    hasFixedEng(n) { for (const k of this.fixedEngKeys) if (k.endsWith("|" + n)) return true; return false; } // その人に固定指定（勤務・OC）があるか
+    hasFixedEng(n) { for (const k of this.fixedEngKeys) if (k.slice(k.indexOf("|") + 1) === n) return true; return false; } // その人に固定指定（勤務・OC）があるか（氏名の接尾辞だけでは照合しない）
     offTarget(n) { return this.minDaysOff + ((this.paidDays || {})[n] ? [...this.paidDays[n]].filter(d => d <= this.N).length : 0); }
     // その枠で勤務者の役割ごとに必要なオンコール（勤務帯がオンコールを付けないなら全員 0）。解く側・検算・減点・説明資料が同じものを使う
     ocReqAt(s) { const sh = (this.shifts || []).find(x => x.id === s[1]); return !sh || sh.oncall !== false ? this.ocReq : this.ocReqNone; }
@@ -569,7 +569,7 @@
     isFixedEng(s, n) { return this.fixedEngKeys.has(`${s[0]}:${s[1]}|${n}`); }
     isFixedOnly(n) { return (this.doctors[n] || {}).duty === "fixed_only"; } // 名簿の当番の欄が「固定したときだけ」（師長など。固定した枠にだけ入る）
     isExempt(n) { return this.isRole(n, "reserve") || this.isFixedOnly(n); } // 回数・休み・偏りの規則を当てはめない人（予備の役割と「固定したときだけ」の人）
-    fixedWorkCount(n) { let c = 0; for (const k of this.fixedWorkKeys) if (k.endsWith("|" + n)) c++; return c; }
+    fixedWorkCount(n) { let c = 0; for (const k of this.fixedWorkKeys) if (k.slice(k.indexOf("|") + 1) === n) c++; return c; }
     nextDayIsHoliday() { return ((this.dow(this.N) + 1) % 7) >= 5 || this.nextFirstHoliday; }
     nextSlotExists(kind) { const sh = (this.shifts || []).find(x => x.id === kind), h = this.nextDayIsHoliday(); if (!sh) return kind === "night" || h; return sh.on === "none" ? false : sh.on === "all" ? true : sh.on === "weekdays" ? !h : h; } // 翌月 1 日にその勤務帯の枠があるか（勤務帯の設定に従う。2 交代は平日にも日勤がある）
     nextFirstSlotKind() { return this.nextSlotExists("day") ? "day" : "night"; } // 翌月1日の最初の枠（月末の夜勤に隣接する枠）
@@ -659,7 +659,7 @@
     const f = m.fixed || {};
     for (const k of ["night", "day", "weekend_charge"]) for (const v of Object.values(f[k] || {})) for (const n of [].concat(v || [])) add(n, "fixed");
     for (const k of ["day_oc", "night_oc"]) for (const v of Object.values(f[k] || {})) for (const n of [].concat(v || [])) add(n, "fixed");
-    for (const k of Object.keys(m.fixed_tags || {})) add(k.split("|")[1], "fixed");
+    for (const k of Object.keys(m.fixed_tags || {})) add(k.split("|").slice(1).join("|"), "fixed");
     for (const byName of Object.values(m.person_days || {})) for (const [n, v] of Object.entries(byName || {})) if (v && Object.keys(v).length) add(n, "person_days");
     return out;
   }
@@ -674,7 +674,7 @@
     const f = m.fixed || {};
     for (const k of ["night", "day", "weekend_charge"]) for (const d of Object.keys(f[k] || {})) { const v = f[k][d]; if (Array.isArray(v)) { const out = v.filter(n => !bad.has(n)); c += v.length - out.length; if (out.length) f[k][d] = out; else delete f[k][d]; } else if (bad.has(v)) { delete f[k][d]; c++; } }
     for (const k of ["day_oc", "night_oc"]) for (const d of Object.keys(f[k] || {})) { const v = [].concat(f[k][d] || []), out = v.filter(n => !bad.has(n)); c += v.length - out.length; if (out.length) f[k][d] = out; else delete f[k][d]; }
-    for (const k of Object.keys(m.fixed_tags || {})) if (bad.has(k.split("|")[1])) { delete m.fixed_tags[k]; c++; }
+    for (const k of Object.keys(m.fixed_tags || {})) if (bad.has(k.split("|").slice(1).join("|"))) { delete m.fixed_tags[k]; c++; }
     for (const byName of Object.values(m.person_days || {})) for (const n of Object.keys(byName || {})) if (bad.has(n)) { delete byName[n]; c++; }
     return c;
   }
@@ -706,7 +706,7 @@
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w); // 勤務者は 1 名（文字列）か複数名（配列）
     mv(m.duty_days); mv(m.regular_duties); mv(m.unavailable_night); mv(m.targets); mv(m.count_min); mv(m.count_max); mv(m.wishes?.night_on); mv(m.wishes?.day_on); if (!opts.inputsOnly) { mv(m.history?.weekend_charge); mv(m.history?.holiday_charge); mv(m.history?.work_balance); }
     for (const byName of Object.values(m.person_days || {})) mv(byName); // プラグインが足した日ごとの欄
-    if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, who] = key.split("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印
+    if (m.fixed_tags) for (const key of Object.keys(m.fixed_tags)) { const [sl, ...ns] = key.split("|"), who = ns.join("|"); if (who === oldN) { m.fixed_tags[`${sl}|${newN}`] = m.fixed_tags[key]; delete m.fixed_tags[key]; } } // 固定の印（氏名内の | も含めて照合）
     (m.unavailable_other || []).forEach(u => { if (u.name === oldN) u.name = newN; }); (m.confirmed_pm_external_night || []).forEach(u => { if (u.name === oldN) u.name = newN; });
     if (m.wishes && m.wishes.weekend_dayshift) m.wishes.weekend_dayshift = (m.wishes.weekend_dayshift || []).map(x => x === oldN ? newN : x);
     for (const k of ["night", "day"]) for (const d of Object.keys(m.fixed?.[k] || {})) m.fixed[k][d] = ren1(m.fixed[k][d]); // 1 名でも複数名でも

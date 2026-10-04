@@ -44,9 +44,9 @@ T.rules.register({
       const dy = [["all", tx("すべての日")], ["weekdays", tx("平日だけ")], ["off_days", tx("土日祝だけ")]].concat((T.dayFlags ? T.dayFlags.activeFor(R) : []).map(f => [`flag:${f.id}`, tx("「{f}」の日", { f: T.pickLabel ? T.pickLabel(f.short || f.label, f.id) : f.label })])); // 日ごとの区分が付いた日
       return `<table class="grid" id="compTbl"><tr><th>${esc(tx("勤務帯"))}</th><th>${esc(tx("日"))}</th><th>${esc(tx("名前"))}</th><th>${esc(tx("何年目以上"))}</th><th>${esc(tx("何年目以下"))}</th><th>${esc(tx("資格あり"))}</th><th>${esc(tx("資格なし"))}</th><th>${esc(tx("最低（人）"))}</th><th>${esc(tx("最大（人）"))}</th><th></th></tr>` +
         rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${sel(dy, c.days || "all", "data-cdays")}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
-          ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${c[k] ?? ""}" style="width:4em"></td>`).join("") +
+          ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${h.esc(c[k] ?? "")}" style="width:4em"></td>`).join("") +
           `<td><input data-cqual value="${esc(c.qual || "")}" style="width:6em"></td><td><input data-cnot value="${esc(c.not_qual || "")}" style="width:6em"></td>` +
-          `<td><input type="number" min="0" data-cmin value="${c.min ?? ""}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${c.max ?? ""}" style="width:4em"></td>` +
+          `<td><input type="number" min="0" data-cmin value="${h.esc(c.min ?? "")}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${h.esc(c.max ?? "")}" style="width:4em"></td>` +
           `<td><button data-act="compDel">${esc(tx("削除"))}</button></td></tr>`).join("") + `</table>
 <p><button data-act="compAdd">${esc(tx("構成の条件を追加"))}</button> <span class="note">${esc(tx("枠ごとに、条件に合う人が何人いるかの下限・上限です。空欄の条件は問いません。何年目は名簿の「何年目」、資格は名簿の「資格」と照らします。資格を「・」で区切ると「どれか 1 つを持つ人」です。例: 夜勤に若手は1人まで（資格あり 若手・最大 1）。管理者とは別にリーダーを 1 人置くなら「管理者 1 人以上」と「管理者・リーダー 2 人以上」。ここに書いた資格は名簿の資格の欄にチェックボックスで出ます。"))}</span></p>`;
     },

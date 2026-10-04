@@ -27,6 +27,7 @@ else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i 
 run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_merge_node.js
+run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_settings_import_node.js
 run test_undo_roster_order_node.js
@@ -43,6 +44,7 @@ echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; pytho
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
 run test_output_escape_node.js
+run test_input_escape_node.js
 run test_docx_abbrev_node.js
 run test_files_node.js
 run test_dutydays_node.js "$HP"

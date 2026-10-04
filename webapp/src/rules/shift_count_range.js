@@ -8,7 +8,7 @@ T.rules.register({
   weight: "shift_count_range", w0: 150,
   columns: ["night", "day"].map((k, i) => ({ key: `scr_${k}`, at: "duty", order: 4 + i, label: k === "night" ? "夜勤の上限（空欄＝共通）" : "日勤の上限（空欄＝共通）", field: SCR_FIELD[k],
     when: R => { const c = (R.shift_counts || { night: { min: 3, max: 5 } })[k]; return !!c && (c.max != null || c.min != null); },
-    render(d, R, h) { return `<input type="number" min="0" max="31" data-f="${SCR_FIELD[k]}" value="${d[SCR_FIELD[k]] ?? ""}" style="width:3.5em">`; },
+    render(d, R, h) { return `<input type="number" min="0" max="31" data-f="${SCR_FIELD[k]}" value="${h.esc(d[SCR_FIELD[k]] ?? "")}" style="width:3.5em">`; },
     read(td, d) { const v = td.querySelector(`[data-f="${SCR_FIELD[k]}"]`).value; if (v !== "") d[SCR_FIELD[k]] = Math.max(0, +v); } })),
   read(P) { const c = P.rules.shift_counts || { night: { min: 3, max: 5 } }, out = {};
     const active = P.state("shift_count_range") !== "off";
@@ -45,7 +45,7 @@ T.rules.register({
   },
   ui: {
     render(R, h) { const c = R.shift_counts || { night: { min: 3, max: 5 } };
-      return h.shifts.map(([id, lb]) => `<label>${h.esc(lb)} <input type="number" min="0" max="31" data-scr="${id}:min" value="${(c[id] || {}).min ?? ""}" style="width:3.5em">〜<input type="number" min="0" max="31" data-scr="${id}:max" value="${(c[id] || {}).max ?? ""}" style="width:3.5em"> ${h.esc(h.tx("回（空欄＝制限なし）"))}</label>`).join("　"); },
+      return h.shifts.map(([id, lb]) => `<label>${h.esc(lb)} <input type="number" min="0" max="31" data-scr="${id}:min" value="${h.esc((c[id] || {}).min ?? "")}" style="width:3.5em">〜<input type="number" min="0" max="31" data-scr="${id}:max" value="${h.esc((c[id] || {}).max ?? "")}" style="width:3.5em"> ${h.esc(h.tx("回（空欄＝制限なし）"))}</label>`).join("　"); },
     read(R, el) { const out = {}; for (const id of ["day", "night"]) { const a = el(`[data-scr="${id}:min"]`), b = el(`[data-scr="${id}:max"]`); if (!a && !b) continue; const v = {};
       if (a && a.value !== "") v.min = Math.max(0, +a.value); if (b && b.value !== "") v.max = Math.max(0, +b.value); if (Object.keys(v).length) out[id] = v; } R.shift_counts = out; },
   },
