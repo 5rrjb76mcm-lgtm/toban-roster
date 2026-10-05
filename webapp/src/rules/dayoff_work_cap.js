@@ -2,7 +2,7 @@
 // 名簿の「土日の実勤務の上限（月・日）」の欄で人ごとに日数を決める（rules.dayoff_work_max = {氏名: 日数}。0 も有効、空欄＝指定なし）。家庭の事情などで週末の勤務を減らしたい人に使う。
 // 数え方: 土曜・日曜（P.isWeekend）で当月の枠がある日のうち、どれかの枠で実勤務に入った日を 1 日と数える（日勤＋夜勤も 1 日）。OC は数えない。
 // 平日は祝日・施設の休日でも数えない（金曜の夜勤、平日の祝日の日勤、年末の平日など）。規則の id と設定のキーは dayoff_ のまま（最初の版は休日全体を数えていた。保存済みの設定をそのまま使えるように変えない）。
-// 減点の規則: 上限を超えた日数 × 重み（dayoff_work_excess）。ほかに手が無いときは超えてよい（必須にはしない）。
+// 減点の規則: 上限を超えた日数 × 重み（dayoff_work_excess）。ほかの減点との兼ね合いで超えることがある（必須にはしない）。
 // 申告で負担が減らないよう、本人の回数が「基準回数」を下回る分には大きな減点（dayoff_work_no_reduction）。基準回数＝この規則と避けたい日を無視した参照解での回数
 //（opts.avoidRef。本体の solveWithAvoidRef が 2 段階で計算し、対象者は refDeclarers が本体へ知らせる）。参照解が無いときは当月目標。opts.ignoreAvoid のとき（参照解を作るとき）は何もしない。
 // 同じ人が避けたい日も申告していて avoid_days が動いているときは、回数の下支えは avoid_days の側（avoid_no_reduction）に任せる（同じ不足を二重に数えない）。
@@ -15,7 +15,7 @@ const weekendDays = P => { const out = []; for (let d = 1; d <= P.N; d++) if (P.
 const parse = v => { if (typeof v === "string" && v.trim() === "") return null; const k = typeof v === "number" || typeof v === "string" ? Number(v) : NaN; return Number.isInteger(k) && k >= 0 ? k : NaN; };
 const targets = (P, prm) => P.dutyNames.filter(n => prm.max[n] != null && !P.isExempt(n));
 // 回数の下支えを avoid_days が受け持つ人（避けたい日を申告していて、avoid_days が動いている）
-const guardedByAvoid = (P, n) => P.state("avoid_days") !== "off" && P.avoidSlots(n).length > 0;
+const guardedByAvoid = (P, n) => T.rules.isOn(P, "avoid_days") && P.avoidSlots(n).length > 0;
 const floorOf = (P, opts, n) => { const f = (opts.avoidRef && opts.avoidRef[n] != null) ? +opts.avoidRef[n] : +P.targets[n]; return Number.isFinite(f) ? f : null; };
 T.rules.register({
   id: "dayoff_work_cap", api: 1, order: 415, group: "wish",
@@ -59,7 +59,7 @@ T.rules.register({
     read(td, d, R, acc, name) { const raw = String(td.querySelector("[data-f=dwm]").value || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); if (raw === "") return; const k = parse(raw); acc[name] = Number.isNaN(k) ? raw : k; },
     end(R, acc) { R.dayoff_work_max = acc; },
     rename(R, o, n) { const m = R.dayoff_work_max || {}; if (m[o] !== undefined) { m[n] = m[o]; delete m[o]; } } }],
-  ui: { render(R, h) { return `<span class="note">${h.esc(h.tx("日数は名簿の「土日の実勤務の上限」の欄で人ごとに指定します（空欄の人には何もしません）。上限を超えるのは、ほかに手が無いときだけです。"))}</span>`; } },
+  ui: { render(R, h) { return `<span class="note">${h.esc(h.tx("日数は名簿の「土日の実勤務の上限」の欄で人ごとに指定します（空欄の人には何もしません）。上限は減点で調整するため、ほかの条件との兼ね合いで超えることがあります。"))}</span>`; } },
   summary(P, prm, tv) { return tv("対象: {who}", { who: targets(P, prm).map(n => tv("{who} 月{n}日まで", { who: n, n: prm.max[n] })).join(T.listSep()) || tv("なし") }); },
   messages: {
     LINT_DAYOFF_WORK_BAD_VALUE: { en: "The cap on weekend work for {who} is not a whole number of 0 or more (ignored)", ja: "{who} の「土日の実勤務の上限」が 0 以上の整数ではありません（この指定は使いません）" },
@@ -67,6 +67,8 @@ T.rules.register({
     LINT_DAYOFF_WORK_FIXED_OVER: { en: "{who}: work is hand-fixed on {count} weekend days ({days}), above this person's cap of {max}. This can be solved (the days above the cap cost a penalty)", ja: "{who}: 土日の実勤務を {count} 日（{days}）固定していて、本人の上限 {max} 日を超えています。このまま計算できます（超えた日数は減点）" },
     LINT_DAYOFF_WORK_FIXED_OVER_HINT: { en: "Leave it if intended. Otherwise remove a fixed assignment or raise the cap in the roster", ja: "意図どおりならそのままで構いません。そうでなければ固定を外すか、名簿の上限を見直してください" },
   },
+  // 共有用（名簿なし）では個人別の条件をすべて除く。外部 JSON の不正な型や旧名簿の文字列も残さない。
+  share(R) { R.dayoff_work_max = {}; },
   // 入力チェック: 欄の値が整数でない人、固定した土日の実勤務だけで上限を超える人（知らせるだけ。計算は止めない）
   lint(ctx, prm) {
     const { P } = ctx, ds = weekendDays(P);
@@ -84,8 +86,8 @@ T.rules.register({
     for (const n of ctx.names) { const max = prm.max[n]; if (max == null || P.isExempt(n)) continue;
       const on = ds.filter(d => ctx.anyWork(n, d)), tot = P.slots.filter(s => ctx.worked(n, s)).length, ref = opts.avoidRef ? opts.avoidRef[n] : null;
       const days = on.map(d => P.label(d)).join(ctx.sep());
-      const result = !on.length ? t("土日の実勤務なし") : on.length > max ? t("{n}日（{days}）。上限を {over} 日超過＝ほかに手が無いため", { n: on.length, days, over: on.length - max }) : t("{n}日（{days}）", { n: on.length, days });
-      const note = (ref != null && tot < ref) ? t("。参照解を下回る＝他の必須条件のため") : (ref == null && tot < P.targets[n]) ? t("。目標未満＝他の必須条件のため") : "";
+      const result = !on.length ? t("土日の実勤務なし") : on.length > max ? t("{n}日（{days}）。上限を {over} 日超過（減点の対象）", { n: on.length, days, over: on.length - max }) : t("{n}日（{days}）", { n: on.length, days });
+      const note = (ref != null && tot < ref) ? t("。参照解を下回っています（回数不足は減点で調整）") : (ref == null && tot < P.targets[n]) ? t("。目標を下回っています（回数不足は減点で調整）") : "";
       ctx.line(t("{who} の土日の実勤務（上限 月{max}日）: {result}。勤務{total}回（当月目標{target}回{refNote}{note}）", { who: n, max, result, total: tot, target: P.targets[n], refNote: ref != null ? t("、申告を無視した参照解では{ref}回", { ref }) : "", note })); }
   },
   python: false,
