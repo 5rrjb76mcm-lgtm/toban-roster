@@ -175,6 +175,11 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const n = curDoctor(), y = +m.year, mo = +m.month, N = A.daysIn(y, mo);
     const hol = new Set((m.holidays || []).map(Number));
     const doc = state.rules.doctors.find(d => d.name === n);
+    if (!doc) { // 名簿を空にして作り直す途中も、保存済みの空名簿を開いたときも表示を続ける。
+      const root = $("#doctorPane"); delete root.dataset.doctor;
+      root.innerHTML = `<div class="box"><p>${esc(T.t("名簿が空です。設定タブで職員を追加してください。"))}</p></div>`;
+      return;
+    }
     const isDuty = true; // 部長も同じ欄を出す（当直候補でない間はソルバーが無視する）
     const isCand = A.dutyNames().includes(n), monthlyWorkExcluded = isCand && !A.workNames().includes(n); // 予備の月許可は実勤務だけ。OC候補・従来の記録用入力とは分ける
     const dd = m.duty_days[n] || {};

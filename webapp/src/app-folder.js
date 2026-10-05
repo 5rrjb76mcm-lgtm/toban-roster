@@ -26,6 +26,10 @@
   async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
     let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
+    // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。
+    // 同じ年月でも古い入力の写しで統合しない（確認をやり直せるよう、状態には触れず止める）。
+    const month0 = state.month, rules0 = state.rules, input0 = A.inputSig();
+    const changed = () => (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
@@ -38,7 +42,7 @@
       if (!theirsCh) rulesPick = "mine";
       else if (mineCh) { const w = await A.choose(T.t("設定（名簿・規則・重み）が、このブラウザと別のPCの両方で変わっています。どちらの設定を使いますか。月の入力は自動で統合します。"),
         [{ label: T.t("相手の設定を使う"), sub: T.t("このブラウザで変えた設定は消えます"), value: "theirs", primary: true }, { label: T.t("自分の設定を使う"), sub: T.t("相手が変えた設定は消えます"), value: "mine" }, { label: T.t("何もしない（後で判断）"), value: null, cancel: true }]);
-        if (!w || (stale && stale())) return false; rulesPick = w; } }
+        if (!w || changed()) return false; rulesPick = w; } }
     if (!f.data.rules) rulesPick = "mine";
     // 2) 氏名を、採用する名簿に揃えてから比べる。最後に同期してから手元で改名していたら、
     //    自分の設定を使うとき: 相手の版と共通の元に同じ改名を当てる（相手が旧名のまま持っている入力を、旧名への追加・新名からの削除と誤らない）
@@ -80,7 +84,7 @@
       const w = await A.choose(T.t("{ctx}別のPC（または別のウィンドウ）でも {tag} が変更されていました（保存 {at}）。自分の変更 {mine} 件と相手の変更 {theirs} 件を自動で統合しますが、同じ項目を両方が変えた衝突が {n} 件あります。衝突した項目はどちらを採りますか。\n{list}", { ctx: T.t(ctx), tag: A.tag(), at: new Date(f.data.saved_at).toLocaleString(T.dateLocale()), mine: pre.mineChanges, theirs: pre.theirChanges, n: pre.conflicts.length, list }), [{ label: T.t("衝突は相手の値を採る（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。衝突以外の項目は両方の変更がそのまま残ります"), value: "theirs", primary: true }, { label: T.t("衝突は自分の値を採る"), sub: T.t("例: いま本人から直接聞いた不可日を入れたばかりで、相手の値のほうが古いと分かっているとき"), value: "mine" }, { label: T.t("やめる（統合しない）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true }]);
       if (!w) return false; prefer = w;
     }
-    if (stale && stale()) return false;
+    if (changed()) return false;
     const r = T.mergeMonth(base, mine, theirs, prefer);
     if (strangers(r.merged).length) return null;
     // 計算結果: 新しい方を採るが、氏名を採用する名簿に揃える（相手の結果＋自分の名簿なら改名を当て、自分の結果＋相手の名簿なら改名の前に戻す。割当・変更前の割当・避けたい日の基準回数とも）。
