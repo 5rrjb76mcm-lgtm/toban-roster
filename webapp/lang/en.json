@@ -1250,7 +1250,7 @@
     "LINT_FIXED_OC_PM_EXTERNAL_NIGHT": "night on-call after afternoon outside work is allowed only where it is recorded as confirmed in time",
     "LINT_FIXED_OC_PM_EXTERNAL_HINT": "Per-person calendar → {who} → {day}: check the outside work, or remove the fixed assignment{extra}",
     "LINT_FIXED_OC_PM_EXTERNAL_HINT_EXTRA": ". If it is in time, add the confirmation under \"night shift and night on-call on an afternoon-outside day\" on the month tab",
-    "LINT_FIXED_OC_TWO_SAME_ROLE": "Fixed \"{day} {slot} {who}\": at most one person per role can be on-call in the same half of the day",
+    "LINT_FIXED_OC_TWO_SAME_ROLE": "Fixed \"{day} {slot} {who}\": {n} on-call assignments for {role}, but this slot allows at most {count}",
     "LINT_FIXED_OVER_QUOTA": "{count} shifts are fixed for {who}, above the target {quota} + {tol} (they will be assigned anyway and reported as allowed by the fixed assignment)",
     "LINT_FIXED_OVER_QUOTA_HINT": "Fix fewer shifts, or review the target on the settings tab",
     "LINT_FIXED_SAME_DAY": "{who} is fixed to both the day and the night shift on {day} (two shifts on one day are forbidden; the fixed assignment wins and is penalised)",
