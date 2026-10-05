@@ -81,6 +81,39 @@ function test(name, fn) { try { fn(); passed++; console.log("ok " + name); } cat
         change(fx(6, "night"), names[2]); check(m.fixed.night[5] === names[1], "retain the corrected value on the next read");
         change(fx(5, "night"), ""); change(fx(6, "night"), ""); check(!m.fixed.night[5] && !Object.keys(m.fixed_tags).length, "explicit clearing remains cleared on repeated reads");
       });
+      for (const kind of ["day", "night"]) for (const d of [1, 31]) test(`overlapping ${kind} fixed conditions survive real DOM readback on day ${d}`, () => {
+        const m = setup(kind), n = names[0];
+        A.state.rules.profile.roles[0].standby = true; A.state.rules.profile.roles[0].refs = ["charge"];
+        m.next_first_day_in_calendar = true; m.fixed.day = {}; m.fixed.night = {}; m.fixed_tags = {};
+        m.fixed[kind][d] = n; m.fixed[kind + "_oc"][d] = [n, names[1]]; render(); const before = clone(m);
+        change('[data-cal="wish"][data-d="6"]', true); check(sameFixed(m, before), "unchanged hidden OC must survive");
+        change(cal(d, kind), ""); A.renderDoctor();
+        check(!m.fixed[kind][d] && m.fixed[kind + "_oc"][d].includes(n), "only the displayed work condition is cleared");
+        check(q(cal(d, kind)).value === kind + "oc", "remaining OC is displayed");
+        change(cal(d, kind), ""); A.renderDoctor(); check(m.fixed[kind + "_oc"][d].join() === names[1], "explicit OC removal preserves other person");
+      });
+      for (const kind of ["day", "night"]) test(`inactive ${kind} OC remains selected after role eligibility changes`, () => {
+        const m = setup(kind), n = names[0]; m.fixed.day = {}; m.fixed.night = {}; m.fixed_tags = {};
+        m.fixed[kind + "_oc"][1] = [n]; render();
+        check(q(cal(1, kind)).value === kind + "oc", "inactive stored OC must remain selected");
+        change('[data-cal="wish"][data-d="6"]', true); check(m.fixed[kind + "_oc"][1].includes(n), "unrelated edit preserves inactive OC");
+        change(cal(1, kind), ""); check(!m.fixed[kind + "_oc"][1], "explicit inactive OC clearing works");
+      });
+      for (const screen of ["calendar", "grid"]) test(`inactive charge survives ${screen} edits`, () => {
+        const m = setup("night"), n = names[0]; m.fixed.day = {}; m.fixed.night = {}; m.fixed_tags = {}; m.fixed.weekend_charge[1] = n; render();
+        const sel = screen === "calendar" ? cal(1, "day") : fx(1, "charge");
+        check(q(sel).value === (screen === "calendar" ? "charge" : n), "inactive charge must remain selected");
+        change(screen === "calendar" ? '[data-cal="wish"][data-d="6"]' : fx(6, "night"), screen === "calendar" ? true : names[1]);
+        check(m.fixed.weekend_charge[1] === n, "unrelated edit preserves inactive charge");
+        change(sel, ""); check(!m.fixed.weekend_charge[1], "explicit charge clearing works");
+      });
+      test("rejected fixed replacements retain the previous condition and tag", () => {
+        const m = setup("day"), n = names[0]; A.state.rules.profile.roles[0].standby = true; A.state.rules.profile.roles[0].refs = ["charge"];
+        m.fixed.day = { 1: names[1] }; m.fixed.day_oc = { 1: [n] }; m.fixed.night = {}; m.fixed_tags = {}; render();
+        change(cal(1, "day"), "day"); A.renderDoctor(); check(m.fixed.day_oc[1].includes(n) && m.fixed.day[1] === names[1], "rejected OC-to-work preserves original OC");
+        m.fixed.day = { 1: n }; m.fixed.day_oc = {}; m.fixed.weekend_charge = { 1: names[1] }; m.fixed_tags = { [`1:day|${n}`]: "Synthetic tag" }; render();
+        change(cal(1, "day"), "charge"); A.renderDoctor(); check(m.fixed.day[1] === n && m.fixed.weekend_charge[1] === names[1] && m.fixed_tags[`1:day|${n}`], "rejected work-to-charge preserves work and tag");
+      });
       return { results, snapshots };
     });
     for (const r of result.results) test(r.name, () => assert.ok(r.pass, r.error));

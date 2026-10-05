@@ -34,6 +34,8 @@ run test_settings_import_node.js
 run test_role_edit_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_fixed_condition_readback_node.js
+run test_role_merge_preservation_node.js
 run test_empty_roster_node.js
 run test_undo_roster_order_node.js
 run test_undo_profile_identity_node.js

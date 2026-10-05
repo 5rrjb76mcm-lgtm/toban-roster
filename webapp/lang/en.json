@@ -1138,7 +1138,14 @@
     "。有給の日数は必要な休みに足す": ". Paid leave days are added to the required days off",
     "別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください": "Merging with the other PC's changes was stopped: a plug-in's per-person data could not be adjusted to the rename ({err}). Please tell the plug-in's author",
     "。計算結果は、氏名を採用した名簿に対応付けられないので外しました。もう一度「計算する」を押してください": ". The result was dropped because its names could not be matched to the roster in use. Press Solve again",
-    "この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します": "Fixed on-call that this screen has no field for (it is kept as is). To change it, use the Fixed field in the per-person calendar"
+    "この画面の欄に出せない固定の OC です（そのまま残ります）。変えるときは職員別カレンダーの固定の欄で直します": "Fixed on-call that this screen has no field for (it is kept as is). To change it, use the Fixed field in the per-person calendar",
+    "役割の定義が共通の元・このブラウザ・相手の版で一致しないか、共通の元の設定がありません。固定「OCなし」を別の役割に移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "The role definitions differ between the common base, this browser and the other version, or the base settings are unavailable. Automatic merging was stopped so fixed “no on-call” entries cannot move to another role. Choose one version's settings and month data together.",
+    "この月データには設定が含まれないため、固定「OCなし」のIDが作成時と同じ役割を指すか確認できません。\n現在の設定での対応:\n{roles}\n読み込む場合はIDを変更せず、現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。": "This month data has no settings, so we cannot verify that its fixed “no on-call” IDs refer to the same roles as when it was created.\nMapping in the current settings:\n{roles}\nIf loaded, the IDs will stay unchanged and be interpreted as the current roles. Undefined IDs will be preserved, but their exclusions may have no effect.",
+    "現在の設定にないID（未定義）": "ID not in the current settings (undefined)",
+    "この対応で読み込みますか？": "Load using this mapping?",
+    "相手の月を現在の役割として読み込む": "Load the other month using the current roles",
+    "読み込みを中止しました（確認中に月・設定・保存先が変わりました）。もう一度操作してください": "Loading was cancelled because the month, settings or save destination changed during confirmation. Please try again.",
+    "読み込みを取り消しました": "Loading cancelled"
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",

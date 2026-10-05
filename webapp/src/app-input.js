@@ -204,10 +204,11 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const workOption = (k, val) => !monthlyWorkExcluded || d > N ? [[k, shiftLabel(R, k)]] : val === k ? [[k, shiftLabel(R, k) + T.t("（現在は使わない値）")]] : [];
       const nightVal = fixedNightVal(d), dayVal = fixedDayVal(d);
       // 夜勤が平日だけ・休日だけの施設では、枠の無い日に新しい固定を入れない。残っている指定は表示して解除できるようにする。
+      const keepChoice = (opts, value) => value && !opts.some(o => o[0] === value) ? opts.concat([[value, ({ dayoc: T.t("日勤OC"), nightoc: T.t("夜間OC"), charge: T.term("{charge}担当", R) })[value] + T.t("（現在は使わない値）")]]) : opts;
       const nightOpts = nightSlot ? [...workOption("night", nightVal), ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])] : nightVal ? [[nightVal, (nightVal === "night" ? shiftLabel(R, "night") : T.t("夜間OC")) + T.t("（現在は使わない値）")]] : [];
-      const night = nightSlot || nightVal ? A.sel([["", "―"], ...nightOpts], nightVal, `data-cal="fixed" data-k="night" data-d="${d}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night") : "";
+      const night = nightSlot || nightVal ? A.sel(keepChoice([["", "―"], ...nightOpts], nightVal), nightVal, `data-cal="fixed" data-k="night" data-d="${d}" data-shown="${esc(nightVal)}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night") : "";
       if (!holiday) return night;
-      const day = A.sel([["", "―"], ...workOption("day", dayVal), ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], dayVal, `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(dayVal)}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値（日勤と期間責任者の両方が固定のときは日勤を出すので、読み戻しで期間責任者の固定を消さない）
+      const day = A.sel(keepChoice([["", "―"], ...workOption("day", dayVal), ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], dayVal), dayVal, `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(dayVal)}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値。未変更なら非表示の条件も含めて保持する。
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
     // 施設のプラグインが足した日ごとの欄。いまの選択肢に無い値（プラグインの更新で外れた値）は「（現在は使わない値）」として残す（空欄を選んだときだけ消える）
@@ -282,25 +283,39 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       if (root.querySelector('[data-cal="wishday"]')) { const shown = new Set(), wishesDay = []; root.querySelectorAll('[data-cal="wishday"]').forEach(el => { shown.add(+el.dataset.d); if (el.checked) wishesDay.push(+el.dataset.d); }); // 日勤の希望（規則 wish_day を使う施設。欄を出していないときは前の値のまま）
         m.wishes.day_on = m.wishes.day_on || {}; const all = ((m.wishes.day_on[n] || []).map(Number).filter(d => !shown.has(d))).concat(wishesDay).sort((a, b) => a - b); if (all.length) m.wishes.day_on[n] = all; else delete m.wishes.day_on[n]; } // 欄を出していない日（日勤の枠が無い日）の希望は残す
       const wk = new Set(m.wishes.weekend_dayshift || []); const cb = $("#wkwish"); if (cb) { if (cb.checked) wk.add(n); else wk.delete(n); } m.wishes.weekend_dayshift = A.names().filter(x => wk.has(x));
-      // 固定: 欄を出している日・勤務帯の分だけ、この医師の固定をいったん外してから、カレンダーの選択で入れ直す（欄を出していない日・勤務帯の固定は残す: 日勤を休日だけにした設定で平日の日勤の固定を持っていても、別の日の編集で消えない）
+      // 固定: 変更した欄が表していた条件だけを置き換える。未変更・非表示の条件はそのまま残す。
       const fx = m.fixed, existingWork = new Set();
       for (const k of ["day", "night"]) for (const [d, ns] of Object.entries(fx[k] || {})) if ([].concat(ns || []).includes(n)) existingWork.add(`${+d}:${k}`); // 設定変更で人数超過になった既存の固定は保持し、入力チェックで直してもらう
       const dropArr = (tbl, d) => { if (!tbl[d]) return; tbl[d] = tbl[d].filter(x => x !== n); if (!tbl[d].length) delete tbl[d]; };
       const dropWork = (tbl, d) => { if (!tbl || tbl[d] === undefined) return; const rest = [].concat(tbl[d] || []).filter(x => x !== n); if (!rest.length) delete tbl[d]; else tbl[d] = rest.length === 1 ? rest[0] : rest; }; // 勤務者の固定（文字列か配列）から自分を外す
       const keptTags = {}; for (const [key, tg] of Object.entries(m.fixed_tags || {})) if (key.split("|").slice(1).join("|") === n) keptTags[key] = tg; // 自分の印は、固定し直した枠の分だけ残す
-      fx.day_oc ||= {}; fx.night_oc ||= {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d; if (el.dataset.k === "day") { dropWork(fx.day, d); dropArr(fx.day_oc, d); } else { dropWork(fx.night, d); dropArr(fx.night_oc, d); } });
-      { // 期間責任者の固定: この欄が「期間責任者」として出していた日だけ読み戻す（日勤と両方固定で日勤を出していた日は、この欄では表現していないので変えない）
-        const selOf = {}; root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) selOf[+el.dataset.d] = el; });
-        for (const d of Object.keys(fx.weekend_charge || {})) if (fx.weekend_charge[d] === n) { const el = selOf[+d]; if (el && el.dataset.shown === "charge") delete fx.weekend_charge[d]; } }
+      fx.day_oc ||= {}; fx.night_oc ||= {};
+      // 選択欄は条件を1つだけ表示する。同じ人の勤務・OC・期間責任者が重なっていても、非表示の条件を消さない。
+      const changedFixed = [...root.querySelectorAll('[data-cal="fixed"]')].filter(el => el.dataset.shown === undefined || el.value !== el.dataset.shown);
+      changedFixed.forEach(el => { const d = +el.dataset.d, was = el.dataset.shown;
+        if (was === "day" || was === "night") dropWork(fx[was], d);
+        else if (was === "dayoc" || was === "nightoc") dropArr(fx[was === "dayoc" ? "day_oc" : "night_oc"], d);
+        else if (was === "charge" && fx.weekend_charge[d] === n) delete fx.weekend_charge[d];
+        else if (was === undefined) { // 描画時の値を持たない旧い呼出し元。
+          const k = el.dataset.k; dropWork(fx[k], d); dropArr(fx[k + "_oc"], d);
+        }
+      });
       const conflicts = []; let P0 = null; try { P0 = new T.Problem(R, m); } catch (e) { }
-      const addWork = (tbl, d, kind) => { const cur = [].concat(tbl[d] || []), cap = P0 ? P0.countOf([d, kind]) : 1; // 枠の人数まで固定できる（1 名の枠は従来どおり衝突）
-        if (cur.length >= cap && !existingWork.has(`${d}:${kind}`)) { conflicts.push(T.t("{d}日 {slot}は {who} が固定済み", { d, slot: shiftLabel(R, kind), who: cur.join(T.nameSep()) })); return; }
-        cur.push(n); tbl[d] = cur.length === 1 ? cur[0] : cur; };
-      root.querySelectorAll('[data-cal="fixed"]').forEach(el => { const d = +el.dataset.d, v = el.value; if (!v) return;
-        if (v === "day") addWork(fx.day, d, "day");
-        else if (v === "night") addWork(fx.night, d, "night");
-        else if (v === "charge") { if (fx.weekend_charge[d] && fx.weekend_charge[d] !== n) conflicts.push(T.term(T.t("{d}日 {charge}担当は {who} が固定済み", { d, who: fx.weekend_charge[d] }), R)); else fx.weekend_charge[d] = n; }
-        else if (v === "dayoc") { (fx.day_oc[d] ||= []).push(n); } else if (v === "nightoc") { (fx.night_oc[d] ||= []).push(n); } });
+      const addWork = (tbl, d, kind) => { const cur = [].concat(tbl[d] || []); if (cur.includes(n)) return true; const cap = P0 ? P0.countOf([d, kind]) : 1; // 枠の人数まで固定できる（1 名の枠は従来どおり衝突）
+        if (cur.length >= cap && !existingWork.has(`${d}:${kind}`)) { conflicts.push(T.t("{d}日 {slot}は {who} が固定済み", { d, slot: shiftLabel(R, kind), who: cur.join(T.nameSep()) })); return false; }
+        cur.push(n); tbl[d] = cur.length === 1 ? cur[0] : cur; return true; };
+      changedFixed.forEach(el => { const d = +el.dataset.d, v = el.value; if (!v) return; let accepted = true;
+        if (v === "day") accepted = addWork(fx.day, d, "day");
+        else if (v === "night") accepted = addWork(fx.night, d, "night");
+        else if (v === "charge") { if (fx.weekend_charge[d] && fx.weekend_charge[d] !== n) { conflicts.push(T.term(T.t("{d}日 {charge}担当は {who} が固定済み", { d, who: fx.weekend_charge[d] }), R)); accepted = false; } else fx.weekend_charge[d] = n; }
+        else if (v === "dayoc") { fx.day_oc[d] = [...new Set([...(fx.day_oc[d] || []), n])]; } else if (v === "nightoc") { fx.night_oc[d] = [...new Set([...(fx.night_oc[d] || []), n])]; }
+        // 置換を拒否したときは、先に外した元の条件を戻す（固定の印も後続の処理で保持される）。
+        if (!accepted) { const was = el.dataset.shown;
+          if (was === "day" || was === "night") { const ns = [...new Set([].concat(fx[was][d] || [], n))]; fx[was][d] = ns.length === 1 ? ns[0] : ns; }
+          else if (was === "dayoc" || was === "nightoc") { const tbl = was === "dayoc" ? "day_oc" : "night_oc"; fx[tbl][d] = [...new Set([...(fx[tbl][d] || []), n])]; }
+          else if (was === "charge") fx.weekend_charge[d] = n;
+        }
+      });
       m.fixed_tags ||= {}; for (const key of Object.keys(keptTags)) { const [sl] = key.split("|"), [dd, kk] = sl.split(":"); if (![].concat((fx[kk] || {})[+dd] || []).includes(n)) delete m.fixed_tags[key]; }
       root.querySelectorAll('[data-cal="ftag"]').forEach(el => { const d = +el.dataset.d, k = el.dataset.k, key = `${d}:${k}|${n}`; // 固定の印（選択肢があるカレンダー）
         if (el.value && [].concat((fx[k] || {})[d] || []).includes(n)) m.fixed_tags[key] = el.value; else delete m.fixed_tags[key]; });
@@ -310,7 +325,10 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         root.querySelectorAll('[data-cal="pfield"]').forEach(el => { const id = el.dataset.id; got[id] ||= {}; if (el.value !== "") got[id][+el.dataset.d] = el.value; });
         for (const [id, byDay] of Object.entries(got)) { m.person_days[id] ||= {}; if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n]; } }
       root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) el.dataset.shown = el.value; }); // 読み戻した値を次の比較基準に（この画面で付けた期間責任者の固定も、次に外せば消える）
-      if (conflicts.length) { A.toast(T.t("固定できません: {list}", { list: conflicts.join(T.listSep()) })); setTimeout(renderDoctor, 0); }
+      if (conflicts.length) A.toast(T.t("固定できません: {list}", { list: conflicts.join(T.listSep()) }));
+      const fixedShownNow = el => { const d = +el.dataset.d, k = el.dataset.k;
+        return [].concat(fx[k]?.[d] || []).includes(n) ? k : (fx[k + "_oc"]?.[d] || []).includes(n) ? k + "oc" : k === "day" && fx.weekend_charge?.[d] === n ? "charge" : ""; };
+      if (changedFixed.some(el => fixedShownNow(el) !== el.value)) setTimeout(renderDoctor, 0); // 変更した欄の裏に残っていた条件を表示する。
     }
     const pats = []; root.querySelectorAll("#patTbl tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`).value; const it = { kind: g("kind"), dow: g("dow"), part: g("part") }; const nth = A.parseDays(g("nth")); if (nth.length) it.nth = nth; const cb = tr.querySelector('[data-f="carry"]'); if (cb && cb.checked) it.carry = true; pats.push(it); });
     m.regular_duties[n] = pats;
@@ -379,7 +397,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         const keep = (opts, val) => exists ? opts : [["", "―"], ...opts.filter(o => val && o[0] === val).map(([v, label]) => [v, label + T.t("（現在は使わない値）")])];
         return `<td>${exists || i1 ? S(keep(iOpts, i1), i1, tbl === "day_oc" ? "dayI" : "nightI") : ""}</td><td>${exists || y1 ? S(keep(yOpts, y1), y1, tbl === "day_oc" ? "dayY" : "nightY") : ""}${extras(arr, [i1, y1], `${tbl}:${d}`)}</td>`; };
       const dayCells = daySlot ? `<td>${SW(fx.day?.[d], "day")}</td>${ocCells("day_oc")}` : `<td class="empty"></td><td class="empty"></td><td class="empty"></td>`;
-      rows.push(`<tr class="${cls}"><th>${label}</th>${dayCells}<td>${SW(fx.night?.[d], "night", nightSlot)}</td>${ocCells("night_oc", nightSlot)}<td>${holiday ? S(iOpts, fx.weekend_charge?.[d] || "", "charge") : ""}</td></tr>`);
+      rows.push(`<tr class="${cls}"><th>${label}</th>${dayCells}<td>${SW(fx.night?.[d], "night", nightSlot)}</td>${ocCells("night_oc", nightSlot)}<td>${holiday ? S(fx.weekend_charge?.[d] && !iN.includes(fx.weekend_charge[d]) ? iOpts.concat([[fx.weekend_charge[d], fx.weekend_charge[d] + T.t("（現在は使わない値）")]]) : iOpts, fx.weekend_charge?.[d] || "", "charge") : ""}</td></tr>`);
     }
         const TM = s2 => T.term(T.t(s2), R), dayL = shiftLabel(R, "day"), nightL = shiftLabel(R, "night");
     $("#fixedPane").innerHTML = `<div class="box"><h3>${esc(T.t("固定配置（決定済みの配置をまとめて入力）"))}</h3>
