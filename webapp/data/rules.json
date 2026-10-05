@@ -128,6 +128,7 @@
   }
  },
  "friday_night_min": {},
+ "dayoff_work_max": {},
  "weekend_dayshift_wish": [],
  "quota_tolerance": 1,
  "max_same_weekday_shifts": 2,
@@ -141,6 +142,8 @@
   "missing_young_oc": 3,
   "fixed_conflict": 50,
   "avoid_no_reduction": 1000,
+  "dayoff_work_excess": 100,
+  "dayoff_work_no_reduction": 1000,
   "chief_duty": 1000,
   "wish_weekend_dayshift": 20,
   "same_weekday_excess": 15,

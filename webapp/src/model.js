@@ -151,6 +151,7 @@
     { id: "wish_night", group: "wish" }, // 中身は rules/wish_night.js
     { id: "wish_weekend_dayshift", group: "wish" }, // 中身は rules/wish_weekend_dayshift.js
     { id: "avoid_days", group: "wish" }, // 中身は rules/avoid_days.js
+    { id: "dayoff_work_cap", group: "wish" }, // 中身は rules/dayoff_work_cap.js
     { id: "spread_standby", group: "wish" }, // 中身は rules/spread_standby.js
     // ---- 日中の業務との関係 ----
     { id: "duty_conflicts", group: "duty" }, // 中身は rules/duty_conflicts.js

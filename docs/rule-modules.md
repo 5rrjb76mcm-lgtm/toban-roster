@@ -65,6 +65,7 @@ T.rules.register({
   normalizeMonth(m, R) {},         // 月データを読み込んだとき（normalizeMonth）に呼ばれる。月の独自データ（m.local_<施設>）の補完と移行（省略可）。R は読むだけの複製（書き換えても設定には反映されない）
   rename(R, m, oldName, newName) {}, // 名簿で氏名を変えたときに呼ばれる。名簿の欄（columns の rename）以外に持つ人ごとのデータを追随させる。複製に対して呼ばれ、失敗すると改名そのものが取り消される（省略可）
   share(R) {},                     // 共有用のプロファイル（名簿を含めない書き出し）を作るときに呼ばれる。R は書き出す複製。本体は名簿を役割と目安だけにし、氏名をキーにした項目と name が氏名の要素を落とすが、名簿の外にほかの形で個人の記録を持つならここで自分の項目から除く（省略可）
+  refDeclarers(P, prm) { return []; }, // 参照解方式の対象者（氏名の配列）。本人の申告を無視した計算での回数を基準回数にして、申告で負担が減らないようにする規則が返す。本体の solveWithAvoidRef は、動いている規則が返した人を避けたい日の申告者と合わせて 2 段階で解き、参照解の回数を ctx.opts.avoidRef に渡す。参照解を作るとき（ctx.opts.ignoreAvoid）は、その規則の solve / penalty は何もしないこと（例: dayoff_work_cap。省略可）
 
   // --- 値 ---
   params: [                        // 簡単な値は宣言だけで設定欄と読み取りが自動で作られる
@@ -236,6 +237,7 @@ columns: [{ key: "fri", order: 10, at: "duty", label: "金曜夜勤の最低回�
 webapp/src/rules/
   same_weekday_cap.js
   dayoff_weekday_cap.js
+  dayoff_work_cap.js
   friday_night_min.js
   …
 webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limit
@@ -322,7 +324,7 @@ webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limi
   その日の担当（`cday` / `map`）は、その日の最初の枠（日勤帯があれば日勤帯。`T.chargeDaySlots`）に関わる人。同じ日の後の枠が別の人になる「日の途中の交代」は必須の違反ではなく減点（`charge_handover`。1 日あたり、既定 200）で、
   各枠に関わる期間責任者が 1 名であることは必須のまま。週末の均等・連続・履歴は、その日の担当（最初の枠の人）で数える。
   専門業務の表（`T.cathTable`）・週休日の一覧（`T.restDays`）は説明資料も使うので本体に残し、部品の `check` が呼ぶ。
-  避けたい日の参照解（`solveWithAvoidRef`）は本体で、部品は `ctx.opts`（`avoidRef` / `ignoreAvoid`）を見る。定期業務の診断の人ごとの外し（`duties:<氏名>`）は部品が `ctx.relaxed` で見る。
+  避けたい日の参照解（`solveWithAvoidRef`）は本体で、部品は `ctx.opts`（`avoidRef` / `ignoreAvoid`）を見る。参照解の対象者は、避けたい日の申告者と、動いている部品が `refDeclarers` で名乗った人（休日の実勤務の上限 `dayoff_work_cap`）。定期業務の診断の人ごとの外し（`duties:<氏名>`）は部品が `ctx.relaxed` で見る。
   `lp_same_node.js` の並びをそろえる処理に、目的関数の項の整列を足した（部品にすると項の入る順が変わる。段階 3 の 8 設定はすべて制約の集合が同じ）。
 - 段階 4 で: 第 9 節の並びが変わった（移す前は手書きの順、いまは一覧の順）。同日 2 枠と連日の行は 1 行にまとめていたのを部品ごとの 2 行に分けた。
   規則を「なし」にした部品の行は出なくなった（移す前は当直希望・避けたい日・OC を含む連続などが規則の状態に関わらず出ていた）。

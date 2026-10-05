@@ -220,9 +220,11 @@
     return (sol && typeof sol.then === "function") ? sol.then(post) : post(sol);
   }
 
-  // 避けたい日の参照解方式: まず避けたい日を無視して計算し（参照解）、申告者の回数を基準回数として本計算に渡す
+  // 避けたい日の参照解方式: まず避けたい日を無視して計算し（参照解）、申告者の回数を基準回数として本計算に渡す。
+  // 規則の部品が refDeclarers で名乗った人（休日の実勤務の上限 dayoff_work_cap など。その規則も参照解では無視される）も申告者に含める
   async function solveWithAvoidRef(P, highs, opts = {}) { // 常に Promise を返す（同期の highs でも可）
-    const declarers = P.dutyNames.filter(n => P.avoidSlots(n).length && !P.isRole(n, "reserve"));
+    const byRule = new Set(T.rules.refDeclarers(P));
+    const declarers = P.dutyNames.filter(n => (P.avoidSlots(n).length && !P.isRole(n, "reserve")) || byRule.has(n));
     if (!declarers.length) return await solve(P, highs, opts);
     const ref = await solve(P, highs, Object.assign({}, opts, { ignoreAvoid: true }));
     if (!ref.asg) return Object.assign(ref, { avoidRef: null, refSeconds: ref.seconds });

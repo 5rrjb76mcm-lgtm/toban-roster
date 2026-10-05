@@ -78,7 +78,7 @@
       return true;
     };
     if (!inputsStillCurrent()) return;
-    if (res.avoidRef) log(T.t("参照解（避けたい日を無視）: {list}（{s} 秒）。本計算ではこの回数を基準にします", { list: Object.entries(res.avoidRef).map(([n, c]) => T.t("{n} {c}回", { n, c })).join(T.listSep()), s: (res.refSeconds || 0).toFixed(1) }));
+    if (res.avoidRef) log(T.t("参照解（避けたい日と休日の実勤務の上限を無視）: {list}（{s} 秒）。本計算ではこの回数を基準にします", { list: Object.entries(res.avoidRef).map(([n, c]) => T.t("{n} {c}回", { n, c })).join(T.listSep()), s: (res.refSeconds || 0).toFixed(1) }));
     log(T.t("状態 {st}、{s} 秒、変数 {v}、制約 {c}", { st: res.status, s: res.seconds.toFixed(1), v: res.vars, c: res.cons }));
     if (!res.asg && res.status !== "Infeasible") { // 時間切れなどで整数解が見つからなかった（解なしと証明されたわけではない）
       log(T.t("時間内に解が見つかりませんでした（{st}）。必須条件が両立しないとは限りません。上限時間を延ばすか、規則を減らして（特に減点の規則を「なし」にして）再計算してください", { st: res.status })); return; }

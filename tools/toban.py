@@ -173,7 +173,11 @@ class Problem:
             raise SystemExit("Python 版は次の規則に未対応です（JS 版で計算してください）: " + "、".join(unsupported))
         if states.get("same_day_team") == "off" or states.get("oncall") == "off" or states.get("period_charge") == "off":
             pass  # 下の st(...) で個別に扱う（未対応ではない）
-        soft = sorted(k for k, v in states.items() if v == "soft" and k not in SOFT_OK_PY)
+        # 休日の実勤務の上限（dayoff_work_cap）は JS 版だけ。既定が「減点」なので、誰も指定していない設定はそのまま受け付け、指定があるときだけ止まる
+        dwc_used = states.get("dayoff_work_cap", "soft") != "off" and bool(self.rules.get("dayoff_work_max"))
+        if dwc_used:
+            raise SystemExit("Python 版は次の規則に未対応です（JS 版で計算してください）: dayoff_work_cap")
+        soft = sorted(k for k, v in states.items() if v == "soft" and k not in SOFT_OK_PY and k != "dayoff_work_cap")
         if soft:
             raise SystemExit("Python 版は次の規則の「減点」に未対応です（JS 版で計算してください）: " + "、".join(soft))
         st = lambda rid, default: states.get(rid, default)
