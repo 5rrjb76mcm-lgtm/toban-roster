@@ -515,6 +515,27 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       assert.deepStrictEqual(undone, field === "quota" ? 15 : field === "holidays" ? [] : "original", "採用直前に確定した入力も通常の Undo で戻せる");
     } finally { await ctx.close(); }
   });
+  await test("最後の職員を削除しても起動・Undo・再追加できる（空名簿の保存と再読込）", async () => {
+    const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page, "フォルダなしで続ける");
+    try {
+      await page.evaluate(() => { const A = T.app; while (A.state.rules.doctors.length > 1) A.removeDoctor(A.state.rules.doctors.length - 1); A.refreshNameOrder(A.state.rules); A.clearUndo(); A.renderAll(); window.confirm = () => true; });
+      const name = await page.evaluate(() => T.app.state.rules.doctors[0].name);
+      await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]');
+      await page.click('#doctorTable tr[data-i="0"] [data-act="del"]');
+      assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 0);
+      assert.ok((await page.locator('#doctorPane').textContent()).includes("名簿が空"));
+      await page.click('#btnUndo');
+      assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors[0].name), name);
+      await page.click('#doctorTable tr[data-i="0"] [data-act="del"]');
+      await page.reload(); await page.waitForSelector('#startGate:not([hidden])'); await start(page, "フォルダなしで続ける");
+      assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 0);
+      assert.ok((await page.locator('#doctorPane').textContent()).includes("名簿が空"));
+      await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); await page.click('#settings [data-act="add"]');
+      assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 1);
+      assert.ok(await page.locator('#doctorPane [data-cal="duty"]').count() > 0);
+      assert.strictEqual(await page.evaluate(() => document.querySelector('#doctorPane').dataset.doctor), await page.evaluate(() => T.app.state.rules.doctors[0].name));
+    } finally { await ctx.close(); }
+  });
   closing = true; await browser.close(); srv.close();
   if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log(`実ブラウザの通し試験 ${passed} 本 OK`);
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

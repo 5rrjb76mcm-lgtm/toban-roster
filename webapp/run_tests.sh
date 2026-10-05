@@ -34,6 +34,7 @@ run test_settings_import_node.js
 run test_role_edit_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_empty_roster_node.js
 run test_undo_roster_order_node.js
 run test_undo_profile_identity_node.js
 run test_undo_month_node.js
@@ -43,6 +44,7 @@ run test_save_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
+run test_save_local_input_node.js
 run test_import_previous_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js

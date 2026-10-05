@@ -724,6 +724,7 @@
     "計算しない": "Not solved",
     "1 日を日中と夜の 2 つに分け、それぞれに名前を付けて、計算で当番を決める日を選びます。日中を「計算しない」にすると夜だけの当直になります。夜は必ず計算で決めます。日中の予定（午前・午後の外来・外勤など）は計算の対象ではなく、人ごとの予定の入力に使います。3 つ以上の区分（3 交代など）はこの版では使えません。": "The day is split into daytime and night. Name each part and choose on which days its duty is solved. Setting daytime to \"Not solved\" gives a night-only duty. Night is always solved. Daytime schedules (morning/afternoon clinics, external work, etc.) are not solved; they are entered per person as input. Three or more parts (e.g. three shifts) are not available in this version.",
     "どの規則を使うか（必須・減点・なし）と名簿は「日々の設定」で決めます。": "Which rules to use (Required / Penalty / Off) and the roster are set in \"Day-to-day settings\".",
+    "名簿が空です。設定タブで職員を追加してください。": "The roster is empty. Add a person in the Settings tab.",
     "名簿に追加": "add to roster",
     "名簿から削除": "remove from roster",
     "名簿の並べ替え": "reorder roster",
