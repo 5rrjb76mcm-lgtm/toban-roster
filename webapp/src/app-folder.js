@@ -19,11 +19,34 @@
     if (el.className !== cls || saveStateHtml !== html || (cls === "dirty" && !$("#btnHeaderSave"))) { el.className = cls; el.innerHTML = html; saveStateHtml = html; if (cls === "dirty") $("#btnHeaderSave").addEventListener("click", () => saveToFolder()); }
   }
   let saveStateHtml = null; // 前回描いた保存状態の中身
+  const roleFixedIds = (m, day = null) => [...new Set(["day_oc_none", "night_oc_none"].flatMap(k => Object.entries(((m || {}).fixed || {})[k] || {}).filter(([d]) => day === null || +d === day).flatMap(([, v]) => [].concat(v || []).map(String))))].sort();
+  const hasRoleFixed = m => roleFixedIds(m).length > 0;
+  // 確認はこの読込内容・この時点の月/設定/保存先だけに有効。確認中の新しい編集には流用しない。
+  const roleLoadMark = o => ({ data: JSON.stringify(o), sig: A.sig(), month: state.month, rules: state.rules, root: A.dirHandle, dirGen: A.dirGen, saveGen: A.saveGen });
+  const roleLoadCurrent = (g, o) => g.data === JSON.stringify(o) && g.sig === A.sig() && g.month === state.month && g.rules === state.rules && g.root === A.dirHandle && g.dirGen === A.dirGen && g.saveGen === A.saveGen;
+  const roleLoadChanged = () => T.t("読み込みを中止しました（確認中に月・設定・保存先が変わりました）。もう一度操作してください");
+  function roleLoadConsent(o, day = null) {
+    const shape = loadedShape(o); if (shape.error || shape.rules) return null;
+    const ids = roleFixedIds(shape.month, day); if (!ids.length) return null;
+    let roles = []; try { roles = T.normalizeRolesOf(state.rules); } catch (e) { }
+    const list = ids.map(id => { const r = roles.find(x => x.id === id); return `${id}: ${r ? r.label : T.t("現在の設定にないID（未定義）")}`; }).join("\n");
+    return Object.assign(roleLoadMark(o), { message: T.t("この月データには設定が含まれないため、固定「OCなし」のIDが作成時と同じ役割を指すか確認できません。\n現在の設定での対応:\n{roles}\n読み込む場合はIDを変更せず、現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。", { roles: list }) });
+  }
+  function noteRoleLoadConsent(f) { // 共通の元がない・未編集・旧形式の月単体も、自動統合せず確認に回す
+    f.roleConsent = roleLoadConsent(f.data); if (!f.roleConsent) return false;
+    f.mergeBlockedReason = f.roleConsent.message; return true;
+  }
+  function confirmRoleLoad(o, consent, approved = false) {
+    if (!approved && !confirm(consent.message + "\n" + T.t("この対応で読み込みますか？"))) return false;
+    if (!roleLoadCurrent(consent, o)) { A.toast(roleLoadChanged()); return false; }
+    return true;
+  }
   // 別のPCが同じ月を先に保存していないか（保存前の競合検出）。true=保存してよい
   // 3者統合を自動で行う（最後に保存した版を共通の元として、自分の変更と相手の変更を両方残す）。
   // 衝突（同じ項目を両方が変えた）がなければ確認なしで統合し、衝突があるときだけどちらを採るかを聞く。
-  // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=統合できない（共通の元がない）
+  // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=安全に統合できない（共通の元・氏名や役割の対応が不明など）
   async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
+    if (noteRoleLoadConsent(f)) return null;
     let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
     // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。
@@ -34,6 +57,17 @@
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
     if (!A.isMonthObj(theirs) || A.tag(theirs) !== A.tag() || !A.isMonthObj(base) || A.tag(base) !== A.tag()) return null; // 相手・共通の元が同じ年月でなければ統合しない（別の月の中身を当てない）
+    // 固定「OCなし」は氏名ではなく役割の ID を持つ。役割の改名・入れ替えの対応は記録していないので、
+    // 定義が異なる版どうしを推測で混ぜない（古い ID が別の役割になっていても、入力チェックでは分からない）。
+    // 表示順だけの変更は許す。表示名・役目も含めて比べ、同じ ID 集合の入れ替えも見逃さない。
+    if ([base, state.month, theirs].some(hasRoleFixed)) {
+      const roleSig = R => JSON.stringify(A.canon(T.normalizeRolesOf(R).map(r => ({ id: r.id, label: r.labelRaw, refs: r.refs.slice().sort(), standby: r.standby })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)));
+      let compatible = false;
+      try { compatible = !!state.baseRules && !!f.data.rules && new Set([state.baseRules, state.rules, f.data.rules].map(roleSig)).size === 1; } catch (e) { }
+      if (!compatible) {
+        f.mergeBlockedReason = T.t("役割の定義が共通の元・このブラウザ・相手の版で一致しないか、共通の元の設定がありません。固定「OCなし」を別の役割に移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null;
+      }
+    }
     // 1) 設定（名簿・規則・重み）の採用先を先に決める（氏名をどちらの名簿に揃えるかが、これで決まる）
     // 共通の元と比べる: 相手だけ変えたなら相手の、自分だけ変えたなら自分の、両方なら聞く
     let rulesPick = "theirs";
@@ -128,20 +162,23 @@
     guard.fileStamp = saveFileStamp(f); // 利用者が確認した（または自動統合の元になった）保存先の版
     if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: A.tag(), err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
+    noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 施設の一致は保存時刻の一致より先に見る（別施設のファイルを複製した場合など、時刻が同じでも別のデータ）
-    if (!other && fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
-    const m = other ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"), guard.stale);
+    if (!f.roleConsent && !other && fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
+    const m = other || f.roleConsent ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"), guard.stale);
     if (m === true) { guard.saveGen++; return !guard.stale(); } // この統合自身が進めた同期基準だけを採用する
     if (m === false || guard.stale()) return false;
-    // 共通の元がなく統合できないときだけ、どちらを採るか聞く
+    // 安全に統合できないときは、設定と月データを一緒にどちらかの版から採る
     const opts = [];
-    opts.push({ label: T.t("相手の保存データを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。このブラウザの未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "load", primary: true });
+    opts.push({ label: f.roleConsent ? T.t("相手の月を現在の役割として読み込む") : T.t("相手の保存データを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。このブラウザの未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "load", primary: true });
     opts.push({ label: T.t("このブラウザの状態で上書きする"), sub: T.t("相手の変更は消えます。例: 相手の保存が誤操作や古い試作と分かっていて、こちらの入力が最新のとき"), value: "overwrite" });
     opts.push({ label: T.t("何もしない（後で判断）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true });
-    const v = await A.choose(T.t("別のPC（または別のウィンドウ）で {tag} が保存されています（保存 {at}）。このブラウザの状態はそれより前のもので、自動統合の元になる版がありません。", { tag: A.tag(), at: new Date(fileAt).toLocaleString(T.dateLocale()) }), opts);
+    const choiceMark = f.mergeBlockedReason ? roleLoadMark(f.data) : null;
+    const v = await A.choose(f.mergeBlockedReason || T.t("別のPC（または別のウィンドウ）で {tag} が保存されています（保存 {at}）。このブラウザの状態はそれより前のもので、自動統合の元になる版がありません。", { tag: A.tag(), at: new Date(fileAt).toLocaleString(T.dateLocale()) }), opts);
     if (guard.stale()) return false;
-    if (v === "load") { applyLoaded(f.data, T.t("{where} を読み込みました", { where: f.where })); return false; }
+    if (choiceMark && !roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return false; }
+    if (v === "load") { applyLoaded(f.data, T.t("{where} を読み込みました", { where: f.where }), { roleConsent: f.roleConsent }); return false; }
     return v === "overwrite";
   }
   async function autosaveJson() { return A.serialized(autosaveCore); }
@@ -248,20 +285,26 @@
         { A.resetBrowserState(); location.reload(); await new Promise(() => { }); } // 読み直すまで止める
       if (state.meta) state.meta = null; // この月のファイルが接続先に無い: フォルダ名に関係なく未保存として扱い、自動保存で書く（別のフォルダや同じ名前の別のフォルダに保存済みでも、接続先に無ければ保存済みとは言わない）
       return; }
+    noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 別の施設のフォルダ: 保存時刻が同じでも「同じ版」とはみなさない。未保存の変更が無ければそのフォルダのデータに切り替え、あれば確認する
     const sameSaved = !other && state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
-    if (sameSaved) return; // 自分が最後に保存したファイルそのもの
-    if (other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
+    if (sameSaved && !f.roleConsent) return; // 自分が最後に保存したファイルそのもの
+    if (f.roleConsent || other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
+      let roleConsent;
       if (A.isDirty()) {
         // 未保存の変更がある: 共通の元があれば自動で統合し、統合結果をフォルダに書き戻す（別の施設なら統合しない）
-        const m = other ? null : await tryAutoMerge(f, T.t("開いたとき、"), stale);
+        const m = other || f.roleConsent ? null : await tryAutoMerge(f, T.t("開いたとき、"), stale);
         if (m === true) { A.save(); return; } // 統合結果は自動保存の予約で書く（ここが保存の待ち行列の中から呼ばれることがあり、同じ行列を待つと止まる）
         if (m === false) return;
         const atTxt = fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明");
-        const v = await A.choose((A.otherFacility(f) ? T.t("このフォルダの {tag} は別の施設（{id}）のデータです。", { tag: A.tag(), id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id }) : "") + T.t("フォルダにある {tag} のデータ（保存 {at}）は、このブラウザ内の状態より新しいか別のものです。ブラウザ内には未保存の変更があります。", { tag: A.tag(), at: atTxt }), [{ label: T.t("フォルダのデータを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。ブラウザ内の未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "file", primary: true }, { label: T.t("ブラウザ内の状態を保持する"), sub: T.t("次に保存するとフォルダ側を上書きします。例: フォルダの版が誤って保存された古い内容と分かっていて、このブラウザの入力が最新のとき"), value: null, cancel: true }]); if (v !== "file") return; }
+        const choiceMark = f.mergeBlockedReason ? roleLoadMark(f.data) : null;
+        const v = await A.choose((f.mergeBlockedReason || "") + (A.otherFacility(f) ? T.t("このフォルダの {tag} は別の施設（{id}）のデータです。", { tag: A.tag(), id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id }) : "") + T.t("フォルダにある {tag} のデータ（保存 {at}）は、このブラウザ内の状態より新しいか別のものです。ブラウザ内には未保存の変更があります。", { tag: A.tag(), at: atTxt }), [{ label: f.roleConsent ? T.t("相手の月を現在の役割として読み込む") : T.t("フォルダのデータを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。ブラウザ内の未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "file", primary: true }, { label: T.t("ブラウザ内の状態を保持する"), sub: T.t("次に保存するとフォルダ側を上書きします。例: フォルダの版が誤って保存された古い内容と分かっていて、このブラウザの入力が最新のとき"), value: null, cancel: true }]); if (v !== "file") return;
+        if (choiceMark && !roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return; }
+        roleConsent = f.roleConsent;
+      }
       if (stale()) return;
-      applyLoaded(f.data, T.t("フォルダの {tag} データ（保存 {at}）を読み込みました", { tag: A.tag(), at: fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明") }));
+      applyLoaded(f.data, T.t("フォルダの {tag} データ（保存 {at}）を読み込みました", { tag: A.tag(), at: fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明") }), { roleConsent });
     }
   }
   // 計算中に接続したフォルダのプラグインを、計算が終わってから読む（app-solve.js の runSolve が計算の後始末で呼び、読み終わるまで次の計算を受け付けない）
@@ -333,7 +376,7 @@
     if (A.dirHandle) { const g = A.switchMark(), f = await findMonthData(t); const stale = () => { if (!A.switchStale(g)) return false; A.toast(T.t("月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください")); renderHeader(); return true; };
       if (stale()) return false;
       if (!f.data && f.corrupt) { A.toast(f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。月を開けません。ファイルを退避するか正しい場所に移してください", { file: f.corrupt, tag: t, err: f.error }) : T.t("フォルダの {file} を読めません（{err}）。月を開けません", { file: f.corrupt, err: f.error })); renderHeader(); return false; } // 壊れている・別の月の中身: 「無い」として新しく作らない（自動保存で上書きしないため）
-      if (f.data) { if (!(await saveBeforeSwitch())) return false; if (stale()) return false; applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); return true; } }
+      if (f.data) { if (!(await saveBeforeSwitch())) return false; if (stale()) return false; return applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })) !== false; } }
     await A.onMonthChange(+t.slice(0, 4), +t.slice(4)).catch(e => A.toast(T.t("月の切替に失敗しました: {err}", { err: e && e.message || e }))); return true; // 保存の確認は onMonthChange 側で行う
   }
   // 月データを探す: YYYYMM フォルダ内 → フォルダ直下 → YYYYMM で始まる名前のフォルダ内
@@ -524,6 +567,11 @@
   // 形の検査（loadedShape）→ 複製の設定で変換（fromPrevious は state.rules を見るので一時的に差し替え、必ず戻す）→ 作った月の検査。成功したときだけ { month, rules } を返し、失敗は { error }（状態には触れない）
   function buildFromPrevious(o, ny, nm) {
     const shape = loadedShape(o); if (shape.error) return { error: shape.error };
+    const y = +shape.month.year, mo = +shape.month.month, nextY = mo === 12 ? y + 1 : y, nextM = mo === 12 ? 1 : mo + 1;
+    const consecutive = +(ny || nextY) * 12 + +(nm || nextM) === y * 12 + mo + 1;
+    // 新しい月へ移すのは前月の翌月1日欄だけ。当月内に残る古い除外だけなら、月単体の作成も妨げない。
+    const consent = consecutive ? roleLoadConsent(o, A.daysIn(y, mo) + 1) : null;
+    if (consent && !confirmRoleLoad(o, consent)) return { error: T.t("読み込みを取り消しました") };
     try { const clone = x => JSON.parse(JSON.stringify(x)); let rules2 = null, month2; if (shape.rules) { rules2 = clone(shape.rules); T.fillDefaultRules(rules2); }
       const R0 = state.rules; if (rules2) state.rules = rules2; try { month2 = A.fromPrevious({ rules: shape.rules, month: shape.month, result: shape.result }, ny, nm); } finally { state.rules = R0; }
       if (!A.isMonthObj(month2)) throw new Error(T.t("勤務表データではありません（year / month がありません）")); T.normalizeMonth(month2, rules2 || state.rules); // 作った月も採用する前に確かめる
@@ -545,6 +593,8 @@
   }
   function applyLoaded(o, msg, opts = {}) {
     const fromDir = opts.fromFolder !== false; const shape = loadedShape(o); if (shape.error) return alert(shape.error); const { month, rules, result } = shape;
+    const consent = roleLoadConsent(o);
+    if (consent && !confirmRoleLoad(o, opts.roleConsent || consent, !!opts.roleConsent)) return false; // 確認付きの選択画面を経た場合だけ二重に聞かない
     // 型検査・既定値の補完・月の整形は複製の上で済ませ、成功したときだけ状態をまとめて差し替える（途中で失敗しても、読み込む前の設定・月・結果・改名の記録・統合の基準は変わらない）
     let month2, rules2; try { const clone = x => JSON.parse(JSON.stringify(x)); rules2 = clone(rules || state.rules); T.fillDefaultRules(rules2); month2 = clone(month); T.normalizeMonth(month2, rules2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
