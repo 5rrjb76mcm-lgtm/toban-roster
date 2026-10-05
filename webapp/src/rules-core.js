@@ -173,6 +173,8 @@
   // 本人の申告（土日の実勤務の上限など）を無視した計算での回数を基準回数にして、申告で負担が減らないようにする規則が使う（docs/rule-modules.md §4）
   const refDeclarers = P => { const out = new Set(); for (const d of defs) if (typeof d.refDeclarers === "function" && isOn(P, d)) for (const n of d.refDeclarers(P, P.prm[d.id]) || []) out.add(n); return [...out]; };
   T.rules = { API, defs, byId, register, unregister, run, solveCtx, checkCtx, columns, columnsAll, refDeclarers,
+    // 規則同士で処理を譲るときは、状態だけでなく needs の先まで実際に動くかを確かめる。
+    isOn: (P, id) => !!byId[id] && isOn(P, byId[id]),
     runSolve: (ctx, upto) => run("solve", ctx, upto), runCheck: (ctx, upto) => run("check", ctx, upto),
     runPenalty: (ctx, upto) => run("penalty", ctx, upto), runLint: (ctx, upto) => run("lint", ctx, upto), runReport: (ctx, upto) => run("report", ctx, upto) };
 })(globalThis.T = globalThis.T || {});

@@ -128,7 +128,7 @@ let n = 0; const t = async (label, fn) => { await fn(); n++; console.log("ok   "
     const P = prob({ [X]: 1 }), sum = T.rulesSummary ? JSON.stringify(T.rulesSummary(P)) : ""; if (T.rulesSummary) assert.ok(sum.includes(`${X} 月1日まで`), sum.slice(0, 300));
     const line = sec => (T.buildReport(P, base.asg, sec).sections.find(s => s.id === "s9").html.match(/<li>[^<]*土日の実勤務（上限[^<]*<\/li>/g) || []);
     const l1 = line({ status: "Optimal", seconds: 1 }); assert.strictEqual(l1.length, 1); assert.ok(l1[0].includes(X) && l1[0].includes("上限 月1日") && /上限を \d+ 日超過/.test(l1[0]) && /勤務\d+回（当月目標/.test(l1[0]), l1[0]);
-    const l2 = line({ status: "Optimal", seconds: 1, avoidRef: { [X]: 9 } }); assert.ok(/申告を無視した参照解では9回/.test(l2[0]) && /参照解を下回る/.test(l2[0]), l2[0]);
+    const l2 = line({ status: "Optimal", seconds: 1, avoidRef: { [X]: 9 } }); assert.ok(/申告を無視した参照解では9回/.test(l2[0]) && /参照解を下回っています/.test(l2[0]) && !/他の必須条件のため/.test(l2[0]), l2[0]);
     const Pk = prob({ [X]: 5 }), l3 = T.buildReport(Pk, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html; assert.ok(/土日の実勤務（上限 月5日）: 2日（/.test(l3) && !/超過＝ほかに手が無い/.test(l3), "上限以内なら超過と書かない");
     assert.strictEqual(T.buildReport(P0, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html.includes("土日の実勤務（上限"), false, "指定が無ければ行を出さない"); });
 
