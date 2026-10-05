@@ -221,7 +221,7 @@
   }
 
   // 避けたい日の参照解方式: まず避けたい日を無視して計算し（参照解）、申告者の回数を基準回数として本計算に渡す。
-  // 規則の部品が refDeclarers で名乗った人（休日の実勤務の上限 dayoff_work_cap など。その規則も参照解では無視される）も申告者に含める
+  // 規則の部品が refDeclarers で名乗った人（土日の実勤務の上限 dayoff_work_cap など。その規則も参照解では無視される）も申告者に含める
   async function solveWithAvoidRef(P, highs, opts = {}) { // 常に Promise を返す（同期の highs でも可）
     const byRule = new Set(T.rules.refDeclarers(P));
     const declarers = P.dutyNames.filter(n => (P.avoidSlots(n).length && !P.isRole(n, "reserve")) || byRule.has(n));

@@ -324,7 +324,7 @@ webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limi
   その日の担当（`cday` / `map`）は、その日の最初の枠（日勤帯があれば日勤帯。`T.chargeDaySlots`）に関わる人。同じ日の後の枠が別の人になる「日の途中の交代」は必須の違反ではなく減点（`charge_handover`。1 日あたり、既定 200）で、
   各枠に関わる期間責任者が 1 名であることは必須のまま。週末の均等・連続・履歴は、その日の担当（最初の枠の人）で数える。
   専門業務の表（`T.cathTable`）・週休日の一覧（`T.restDays`）は説明資料も使うので本体に残し、部品の `check` が呼ぶ。
-  避けたい日の参照解（`solveWithAvoidRef`）は本体で、部品は `ctx.opts`（`avoidRef` / `ignoreAvoid`）を見る。参照解の対象者は、避けたい日の申告者と、動いている部品が `refDeclarers` で名乗った人（休日の実勤務の上限 `dayoff_work_cap`）。定期業務の診断の人ごとの外し（`duties:<氏名>`）は部品が `ctx.relaxed` で見る。
+  避けたい日の参照解（`solveWithAvoidRef`）は本体で、部品は `ctx.opts`（`avoidRef` / `ignoreAvoid`）を見る。参照解の対象者は、避けたい日の申告者と、動いている部品が `refDeclarers` で名乗った人（土日の実勤務の上限 `dayoff_work_cap`）。定期業務の診断の人ごとの外し（`duties:<氏名>`）は部品が `ctx.relaxed` で見る。
   `lp_same_node.js` の並びをそろえる処理に、目的関数の項の整列を足した（部品にすると項の入る順が変わる。段階 3 の 8 設定はすべて制約の集合が同じ）。
 - 段階 4 で: 第 9 節の並びが変わった（移す前は手書きの順、いまは一覧の順）。同日 2 枠と連日の行は 1 行にまとめていたのを部品ごとの 2 行に分けた。
   規則を「なし」にした部品の行は出なくなった（移す前は当直希望・避けたい日・OC を含む連続などが規則の状態に関わらず出ていた）。

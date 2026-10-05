@@ -1,6 +1,6 @@
-// 指定した人の休日の実勤務を月の上限日数までにする（dayoff_work_cap）。
+// 指定した人の土日の実勤務を月の上限日数までにする（dayoff_work_cap）。
 //   node test_dayoff_work_node.js <highs パッケージのパス>
-// 数え方は試験の側で独立に書く: 休日（土日祝）の日ごとに、どれかの枠で実勤務に入れば 1 日（OC は数えない。平日は数えない）。人ごとに数え、名簿の欄の上限を超えた日数 × 重みが減点。
+// 数え方は試験の側で独立に書く: 土曜・日曜の日ごとに、どれかの枠で実勤務に入れば 1 日（OC は数えない。平日は祝日でも数えない）。人ごとに数え、名簿の欄の上限を超えた日数 × 重みが減点。
 // 回数の下支え: 本人の回数が基準回数（参照解の回数。無ければ当月目標）に足りない分 × 重み。
 // 同梱の見本（架空の名簿）だけを使う
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert"), os = require("os"), { execFileSync } = require("child_process");
@@ -9,12 +9,12 @@ for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.
 for (const d of ["rules", "calendars"]) for (const f of fs.readdirSync(path.join(__dirname, "src", d)).filter(x => x.endsWith(".js"))) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", d, f), "utf8"), { filename: d + "/" + f });
 for (const q of fs.readdirSync(path.join(__dirname, "lang"))) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, "lang", q), "utf8")));
 T.setLang("ja"); T.DEFAULT_RULES = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rules.json"), "utf8"));
-const highsPath = process.argv[2]; if (!highsPath) { console.log("（highs のパス指定が無いので、休日の実勤務の上限の試験は省略）"); process.exit(0); }
+const highsPath = process.argv[2]; if (!highsPath) { console.log("（highs のパス指定が無いので、土日の実勤務の上限の試験は省略）"); process.exit(0); }
 const clone = x => JSON.parse(JSON.stringify(x)), sample = JSON.parse(fs.readFileSync(path.join(__dirname, "data/202611.json"), "utf8"));
 const rulesOf = (caps, extra) => { const R = clone(T.DEFAULT_RULES); if (caps) R.dayoff_work_max = caps; if (extra) extra(R); T.fillDefaultRules(R); return R; };
 const prob = (caps, opt = {}) => { const R = rulesOf(caps, opt.rules), m = T.normalizeMonth(clone(sample), R); if (opt.month) opt.month(m); return new T.Problem(R, m); };
-// 独立の数え方（割当の JSON から直接）。2026 年 11 月: 土日と祝日 3・23 日が休日
-const dow = d => (new Date(2026, 10, d).getDay() + 6) % 7, isOff = d => dow(d) >= 5 || d === 3 || d === 23;
+// 独立の数え方（割当の JSON から直接）。2026 年 11 月: 数えるのは土日だけ。祝日の 3 日（火）・23 日（月）は平日なので数えない
+const dow = d => (new Date(2026, 10, d).getDay() + 6) % 7, isOff = d => dow(d) >= 5, WEEKDAY_HOLIDAYS = [3, 23];
 const offDays = (asg, who) => [...new Set(Object.entries(asg).filter(([k, v]) => [].concat(v.work || []).includes(who)).map(([k]) => +k.split(":")[0]).filter(d => d >= 1 && d <= 30 && isOff(d)))].sort((a, b) => a - b);
 const worksOf = (asg, who) => Object.entries(asg).filter(([k, v]) => +k.split(":")[0] >= 1 && [].concat(v.work || []).includes(who)).length;
 const near = (a, b) => Math.abs(a - b) < 1e-6;
@@ -22,8 +22,8 @@ let n = 0; const t = async (label, fn) => { await fn(); n++; console.log("ok   "
 (async () => { const highs = await require(highsPath)();
   const def = T.RULE_BY_ID.dayoff_work_cap; assert.ok(def, "規則が登録されている");
   const P0 = prob(), base = await T.solveWithAvoidRef(P0, highs, { timeLimit: 60 }); assert.strictEqual(base.status, "Optimal");
-  // 見本の解で、休日の実勤務が 2 日以上の人（予備でなく、期間責任者でもない人から選ぶ）
-  const multi = P0.dutyNames.filter(x => !P0.isExempt(x) && !P0.isRole(x, "charge") && offDays(base.asg, x).length >= 2); assert.ok(multi.length >= 2, "見本の解には休日の実勤務が 2 日以上の人がいる: " + multi.join(","));
+  // 見本の解で、土日の実勤務が 2 日以上の人（予備でなく、期間責任者でもない人から選ぶ）
+  const multi = P0.dutyNames.filter(x => !P0.isExempt(x) && !P0.isRole(x, "charge") && offDays(base.asg, x).length >= 2); assert.ok(multi.length >= 2, "見本の解には土日の実勤務が 2 日以上の人がいる: " + multi.join(","));
   const X = multi[0], Y = multi[1];
 
   await t("既定は「減点」（減点・なしを選べる）。重みの既定は 100、回数の下支えは 1000。名簿の欄の既定は空（誰にも何もしない）", async () => {
@@ -45,34 +45,46 @@ let n = 0; const t = async (label, fn) => { await fn(); n++; console.log("ok   "
       const pen = T.penalty(P, base.asg); assert.strictEqual(pen.items.dayoff_work_excess || 0, ex * w, `${JSON.stringify(caps)}: ${pen.items.dayoff_work_excess} = ${ex} × ${w}`); assert.strictEqual(pen.items.dayoff_work_no_reduction || 0, short * 1000);
       const on = await T.solve(P, highs, { timeLimit: 30, pin: base.asg }); assert.strictEqual(on.status, "Optimal"); assert.ok(near(on.objective - off0.objective, ex * w + short * 1000), `${on.objective} − ${off0.objective} = ${ex * w + short * 1000}`); assert.ok(near(on.objective, pen.total));
       assert.strictEqual(T.check(P, base.asg).V.length, 0, "減点の規則なので違反にはしない"); }
-    // OC だけの休日は数えない: 休日に OC だけで入っている日がある人を選び、実勤務の日数だけで数えることを確かめる（解く側とも一致）
+    // OC だけの土日は数えない: 土日に OC だけで入っている日がある人を選び、実勤務の日数だけで数えることを確かめる（解く側とも一致）
     const ocOnlyDays = who => [...new Set(Object.entries(base.asg).filter(([k, v]) => isOff(+k.split(":")[0]) && (v.oc || []).includes(who)).map(([k]) => +k.split(":")[0]))].filter(d => !offDays(base.asg, who).includes(d));
-    const O = P0.dutyNames.filter(x => !P0.isExempt(x) && ocOnlyDays(x).length).sort((p, q) => ocOnlyDays(q).length - ocOnlyDays(p).length)[0]; assert.ok(O, "見本の解には、休日に OC だけで入っている人がいる");
+    const O = P0.dutyNames.filter(x => !P0.isExempt(x) && ocOnlyDays(x).length).sort((p, q) => ocOnlyDays(q).length - ocOnlyDays(p).length)[0]; assert.ok(O, "見本の解には、土日に OC だけで入っている人がいる");
     const Po = prob({ [O]: 0 }), po = T.penalty(Po, base.asg), short = Math.max(0, Po.targets[O] - worksOf(base.asg, O));
-    assert.strictEqual(po.items.dayoff_work_excess || 0, offDays(base.asg, O).length * 100, `${O}: 休日の OC だけの日 ${ocOnlyDays(O).length} 日は数えない`);
+    assert.strictEqual(po.items.dayoff_work_excess || 0, offDays(base.asg, O).length * 100, `${O}: 土日の OC だけの日 ${ocOnlyDays(O).length} 日は数えない`);
     const pinO = await T.solve(Po, highs, { timeLimit: 30, pin: base.asg }); assert.ok(near(pinO.objective - off0.objective, offDays(base.asg, O).length * 100 + short * 1000), `${pinO.objective} − ${off0.objective}`); });
 
-  await t("2 段階で解く: 指定した人は参照解（指定を無視した計算）の回数を保ったまま、休日の実勤務が上限以内になる。目的関数＝減点の合計、違反なし", async () => {
+  await t("平日の祝日の実勤務は数えない（土日だけ）。祝日の平日に実勤務がある人でも、土日の日数だけで減点が決まり、解く側とも一致する", async () => {
+    const H = P0.dutyNames.find(x => !P0.isExempt(x) && Object.entries(base.asg).some(([k, v]) => WEEKDAY_HOLIDAYS.includes(+k.split(":")[0]) && [].concat(v.work || []).includes(x))); assert.ok(H, "見本の解には、平日の祝日に実勤務へ入る人がいる");
+    assert.ok(WEEKDAY_HOLIDAYS.every(d => P0.isHoliday(d) && !P0.isWeekend(d)), "3 日と 23 日は平日の祝日");
+    const P = prob({ [H]: 0 }), pen = T.penalty(P, base.asg), short = Math.max(0, P.targets[H] - worksOf(base.asg, H)), wk = offDays(base.asg, H); assert.ok(!wk.some(d => WEEKDAY_HOLIDAYS.includes(d)));
+    assert.strictEqual(pen.items.dayoff_work_excess || 0, wk.length * 100, `${H}: 土日 ${wk.join("/") || "なし"} だけを数える`);
+    const off0 = await T.solve(P0, highs, { timeLimit: 30, pin: base.asg }), on = await T.solve(P, highs, { timeLimit: 30, pin: base.asg }); assert.ok(near(on.objective - off0.objective, wk.length * 100 + short * 1000), `${on.objective} − ${off0.objective}`);
+    // 祝日の平日 2 日に実勤務を固定しても、上限 0 の入力チェックには出ない（土日ではない）
+    const kindOf = d => Object.keys(base.asg).find(k => +k.split(":")[0] === d && [].concat(base.asg[k].work || []).includes(H));
+    const hd = WEEKDAY_HOLIDAYS.filter(kindOf); const Pf = prob({ [H]: 0 }, { month: m => { for (const d of hd) { const kind = kindOf(d).split(":")[1]; m.fixed[kind] = Object.assign({}, m.fixed[kind], { [d]: H }); } } });
+    assert.strictEqual(T.lint(Pf).filter(x => x.code === "LINT_DAYOFF_WORK_FIXED_OVER").length, 0); });
+
+  await t("2 段階で解く: 指定した人は参照解（指定を無視した計算）の回数を保ったまま、土日の実勤務が上限以内になる。目的関数＝減点の合計、違反なし", async () => {
     const P = prob({ [X]: 1, [Y]: 1 }); assert.deepStrictEqual(T.rules.refDeclarers(P).sort(), [X, Y].sort());
     const r = await T.solveWithAvoidRef(P, highs, { timeLimit: 90 }); assert.strictEqual(r.status, "Optimal"); assert.deepStrictEqual(Object.keys(r.avoidRef).sort(), [X, Y].sort(), "参照解の回数は指定した人の分");
-    for (const who of [X, Y]) { assert.strictEqual(r.avoidRef[who], worksOf(base.asg, who), "参照解はこの規則を無視した解（指定なしの解と同じ回数）"); assert.ok(offDays(r.asg, who).length <= 1, `${who}: 休日の実勤務 ${offDays(r.asg, who).join("/")}`); assert.ok(worksOf(r.asg, who) >= r.avoidRef[who], `${who}: 回数 ${worksOf(r.asg, who)} ≥ 参照解 ${r.avoidRef[who]}`); }
+    for (const who of [X, Y]) { assert.strictEqual(r.avoidRef[who], worksOf(base.asg, who), "参照解はこの規則を無視した解（指定なしの解と同じ回数）"); assert.ok(offDays(r.asg, who).length <= 1, `${who}: 土日の実勤務 ${offDays(r.asg, who).join("/")}`); assert.ok(worksOf(r.asg, who) >= r.avoidRef[who], `${who}: 回数 ${worksOf(r.asg, who)} ≥ 参照解 ${r.avoidRef[who]}`); }
     const pen = T.penalty(P, r.asg, { avoidRef: r.avoidRef }); assert.ok(near(r.objective, pen.total), `${r.objective} = ${pen.total}`); assert.ok(!pen.items.dayoff_work_excess && !pen.items.dayoff_work_no_reduction); assert.strictEqual(T.check(P, r.asg).V.length, 0);
-    // 上限 0: 休日の実勤務なしで回数を保つ
+    // 上限 0: 土日の実勤務なしで回数を保つ
     const Pz = prob({ [X]: 0 }), rz = await T.solveWithAvoidRef(Pz, highs, { timeLimit: 90 }); assert.strictEqual(rz.status, "Optimal"); assert.deepStrictEqual(offDays(rz.asg, X), []); assert.strictEqual(worksOf(rz.asg, X), rz.avoidRef[X]); });
 
-  await t("ほかに手が無いときは超えてよい: 休日の実勤務を 2 日固定した人（上限 1）も解ける。超えた 1 日は減点、入力チェックは知らせるだけ", async () => {
+  await t("ほかに手が無いときは超えてよい: 土日の実勤務を 2 日固定した人（上限 1）も解ける。超えた 1 日は減点、入力チェックは知らせるだけ", async () => {
     const days = offDays(base.asg, X).slice(0, 2), fx = m => { for (const d of days) { const kind = Object.keys(base.asg).find(k => +k.split(":")[0] === d && [].concat(base.asg[k].work || []).includes(X)).split(":")[1]; m.fixed[kind] = Object.assign({}, m.fixed[kind], { [d]: X }); } };
     const P = prob({ [X]: 1 }, { month: fx }), lint = T.lint(P).filter(x => x.code === "LINT_DAYOFF_WORK_FIXED_OVER"); assert.strictEqual(lint.length, 1); assert.ok(lint[0].msg.includes(X) && /2 日/.test(lint[0].msg) && lint[0].hint, lint[0].msg);
     const r = await T.solveWithAvoidRef(P, highs, { timeLimit: 90 }); assert.strictEqual(r.status, "Optimal"); assert.deepStrictEqual(offDays(r.asg, X), days, "固定した 2 日だけ（それ以上は増やさない）");
     const pen = T.penalty(P, r.asg, { avoidRef: r.avoidRef }); assert.strictEqual(pen.items.dayoff_work_excess, 100); assert.ok(near(r.objective, pen.total)); assert.strictEqual(T.check(P, r.asg).V.length, 0);
     assert.strictEqual(T.lint(prob({ [X]: 2 }, { month: fx })).filter(x => x.code === "LINT_DAYOFF_WORK_FIXED_OVER").length, 0, "上限以内の固定は知らせない"); });
 
-  await t("申告で回数は減らない: 平日に 3 枠しか入れない人（上限 0）は、参照解の回数を保つために休日へ入る（超過は最小）。下支えの重みを 0 にすると回数が減る（下支えが効いている）", async () => {
-    const R0 = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/oncall-min.json"), "utf8")), Z = R0.doctors[R0.doctors.length - 1].name, open = [5, 12, 19]; // 平日の夜勤に入れるのはこの 3 日だけ
+  await t("申告で回数は減らない: 平日に 3 枠しか入れない人（上限 0）は、参照解の回数を保つために土日へ入る（超過は最小）。下支えの重みを 0 にすると回数が減る（下支えが効いている）", async () => {
+    const R0 = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/oncall-min.json"), "utf8")), Z = R0.doctors[R0.doctors.length - 1].name, open = [5, 12, 19]; // 土日以外で入れるのはこの 3 日の夜勤だけ（祝日の平日 3・23 日は終日不可にする）
     const mk = w => { const R = clone(R0); R.dayoff_work_max = { [Z]: 0 }; T.fillDefaultRules(R); if (w != null) R.weights.dayoff_work_no_reduction = w;
-      const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], next_month_first_day_is_holiday: false }, R); m.unavailable_night = Object.assign({}, m.unavailable_night, { [Z]: [...Array(30)].map((_, i) => i + 1).filter(d => !isOff(d) && !open.includes(d)) }); return new T.Problem(R, m); };
+      const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], next_month_first_day_is_holiday: false }, R); m.unavailable_night = Object.assign({}, m.unavailable_night, { [Z]: [...Array(30)].map((_, i) => i + 1).filter(d => !isOff(d) && !open.includes(d)) });
+      m.unavailable_other = (m.unavailable_other || []).concat(WEEKDAY_HOLIDAYS.map(day => ({ name: Z, day, part: "allday" }))); return new T.Problem(R, m); };
     const P = mk(), r = await T.solveWithAvoidRef(P, highs, { timeLimit: 90, mipGap: 0 }); assert.strictEqual(r.status, "Optimal"); const ref = r.avoidRef[Z]; assert.ok(ref > open.length, "参照解の回数は平日に入れる枠より多い: " + ref);
-    assert.strictEqual(worksOf(r.asg, Z), ref, "回数は参照解と同じ"); assert.strictEqual(offDays(r.asg, Z).length, ref - open.length, "休日へ入るのは足りない分だけ");
+    assert.strictEqual(worksOf(r.asg, Z), ref, "回数は参照解と同じ"); assert.strictEqual(offDays(r.asg, Z).length, ref - open.length, "土日へ入るのは足りない分だけ");
     const pen = T.penalty(P, r.asg, { avoidRef: r.avoidRef }); assert.strictEqual(pen.items.dayoff_work_excess, (ref - open.length) * 100); assert.ok(!pen.items.dayoff_work_no_reduction); assert.ok(near(r.objective, pen.total)); assert.strictEqual(T.check(P, r.asg).V.length, 0);
     const Pw = mk(0), rw = await T.solveWithAvoidRef(Pw, highs, { timeLimit: 90, mipGap: 0 }); assert.strictEqual(rw.status, "Optimal"); assert.ok(worksOf(rw.asg, Z) < ref, `下支えなしでは回数が減る: ${worksOf(rw.asg, Z)} < ${ref}`); });
 
@@ -112,13 +124,13 @@ let n = 0; const t = async (label, fn) => { await fn(); n++; console.log("ok   "
     const R3 = clone(R); col.rename(R3, X, "New Name"); assert.deepStrictEqual(R3.dayoff_work_max, { "New Name": 1 });
     const R4 = rulesOf({ [X]: 1, "Not In Roster": 0 }); assert.strictEqual(T.pruneRosterRefs(R4), 1); assert.deepStrictEqual(R4.dayoff_work_max, { [X]: 1 }); });
 
-  await t("規則の要約と説明資料: 対象者と上限、休日の実勤務の日、超過、回数（当月目標・参照解）を出す", async () => {
+  await t("規則の要約と説明資料: 対象者と上限、土日の実勤務の日、超過、回数（当月目標・参照解）を出す", async () => {
     const P = prob({ [X]: 1 }), sum = T.rulesSummary ? JSON.stringify(T.rulesSummary(P)) : ""; if (T.rulesSummary) assert.ok(sum.includes(`${X} 月1日まで`), sum.slice(0, 300));
-    const line = sec => (T.buildReport(P, base.asg, sec).sections.find(s => s.id === "s9").html.match(/<li>[^<]*休日の実勤務（上限[^<]*<\/li>/g) || []);
+    const line = sec => (T.buildReport(P, base.asg, sec).sections.find(s => s.id === "s9").html.match(/<li>[^<]*土日の実勤務（上限[^<]*<\/li>/g) || []);
     const l1 = line({ status: "Optimal", seconds: 1 }); assert.strictEqual(l1.length, 1); assert.ok(l1[0].includes(X) && l1[0].includes("上限 月1日") && /上限を \d+ 日超過/.test(l1[0]) && /勤務\d+回（当月目標/.test(l1[0]), l1[0]);
     const l2 = line({ status: "Optimal", seconds: 1, avoidRef: { [X]: 9 } }); assert.ok(/申告を無視した参照解では9回/.test(l2[0]) && /参照解を下回る/.test(l2[0]), l2[0]);
-    const Pk = prob({ [X]: 5 }), l3 = T.buildReport(Pk, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html; assert.ok(/休日の実勤務（上限 月5日）: 2日（/.test(l3) && !/超過＝ほかに手が無い/.test(l3), "上限以内なら超過と書かない");
-    assert.strictEqual(T.buildReport(P0, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html.includes("休日の実勤務（上限"), false, "指定が無ければ行を出さない"); });
+    const Pk = prob({ [X]: 5 }), l3 = T.buildReport(Pk, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html; assert.ok(/土日の実勤務（上限 月5日）: 2日（/.test(l3) && !/超過＝ほかに手が無い/.test(l3), "上限以内なら超過と書かない");
+    assert.strictEqual(T.buildReport(P0, base.asg, { status: "Optimal", seconds: 1 }).sections.find(s => s.id === "s9").html.includes("土日の実勤務（上限"), false, "指定が無ければ行を出さない"); });
 
   await t("Python 版: 誰も指定していない設定はそのまま受け付け、指定があるときは未対応として止まる（黙って無視しない）", async () => {
     const PY = path.join(__dirname, "../tools/.venv/bin/python"), TOBAN = path.join(__dirname, "../tools/toban.py"); if (!fs.existsSync(PY)) { console.log("      （tools/.venv が無いので省略）"); return; }
@@ -128,5 +140,5 @@ let n = 0; const t = async (label, fn) => { await fn(); n++; console.log("ok   "
     const ng = run(rulesOf({ "Dr M": 1 })); assert.ok(/^EXIT/.test(ng) && /未対応/.test(ng) && /dayoff_work_cap/.test(ng), ng.slice(0, 300));
     const off = run(rulesOf({ "Dr M": 1 }, R => { R.rule_states = Object.assign({}, R.rule_states, { dayoff_work_cap: "off" }); })); assert.ok(!/^EXIT/.test(off), "規則が「なし」なら通る: " + off.slice(0, 300)); });
 
-  console.log(`休日の実勤務の上限の試験 ${n} 件 OK`);
+  console.log(`土日の実勤務の上限の試験 ${n} 件 OK`);
 })().catch(e => { console.log("FAIL " + (e && e.stack || e)); process.exit(1); });

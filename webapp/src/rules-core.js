@@ -170,7 +170,7 @@
   const on = (R, id) => (T.ruleState ? T.ruleState(R, id) : "hard") !== "off";
   const columns = R => columnsAll().filter(c => (on(R, c.rule) || defs.some(d => (d.uses || []).includes(c.key) && on(R, d.id))) && (!c.when || c.when(R))); // 欄の持ち主が「なし」でも、uses で使うと宣言した規則が有効なら出す
   // 参照解方式（solver.js の solveWithAvoidRef）の対象者: 動いている規則の refDeclarers(P, prm) が返す人。
-  // 本人の申告（休日の実勤務の上限など）を無視した計算での回数を基準回数にして、申告で負担が減らないようにする規則が使う（docs/rule-modules.md §4）
+  // 本人の申告（土日の実勤務の上限など）を無視した計算での回数を基準回数にして、申告で負担が減らないようにする規則が使う（docs/rule-modules.md §4）
   const refDeclarers = P => { const out = new Set(); for (const d of defs) if (typeof d.refDeclarers === "function" && isOn(P, d)) for (const n of d.refDeclarers(P, P.prm[d.id]) || []) out.add(n); return [...out]; };
   T.rules = { API, defs, byId, register, unregister, run, solveCtx, checkCtx, columns, columnsAll, refDeclarers,
     runSolve: (ctx, upto) => run("solve", ctx, upto), runCheck: (ctx, upto) => run("check", ctx, upto),
