@@ -126,7 +126,7 @@
     LINT_FIXED_OC_PM_EXTERNAL_NIGHT: { en: "night on-call after afternoon outside work is allowed only where it is recorded as confirmed in time", ja: "午後外勤後の夜間OCは「間に合う」確認の記録があるときだけ可" },
     LINT_FIXED_OC_PM_EXTERNAL_HINT: { en: "Per-person calendar → {who} → {day}: check the outside work, or remove the fixed assignment{extra}", ja: "{person}別カレンダー → {who} → {day} の外勤を確認するか、固定指定を削除{extra}" },
     LINT_FIXED_OC_PM_EXTERNAL_HINT_EXTRA: { en: ". If it is in time, add the confirmation under \"night shift and night on-call on an afternoon-outside day\" on the month tab", ja: "。間に合うなら月の設定の「午後外勤後の夜勤・夜間OC」に確認を追加" },
-    LINT_FIXED_OC_TWO_SAME_ROLE: { en: "Fixed \"{day} {slot} {who}\": at most one person per role can be on-call in the same half of the day", ja: "固定指定「{day} {slot} {who}」: 同じ時間帯のOCは役割ごとに1名までです" },
+    LINT_FIXED_OC_TWO_SAME_ROLE: { en: "Fixed \"{day} {slot} {who}\": {n} on-call assignments for {role}, but this slot allows at most {count}", ja: "固定指定「{day} {slot} {who}」: {role}のOCはこの枠では最大{count}名ですが、{n}名が固定されています" },
     LINT_FIXED_OVER_QUOTA: { en: "{count} shifts are fixed for {who}, above the target {quota} + {tol} (they will be assigned anyway and reported as allowed by the fixed assignment)", ja: "固定指定で {who} の勤務が {count} 件あり、目安 {quota}+{tol} 回を超えます（そのまま配置され、検算で「固定指定により許容」と出ます）" },
     LINT_FIXED_OVER_QUOTA_HINT: { en: "Fix fewer shifts, or review the target on the settings tab", ja: "固定指定を減らすか、設定の目安を見直す" },
     LINT_FIXED_SAME_DAY: { en: "{who} is fixed to both the day and the night shift on {day} (two shifts on one day are forbidden; the fixed assignment wins and is penalised)", ja: "固定指定で {who} が {day} の日勤と夜勤の両方に入っています（同日の実勤務は禁止。固定指定が優先され減点付きで配置されます）" },

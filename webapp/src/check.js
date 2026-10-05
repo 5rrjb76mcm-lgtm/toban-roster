@@ -255,7 +255,16 @@
         if (kind === "day" && unO(n, d)) push("LINT_FIXED_VS_UNAVAIL", { day: lab(d), slot: lbl, who: n, scope: "" });
         if (((kind === "night" ? P.fixedNight[d] : P.fixedDay[d]) || []).includes(n)) push("LINT_FIXED_WORKER_IS_OC", { day: lab(d), shift: P.shiftLabel(kind), slot: lbl, who: n });
       }
-      const teams = ns.map(n => Tm[n]); if (P.standbyRoleIds.some(r => teams.filter(t => t === r).length > 1)) push("LINT_FIXED_OC_TWO_SAME_ROLE", { day: lab(d), slot: lbl, who: ns.join("・") });
+      // OC の上限は勤務者の役割に応じた必要数。勤務者が未固定なら、候補のどれかが受け持てる人数までは許す。
+      // 固定勤務者は不可でも優先されるので候補から落とさない。「若手 OC なし」は必要数にかかわらず 0 名。
+      const s = [d, kind], fixed = (kind === "night" ? P.fixedNight[d] : P.fixedDay[d]) || [];
+      const workers = fixed.length ? fixed : P.dutyNames.filter(n => !ns.includes(n) && cctx.canWork(n, s));
+      const req = P.ocReqAt(s), jr = P.refId("junior");
+      for (const role of P.standbyRoleIds) {
+        const n = ns.filter(w => Tm[w] === role).length;
+        const count = (role === jr && P.ocNone(s, role)) || P.countOf(s) === 0 ? 0 : Math.max(0, ...workers.map(w => +((req[Tm[w]] || {})[role] || 0)));
+        if (n > count) push("LINT_FIXED_OC_TWO_SAME_ROLE", { day: lab(d), slot: lbl, who: ns.join("・"), role: P.roleLabel(role), n, count });
+      }
     }
     { const ids = new Set(P.roleIds); // 名簿の役割が役割一覧にあるか（識別子を変えたときの取りこぼし）
       const bad = P.names.filter(n => !ids.has(P.team[n]));

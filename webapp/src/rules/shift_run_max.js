@@ -10,21 +10,21 @@ T.rules.register({
     const { P, LP } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
       for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { const xs = []; let konst = 0; const days = [];
-        for (let j = 0; j <= K; j++) { const e = d + j; if (e < 1) konst += P.prevWorked([e, k], n) ? 1 : 0; else if (e > P.N) konst += P.nextFixed[k].includes(n) ? 1 : 0; else { if (ctx.has([e, k])) xs.push(ctx.work([e, k], n)); days.push(e); } }
+        for (let j = 0; j <= K; j++) { const e = d + j; if (e < 1) konst += P.prevWorked([e, k], n) ? 1 : 0; else if (e > P.N) konst += P.nextFixedWorked(n, k) ? 1 : 0; else { if (ctx.has([e, k])) xs.push(ctx.work([e, k], n)); days.push(e); } }
         if (!xs.length) continue;
         ctx.limit("shift_run_max", LP.sum([LP.sum(xs), konst]), "<=", K, { fixed: ctx.fixedInvolved(days, n), aux: "srm", ub: K + 1 }); } }
   },
   check(ctx, prm) {
     const { P } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixed[k].includes(n) : ctx.worked(n, [e, k]);
+      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.worked(n, [e, k]);
       for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0; const days = []; for (let j = 0; j <= K; j++) { if (at(d + j)) c++; if (d + j >= 1 && d + j <= P.N) days.push(d + j); }
         if (c > K && days.length) ctx.viol("SHIFT_RUN_TOO_LONG", { who: n, from: ctx.lab(Math.max(d, 1)), shift: P.shiftLabel(k), max: K }, days, n, ctx.fixedInvolved(days, n)); } }
   },
   penalty(ctx, prm) {
     const { P } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixed[k].includes(n) : ctx.worked(n, [e, k]);
+      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.worked(n, [e, k]);
       for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0; const days = []; let any = false; for (let j = 0; j <= K; j++) { if (at(d + j)) c++; const e = d + j; if (e >= 1 && e <= P.N) { days.push(e); if (ctx.has([e, k])) any = true; } }
         if (any) ctx.limit("shift_run_max", c, "<=", K, { fixed: ctx.fixedInvolved(days, n) }); } }
   },

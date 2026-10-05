@@ -32,6 +32,7 @@ run test_profile_export_node.js
 run test_settings_import_node.js
 run test_role_edit_preservation_node.js
 run test_role_delete_preservation_node.js
+run test_calendar_day_readback_node.js
 run test_undo_roster_order_node.js
 run test_undo_profile_identity_node.js
 run test_undo_month_node.js
@@ -58,6 +59,8 @@ run test_prevconn_node.js "$HP"
 run test_period_slots_node.js "$HP"
 run test_period_charge_next_slot_node.js "$HP"
 run test_oc_period_boundary_node.js "$HP"
+run test_next_fixed_work_slots_node.js "$HP"
+run test_fixed_oc_capacity_node.js "$HP"
 run test_charge_day_split_node.js "$HP"
 if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"

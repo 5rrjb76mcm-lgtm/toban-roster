@@ -14,6 +14,7 @@
   const PAT_KINDS = () => Object.assign(Object.fromEntries(["outpatient", "ward", "external"].map(k => [k, T.kindLabel(k)])),
     { avoid_night: T.t("避：夜勤"), avoid_day: T.t("避：日勤帯"), avoid_allday: T.t("避：日夜両方") });
   const PARTS = () => ({ full: T.t("終日"), am: T.t("午前"), pm: T.t("午後") });
+  const hasDay = (days, d) => (days || []).some(x => +x === d); // model.js と同じく数値文字列の日付も表示する（未選択として読み戻して消さない）
   // 役割の機能から引く（識別子は施設ごとに違う）
   const roleOf = (R, ref) => { try { return (T.normalizeRolesOf(R).find(x => x.refs.includes(ref)) || {}).id || null; } catch (e) { return null; } };
   const standbyIds = R => { try { return T.normalizeRolesOf(R).filter(x => x.standby).map(x => x.id); } catch (e) { return []; } };
@@ -168,7 +169,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   // ---------- 医師別カレンダー ----------
   function curDoctor() { const list = A.names(); state.ui = state.ui || { doctor: 0 }; if (state.ui.doctor >= list.length) state.ui.doctor = 0; return list[state.ui.doctor]; }
-  function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if ((m.unavailable_night?.[n] || []).includes(d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +x.day === d); return a ? "avoid_" + (a.part || "allday") : ""; }
+  function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if (hasDay(m.unavailable_night?.[n], d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +x.day === d); return a ? "avoid_" + (a.part || "allday") : ""; }
   function renderDoctor() {
     const m = state.month; A.ensureMonth(m);
     const n = curDoctor(), y = +m.year, mo = +m.month, N = A.daysIn(y, mo);
@@ -226,7 +227,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const w = A.dowOf(y, mo, d), isSun = w === 6 || hol.has(d), isSat = w === 5 && !hol.has(d);
       cells.push(`<td class="cal ${isSun ? "sun" : isSat ? "sat" : ""}"><div class="dnum">${d}<small>${esc(dowJa(w))}${hol.has(d) ? esc(T.t("祝")) : ""}</small>${symAt(d) ? ` <span class="calres" title="${esc(T.t("計算結果"))}">${symAt(d)}</span>` : ""}</div>${dayHead(d)}
 ${ext.hideDuties ? "" : `<div>${esc(T.t("午前"))} ${kindSel(d, "am")}</div><div>${esc(T.t("午後"))} ${kindSel(d, "pm")}</div>`}
-${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" data-shown="${esc(unavailPart(m, n, d))}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${(m.wishes?.night_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${(m.wishes?.day_on?.[n] || []).includes(d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat), nightOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
+${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m, n, d)), unavailPart(m, n, d), `data-cal="unavail" data-d="${d}" data-shown="${esc(unavailPart(m, n, d))}" class="un"`)} <label class="wish"><input type="checkbox" data-cal="wish" data-d="${d}" ${hasDay(m.wishes?.night_on?.[n], d) ? "checked" : ""}>${esc(T.t(wishDayOn ? "夜勤希望" : "希望"))}</label>${wishDayOn && dayOn(isSun || isSat) ? ` <label class="wish"><input type="checkbox" data-cal="wishday" data-d="${d}" ${hasDay(m.wishes?.day_on?.[n], d) ? "checked" : ""}>${esc(T.t("日勤希望"))}</label>` : ""}</div><div>${esc(T.t("固定"))} ${fixedSel(d, dayOn(isSun || isSat), nightOn(isSun || isSat))}</div>` : ""}${isDuty ? fieldRows(d) : ""}</td>`);
       if ((first + d) % 7 === 0 && d < N) cells.push("</tr><tr>");
     }
     // 翌月1日の欄（業務のみ。月末の夜勤・夜間OCの翌日制約に使う。曜日パターンからの推定が入っているので、翌月の業務が分かれば直す）

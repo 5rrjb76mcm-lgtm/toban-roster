@@ -592,7 +592,9 @@
     nextFirstSlotKind() { return this.nextSlotExists("day") ? "day" : "night"; } // 翌月1日の最初の枠（月末の夜勤に隣接する枠）
     pmExtNightBanned(d, n) { return this.pmExtNight === "forbid" || (this.pmExtNight !== "allow" && !this.confirmedPmExtNight.has(`${d}:${n}`)); } // 午後外勤日の夜勤・夜間OCを禁止するか
     ocNone(s, team) { const x = this.fixedOcNone[`${s[0]}:${s[1]}`]; return !!(x && x.has(team)); } // その枠で team の OC を置かない固定があるか
-    nextFixedWorks(n) { const x = this.nextFixed; return x.day.includes(n) || x.night.includes(n); }
+    // 勤務帯を減らした後も翌月の固定入力は保持するが、実在しない枠を月末の勤務・休みの規則に数えない。
+    nextFixedWorked(n, kind) { return this.nextSlotExists(kind) && (this.nextFixed[kind] || []).includes(n); }
+    nextFixedWorks(n) { return this.nextFixedWorked(n, "day") || this.nextFixedWorked(n, "night"); }
     fixedWorkersOf(s) { return (s[1] === "night" ? this.fixedNight : this.fixedDay)[s[0]] || []; } // その枠に固定した勤務者（配列）
     fixedTag(s, n) { const k = `${s[0]}:${s[1]}|${n}`; return this.fixedEngKeys.has(k) ? this.fixedTags[k] || "" : ""; } // 固定の印（研修・会議など）。実際にその枠に固定されている人の印だけ（固定を外した後に残った印を、後の割当で同じ枠に入った人に付けない）
     dayHas(d, id) { return (this.dayFlags[d] || []).includes(id); } // その日に区分 id が付いているか

@@ -28,7 +28,7 @@ T.rules.register({
       if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.worked(n, [1, k]))
         ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(0), next: ctx.lab(1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(k), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[1, k]], n);
       if (P.nextFixedAny() && ctx.worked(n, [P.N, r.from]) && nextFixedIn(P, n, r.to))
-        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(P.N), next: ctx.lab(P.N + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(r.to === "any" ? (P.nextFixed.day.includes(n) ? "day" : "night") : r.to), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[P.N, r.from]], n); }
+        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(P.N), next: ctx.lab(P.N + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(r.to === "any" ? (P.nextFixedWorked(n, "day") ? "day" : "night") : r.to), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[P.N, r.from]], n); }
   },
   penalty(ctx, prm) {
     const { P } = ctx;
@@ -66,4 +66,4 @@ T.rules.register({
   python: false,
 });
 // 翌月 1 日の固定指定で、その人が「これに入れない」勤務帯に入っているか（to が any ならどの勤務帯でも）
-function nextFixedIn(P, n, to) { const x = P.nextFixed || {}; const inK = k => [].concat(x[k] || []).includes(n); return to === "any" ? (inK("day") || inK("night")) : inK(to); }
+function nextFixedIn(P, n, to) { return to === "any" ? P.nextFixedWorks(n) : P.nextFixedWorked(n, to); }
