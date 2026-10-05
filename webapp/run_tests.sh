@@ -26,6 +26,7 @@ if [ -x "$ESL" ]; then
 else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i eslint@8 で入れると走る）"; fi
 run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
+run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js

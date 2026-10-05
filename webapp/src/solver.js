@@ -211,6 +211,9 @@
       }
       if (!ok) asg = null;
     }
+    // Raw incumbent objective, including the LP constant. With a time limit (or nonzero
+    // mip gap), penalty auxiliaries may retain slack: this is not necessarily T.penalty's
+    // assignment score. Keep solver status/tolerance unchanged; recount with matching opts.
     return { status: st, asg, objective: sol.ObjectiveValue == null ? sol.ObjectiveValue : sol.ObjectiveValue + built.lp.objC, seconds: sec, vars: built.lp.vars.size, cons: built.lp.cons.length, gap }; // gap: 実際に HiGHS へ渡した許容差
     };
     // mip_rel_gap: 目的関数値の許容誤差。規模の大きい施設（1枠複数名など）は、同じ点数の解が多くて

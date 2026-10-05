@@ -480,7 +480,13 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const month = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], wishes: { day_on: { [a]: [4, 5], [b]: [4] } } }, rules);
     const P = new T.Problem(rules, month); assert.deepStrictEqual(P.wishDay[a], [4, 5]);
     const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける");
-    const pen = T.penalty(P, r.asg); assert(Math.abs(pen.total - r.objective) < 1e-6, "点数一致: " + pen.total + " / " + r.objective);
+    const pen = T.penalty(P, r.asg);
+    // A time-limited incumbent can retain slack in penalty auxiliaries. Pin the same assignment
+    // and minimize those auxiliaries before comparing the two independent implementations.
+    const scored = T.solve(P, highs, { timeLimit: 60, pin: r.asg, mipGap: 0 });
+    assert.strictEqual(scored.status, "Optimal", "固定割当の採点は最適まで解く");
+    assert(Math.abs(pen.total - scored.objective) < 1e-6, "点数一致: " + pen.total + " / " + scored.objective);
+    if (r.status === "Optimal" && r.gap === 0) assert(Math.abs(pen.total - r.objective) < 1e-6, "最適解の目的関数も一致");
     const asg = clone(r.asg); for (const k of ["4:day", "5:day"]) asg[k].work = [].concat(asg[k].work).filter(n => n !== a); // a の希望を外す
     const miss = T.penalty(P, asg).items.wish_day || 0; assert(miss >= 2 * P.weights.wish_day - 1e-9, "外した希望の分が減点: " + miss);
     const rt = T.unflattenMonth(T.flattenMonth(month)); assert.deepStrictEqual(rt.wishes.day_on, { [a]: [4, 5], [b]: [4] });
