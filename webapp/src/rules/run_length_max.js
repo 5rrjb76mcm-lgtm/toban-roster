@@ -28,10 +28,11 @@ T.rules.register({
       ctx.limit("run_length_max", c, "<=", K, { fixed: ctx.fixedInvolved(days, n) }); }
   },
   ui: {
-    render(R, h) { return `<label>${h.esc(h.tx("連勤は"))} <input type="number" min="1" max="31" id="setRunMax" value="${h.esc((R.run_length || {}).max ?? 5)}" style="width:4em"> ${h.esc(h.tx("日まで"))}</label>
+    render(R, h) { return `<label>${h.esc(h.tx("連勤は"))} <input type="text" inputmode="numeric" id="setRunMax" value="${h.esc((R.run_length || {}).max ?? 5)}" style="width:4em"> ${h.esc(h.tx("日まで"))}</label>
 　<label>${h.esc(h.tx("対象外の資格（・区切り）"))} <input id="setRunExempt" value="${h.esc((R.run_length || {}).exempt_qual || "")}" style="width:8em"></label>
  <span class="note">${h.esc(h.tx("この資格を持つ人には連勤の上限・下限を当てはめません（平日に続けて勤務する師長など）。"))}</span>`; },
-    read(R, el) { const mx = +((el("#setRunMax") || {}).value) || 0; if (mx) R.run_length = Object.assign({}, R.run_length, { max: mx });
+    read(R, el) { const input = el("#setRunMax"); if (input && (input.dataset?.numericEdited === "1" || input.value !== String((R.run_length || {}).max ?? 5).replace(/[\r\n]/g, ""))) { const value = input.value.trim(); R.run_length = Object.assign({}, R.run_length);
+        if (value === "") delete R.run_length.max; else R.run_length.max = Number.isFinite(Number(value)) ? Number(value) : value; }
       if (el("#setRunExempt")) { const v = el("#setRunExempt").value.trim(); R.run_length = Object.assign({}, R.run_length); if (v) R.run_length.exempt_qual = v; else delete R.run_length.exempt_qual; } },
   },
   summary(P, prm, tv) { return tv("{n} 日まで", { n: prm.max }); },

@@ -227,9 +227,15 @@
       this.standbyRoleIds = this.roles.filter(r => r.standby).map(r => r.id);
       // 連勤（run_length）と勤務帯のつながり（forbid_sequence）のパラメータ
       const rl = rules.run_length || {};
-      this.runMax = Math.max(1, +(rl.max ?? 5) || 5); // 何日まで続けてよいか
+      const runDays = (key, fallback, minimum) => {
+        const raw = rl[key], value = raw == null || raw === "" ? fallback : numericValue(raw);
+        if (ruleState(rules, `run_length_${key}`) !== "off" && (!Number.isSafeInteger(value) || value < minimum || value > 31))
+          throw new Error(T.t("設定の {field} は{min}〜31の整数にしてください（連勤の日数）", { field: `run_length.${key}`, min: minimum }));
+        return Number.isSafeInteger(value) && value >= minimum && value <= 31 ? value : fallback;
+      };
+      this.runMax = runDays("max", 5, 1); // 何日まで続けてよいか
       this.runExempt = String(rl.exempt_qual || "").split(/[・|,、]+/).map(x => x.trim()).filter(Boolean); // 連勤の規則の対象外にする資格（例: 平日に続けて勤務する師長）
-      this.runMin = Math.max(2, +(rl.min ?? 3) || 3); // 続けるなら何日以上か
+      this.runMin = runDays("min", 3, 2); // 続けるなら何日以上か
       this.seqRules = [].concat(rules.forbid_sequence || []).map(x => ({
         from: x && x.from ? String(x.from) : "night",
         to: x && x.to ? String(x.to) : "any", // "any" はその日のすべての勤務帯
@@ -1004,7 +1010,8 @@
     return { targets, lines, slots: S, quotaSum: Q };
   }
   // 前月末の接続で取り込む日数: 連勤の規則を使う施設は「連勤の上限＋2 日」（上限 3 日なら 5 日）、使わない施設は 2 日
-  T.prevLookback = rules => { const on = id => ruleState(rules, id) !== "off"; const mx = Math.max(1, +(((rules || {}).run_length || {}).max ?? 5) || 5);
+  T.prevLookback = rules => { const on = id => ruleState(rules, id) !== "off"; const raw = numericValue(((rules || {}).run_length || {}).max ?? 5);
+    const mx = Number.isSafeInteger(raw) && raw >= 1 && raw <= 31 ? raw : 5; // 不正な入力でも設定画面を開いて修正できるようにする。計算時は Problem が拒否する
     let lb = on("run_length_max") || on("run_length_min") ? Math.max(2, mx + 2) : 2;
     for (const def of RULE_DEFS) if (on(def.id) && typeof def.lookback === "function") { try { lb = Math.max(lb, Math.round(+def.lookback(rules) || 0)); } catch (e) { } } // プラグインが必要とする日数（例: shift_run_max）
     return lb; };

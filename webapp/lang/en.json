@@ -1145,7 +1145,8 @@
     "この対応で読み込みますか？": "Load using this mapping?",
     "相手の月を現在の役割として読み込む": "Load the other month using the current roles",
     "読み込みを中止しました（確認中に月・設定・保存先が変わりました）。もう一度操作してください": "Loading was cancelled because the month, settings or save destination changed during confirmation. Please try again.",
-    "読み込みを取り消しました": "Loading cancelled"
+    "読み込みを取り消しました": "Loading cancelled",
+    "設定の {field} は{min}〜31の整数にしてください（連勤の日数）": "Set {field} to an integer from {min} to 31 (consecutive working days)."
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",

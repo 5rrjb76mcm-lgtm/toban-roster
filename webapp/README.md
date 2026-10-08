@@ -52,7 +52,7 @@
   役割（チーム）は `rules.profile.roles = [{id, label, refs, standby}]`。識別子・数・表示名は施設が決める。規則は識別子ではなく役目
   （`refs`: charge / other / junior / reserve）を見る。`P.byRole[id]`、`P.refId(ref)`、`P.isRole(name, ref)`、`P.isStandby(name)` を使い、
   `P.I` / `P.A` / `P.Y` は役目から引く別名。オンコール構成 `oncall_requirement` は行も列も役割の識別子。
-  連勤は `rules.run_length = {max, min}`（規則 `run_length_max` / `run_length_min`）。勤務帯のつながりの禁止（明け休み）は
+  連勤は `rules.run_length = {max, min}`（規則 `run_length_max` / `run_length_min`）。上限は 1〜31、下限は 2〜31 の整数の日数（空欄は既定の 5 / 3 日）。有効な規則の不正値は丸めず計算前に知らせ、設定は修正できるよう保持する。勤務目標の小数とは別の制約。勤務帯のつながりの禁止（明け休み）は
   `rules.forbid_sequence = [{from, to}]`（規則 `shift_sequence`。`to: "any"` はその日のすべての帯）。前月末と翌月1日の固定も連勤の窓に入る。
   1 枠に置く勤務者の人数は `rules.profile.positions.work.count`（整数 / 勤務帯ごと / 日の種別ごと）。`P.countOf(slot)` が返す。
   割当は 1 名なら文字列、複数名なら配列で、読み出しは `Asg.workers(slot)` と `Asg.workText(slot)` に一本化してある。

@@ -604,8 +604,31 @@
       A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); // 名簿が変わったので他の画面も描き直す
     });
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnExportProfile") exportProfile(); });
-    $("#settings").addEventListener("input", ev => { if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1"; });
+    const settings = $("#settings"), isRunLimit = el => ["setRunMax", "setRunMin"].includes(el.id), committedRunValues = new WeakMap();
+    let committingRunLimit = false;
+    const commitRunLimit = input => {
+      if (committingRunLimit || !settings.contains(input) || $("#" + input.id) !== input || input.dataset.numericEdited !== "1") return;
+      committingRunLimit = true;
+      try {
+        if (readSettings("規則・重みの変更") === false) return;
+        // 設定DOMを残し、Tabやクリックで移った先の欄を失わない。確定済みの編集印は両欄から除く。
+        for (const [id, key, fallback] of [["setRunMax", "max", 5], ["setRunMin", "min", 3]]) {
+          const el = $("#" + id); if (!el) continue;
+          const value = String((state.rules.run_length || {})[key] ?? fallback).replace(/[\r\n]/g, "");
+          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRunValues.set(el, value);
+        }
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor();
+      } finally { committingRunLimit = false; }
+    };
+    settings.addEventListener("input", ev => { if (ev.target.dataset?.f === "quota" || isRunLimit(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
+    settings.addEventListener("focusout", ev => { if (isRunLimit(ev.target)) commitRunLimit(ev.target); });
     $("#settings").addEventListener("change", ev => {
+      if (isRunLimit(ev.target)) {
+        if (ev.target.dataset.numericEdited !== "1" && committedRunValues.get(ev.target) === ev.target.value) return;
+        ev.target.dataset.numericEdited = "1"; commitRunLimit(ev.target); return;
+      }
       if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1";
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない

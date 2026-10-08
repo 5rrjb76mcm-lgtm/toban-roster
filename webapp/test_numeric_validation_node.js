@@ -31,6 +31,58 @@ let passed = 0, failed = 0;
 async function test(label, fn) { try { await fn(); console.log("ok " + label); passed++; } catch (e) { console.error("FAIL " + label + ": " + e.message); failed++; } }
 (async () => {
   const highs = await require(process.argv[2] || "highs")();
+  await test("run-length day limits reject invalid UI and imported values without mutating settings", () => {
+    for (const [key, minimum, fallback] of [["max", 1, 5], ["min", 2, 3]]) {
+      const def = T.RULE_DEFS.find(d => d.id === `run_length_${key}`);
+      for (const value of [1.5, "1.5", 0, -1, "bad", Infinity, "Infinity", 32, 1e20, true, [], {}, minimum - 1]) {
+        const { R, M } = fixture(); R.rule_states[def.id] = "soft"; R.run_length = { [key]: value };
+        const before = JSON.stringify(R);
+        assert.throws(() => new T.Problem(R, M), new RegExp(`run_length\\.${key}`));
+        assert.strictEqual(JSON.stringify(R), before);
+        R.rule_states[def.id] = "off";
+        assert.doesNotThrow(() => new T.Problem(R, M), "inactive invalid limits do not block unrelated work");
+        R.rule_states.run_length_min = "soft"; R.run_length.min = 3;
+        const lookback = T.prevLookback(R); assert(Number.isInteger(lookback) && lookback >= 2 && lookback <= 33, "invalid max must not break month input rendering");
+      }
+      for (const value of ["1.5", "0", "-1", "bad"]) {
+        const { R, M } = fixture(); R.rule_states[def.id] = "soft";
+        const id = key === "max" ? "#setRunMax" : "#setRunMin";
+        def.ui.read(R, q => q === id ? { value } : null);
+        assert.throws(() => new T.Problem(R, M), /run_length/);
+        def.ui.read(R, q => q === id ? { value: "" } : null);
+        assert.strictEqual(new T.Problem(R, M)[key === "max" ? "runMax" : "runMin"], fallback);
+      }
+      for (const value of [[], [2], {}, true, "   ", "bad", "1\n2", "\n"]) {
+        const { R, M } = fixture(); R.rule_states[def.id] = "soft"; R.run_length = { [key]: value };
+        const id = key === "max" ? "#setRunMax" : "#setRunMin";
+        const html = def.ui.render(R, { esc: T.esc, tx: x => x });
+        assert(html.includes(`value="${T.esc(String(value))}"`));
+        const input = { value: String(value).replace(/[\r\n]/g, ""), dataset: {} };
+        def.ui.read(R, q => q === id ? input : null);
+        assert.strictEqual(R.run_length[key], value, "unrelated readback retains the original invalid value");
+        assert.throws(() => new T.Problem(R, M), /run_length/);
+        input.value = ""; input.dataset.numericEdited = "1";
+        def.ui.read(R, q => q === id ? input : null);
+        assert.doesNotThrow(() => new T.Problem(R, M), "explicit clearing restores the default");
+      }
+      for (const value of [minimum, String(minimum), 5, "5", null, ""]) {
+        const { R, M } = fixture(); R.rule_states[def.id] = "soft"; R.run_length = { [key]: value };
+        assert.doesNotThrow(() => new T.Problem(R, M));
+      }
+    }
+  });
+  await test("integer run-length limits retain pinned objective/scorer agreement with fractional targets", () => {
+    for (const key of ["max", "min"]) for (const limit of [2, 3]) {
+      const { R, M } = fixture(); R.rule_states[`run_length_${key}`] = "soft";
+      R.run_length = { [key]: limit }; R.weights.run_length_over = 1; R.weights.run_short = 1;
+      M.targets = { [names[0]]: 14.5, [names[1]]: 15.5 };
+      const P = new T.Problem(R, M), pin = Object.fromEntries(P.slots.map((s, i) => [T.Problem.key(s), { work: names[Math.floor(i / 3) % 2], oc: [] }]));
+      assert.strictEqual(P.targets[names[0]], 14.5);
+      const result = T.solve(P, highs, { pin, timeLimit: 5, mipGap: 0 });
+      assert.strictEqual(result.status, "Optimal");
+      assert(Math.abs(result.objective - T.penalty(P, result.asg).total) < 1e-7);
+    }
+  });
   await test("negative/nonfinite active weights are rejected without changing input", () => {
     for (const v of [-1, "-1", Infinity, -Infinity, NaN, "bad", [], true]) {
       const { R, M } = fixture(); R.rule_states.quota_target = "soft"; R.weights.target_deviation = v;

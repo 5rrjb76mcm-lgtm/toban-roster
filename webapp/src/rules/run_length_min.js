@@ -36,8 +36,9 @@ T.rules.register({
       ctx.add("run_short", P.softW("run_length_min"), short); }
   },
   ui: {
-    render(R, h) { return `<label>${h.esc(h.tx("連勤を始めたら"))} <input type="number" min="2" max="31" id="setRunMin" value="${h.esc((R.run_length || {}).min ?? 3)}" style="width:4em"> ${h.esc(h.tx("日は続ける"))}</label>`; },
-    read(R, el) { const mn = +((el("#setRunMin") || {}).value) || 0; if (mn) R.run_length = Object.assign({}, R.run_length, { min: mn }); },
+    render(R, h) { return `<label>${h.esc(h.tx("連勤を始めたら"))} <input type="text" inputmode="numeric" id="setRunMin" value="${h.esc((R.run_length || {}).min ?? 3)}" style="width:4em"> ${h.esc(h.tx("日は続ける"))}</label>`; },
+    read(R, el) { const input = el("#setRunMin"); if (input && (input.dataset?.numericEdited === "1" || input.value !== String((R.run_length || {}).min ?? 3).replace(/[\r\n]/g, ""))) { const value = input.value.trim(); R.run_length = Object.assign({}, R.run_length);
+        if (value === "") delete R.run_length.min; else R.run_length.min = Number.isFinite(Number(value)) ? Number(value) : value; } },
   },
   summary(P, prm, tv) { return tv("始めたら {n} 日は続ける", { n: prm.min }); },
   // 入力チェック: 連日禁止と両立しない。夜勤の数に対して下限が長すぎる（短い連が避けられず、計算も長引く）
