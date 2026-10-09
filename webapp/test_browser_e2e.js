@@ -536,6 +536,62 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       assert.strictEqual(await page.evaluate(() => document.querySelector('#doctorPane').dataset.doctor), await page.evaluate(() => T.app.state.rules.doctors[0].name));
     } finally { await ctx.close(); }
   });
+  // 保存値が空欄に見える場合も、未編集と「入力して空欄へ戻した」を区別する。DOMイベントは実際の入力・Tab・クリックで発生させる。
+  const runLimitFixture = async (page, key, raw) => {
+    await page.evaluate(({ key, raw }) => { const A = T.app;
+      A.state.rules.rule_states.run_length_max = "soft"; A.state.rules.rule_states.run_length_min = "soft";
+      A.state.rules.run_length = { max: 5, min: 3, [key]: raw };
+      A.state.month.targets[A.names()[0]] = 14.5; A.save(); A.renderAll();
+    }, { key, raw });
+    await waitSaved(page); await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]');
+  };
+  const countRunLimitSaves = page => page.evaluate(() => { const A = T.app, save = A.save; A.clearUndo(); window.__runSaves = 0; A.save = (...args) => { window.__runSaves++; return save(...args); }; });
+  for (const key of ["max", "min"]) for (const raw of ["\n", []]) await test(`連勤${key}: ${Array.isArray(raw) ? "空配列" : "改行だけ"}の保存値は未編集なら保持し、空欄への明示編集は1回で確定・保存・取り消しできる`, async () => {
+    let { ctx, fs } = await newCtx(); let page = await newPage(ctx);
+    try {
+      await start(page); await waitSaved(page); await runLimitFixture(page, key, raw);
+      const selector = key === "max" ? "#setRunMax" : "#setRunMin", fallback = key === "max" ? "5" : "3";
+      const current = () => page.evaluate(k => T.app.state.rules.run_length[k], key);
+      assert.strictEqual(await page.locator(selector).inputValue(), "");
+      await page.locator(selector).focus(); await page.click("#setRunExempt"); assert.deepStrictEqual(await current(), raw, "触れずに離れた値と型は保持する");
+      const years = page.locator('#doctorTable tr[data-i="0"] [data-f="years"]'); await years.fill(String(Number(await years.inputValue()) + 1)); await years.press("Tab");
+      assert.deepStrictEqual(await current(), raw, "無関係の欄の読み戻しでも元値と型を保持する"); await waitSaved(page); await countRunLimitSaves(page);
+      await page.locator(selector).fill(" "); await page.locator(selector).press("Backspace");
+      assert.deepStrictEqual(await current(), raw, "inputだけでは確定しない"); assert.strictEqual(await page.evaluate(() => window.__runSaves), 0); assert.ok(await page.locator("#btnUndo").isDisabled());
+      if (key === "max") await page.locator(selector).press("Tab"); else await page.click("#setRunExempt");
+      assert.strictEqual(await page.evaluate(k => Object.hasOwn(T.app.state.rules.run_length, k), key), false, "空欄へ戻す明示編集で元値を消し既定に戻す");
+      assert.strictEqual(await page.locator(selector).inputValue(), fallback); assert.strictEqual(await page.evaluate(() => document.activeElement.id), "setRunExempt", "Tab/クリックで移った入力欄のフォーカスを保持する");
+      assert.strictEqual(await page.evaluate(() => window.__runSaves), 1, "確定時の保存は1回"); assert.ok(/あと 1 回/.test(await page.locator("#undoNote").textContent()));
+      await waitSaved(page); assert.strictEqual(Object.hasOwn(JSON.parse(fs.text("A/202611/202611_data.json")).rules.run_length, key), false);
+      await page.click("#btnUndo"); assert.deepStrictEqual(await current(), raw, "Undo1回で保存値の型まで戻る"); assert.ok(await page.locator("#btnUndo").isDisabled(), "重複したUndoを積まない"); await waitSaved(page);
+      const saved = JSON.parse(fs.text("A/202611/202611_data.json")); assert.deepStrictEqual(saved.rules.run_length[key], raw); assert.strictEqual(saved.month.targets[await page.evaluate(() => T.app.names()[0])], 14.5);
+      ({ ctx, page } = await reopen(ctx, fs)); await start(page); await page.click('.tab[data-tab="settings"]'); assert.deepStrictEqual(await current(), raw, "フォルダから開き直しても元値の型を保持する");
+      await page.locator(selector).fill(" "); await page.locator(selector).press("Backspace"); await page.click("#setRunExempt"); await waitSaved(page);
+      ({ ctx, page } = await reopen(ctx, fs)); await start(page); await page.click('.tab[data-tab="settings"]');
+      assert.strictEqual(await page.evaluate(k => Object.hasOwn(T.app.state.rules.run_length, k), key), false, "空欄へ明示修正した結果も保存・再読込できる"); assert.strictEqual(await page.locator(selector).inputValue(), fallback);
+      assert.strictEqual(await page.evaluate(() => T.app.state.month.targets[T.app.names()[0]]), 14.5, "小数の月勤務目標は変えない");
+    } finally { await ctx.close(); }
+  });
+  await test("連勤の通常入力: changeとfocusoutは1回だけ保存し、次の欄の入力・Undo・規則off・月目標の小数・保存再読込を保つ", async () => {
+    for (const key of ["max", "min"]) {
+      let { ctx, fs } = await newCtx(); let page = await newPage(ctx);
+      try {
+        await start(page); await waitSaved(page); await runLimitFixture(page, key, "Infinity"); await countRunLimitSaves(page);
+        const selector = key === "max" ? "#setRunMax" : "#setRunMin", value = key === "max" ? 7 : 4;
+        await page.locator(selector).fill(String(value)); assert.strictEqual(await page.evaluate(() => window.__runSaves), 0, "inputだけでは保存しない");
+        if (key === "max") await page.locator(selector).press("Tab"); else await page.click("#setRunExempt");
+        assert.strictEqual(await page.evaluate(k => T.app.state.rules.run_length[k], key), value); assert.strictEqual(await page.evaluate(() => window.__runSaves), 1, "native changeとfocusoutの保存をまとめる");
+        assert.strictEqual(await page.evaluate(() => document.activeElement.id), "setRunExempt"); await page.keyboard.type("test"); assert.strictEqual(await page.locator("#setRunExempt").inputValue(), "test", "移動先へそのまま入力できる"); await page.locator("#setRunExempt").fill("");
+        await page.click("#btnUndo"); assert.strictEqual(await page.evaluate(k => T.app.state.rules.run_length[k], key), "Infinity"); assert.ok(await page.locator("#btnUndo").isDisabled(), "1回のUndoで元に戻る");
+        await page.click('[data-setmode="build"]'); await page.locator(`[data-ron="run_length_${key}"]`).uncheck(); await page.click('.tab[data-tab="input"]'); await page.click('[data-sub="monthSettings"]');
+        const target = page.locator("[data-target]").first(); await target.fill("14.5"); await target.press("Tab"); await waitSaved(page);
+        const saved = JSON.parse(fs.text("A/202611/202611_data.json")); assert.strictEqual(saved.rules.run_length[key], "Infinity", "offにしても元値を保持する"); assert.strictEqual(saved.rules.rule_states[`run_length_${key}`], "off"); assert.strictEqual(saved.month.targets[await page.evaluate(() => T.app.names()[0])], 14.5);
+        ({ ctx, page } = await reopen(ctx, fs)); await start(page);
+        const reloaded = await page.evaluate(k => ({ value: T.app.state.rules.run_length[k], state: T.app.state.rules.rule_states[`run_length_${k}`], target: T.app.state.month.targets[T.app.names()[0]] }), key);
+        assert.deepStrictEqual(reloaded, { value: "Infinity", state: "off", target: 14.5 });
+      } finally { await ctx.close(); }
+    }
+  });
   closing = true; await browser.close(); srv.close();
   if (fails) { console.log(`実ブラウザの通し試験: ${fails} 件失敗`); process.exit(1); } console.log(`実ブラウザの通し試験 ${passed} 本 OK`);
 })().catch(e => { console.log("FAIL", e && e.stack || e); process.exit(1); });

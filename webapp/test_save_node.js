@@ -69,6 +69,30 @@ const RealProblem = T.Problem; A.dirHandle = dir; T.Problem = function (r, m) { 
     for (const v of [null, [], {}]) { A.state.month.local_extension = v; assert.strictEqual(A.isDirty(), true, `独自項目を ${JSON.stringify(v)} にすると未保存`); assert.notStrictEqual(A.inputSig(), isig); delete A.state.month.local_extension; assert.strictEqual(A.isDirty(), false); }
     A.state.rules.local_x = []; assert.notStrictEqual(A.rulesSig(A.state.rules), rsig, "設定の独自項目でも同じ"); delete A.state.rules.local_x;
     A.state.month.notes = ""; A.state.month.holidays = []; A.state.month.exceptions = {}; assert.strictEqual(A.isDirty(), false, "既知の欄の空欄整形は未保存にならない"); }
+  // 連勤日数の不正な配列・オブジェクトを空欄へ直す操作は、保存・設定の統合・Undoが使う署名でも区別する。
+  { const sigs = () => [A.inputSig(), A.rulesSig(A.state.rules), A.versionSig("確認版"), A.snapshot().sig];
+    for (const key of ["max", "min"]) {
+      const other = key === "max" ? "min" : "max", base = { [other]: other === "max" ? 5 : 3 };
+      for (const raw of [[], {}, { nested: null }, { nested: [] }, { nested: {} }, { nested: "" }, [{ nested: null }]]) {
+        A.state.rules.run_length = { ...base, [key]: raw }; A.markSaved(); const saved = sigs();
+        assert.deepStrictEqual(A.canon(A.state.rules).run_length[key], raw, "不正な値も型と内側の空値を保持して比べる");
+        delete A.state.rules.run_length[key]; assert.strictEqual(A.isDirty(), true, "不正な空配列・オブジェクトの削除は未保存");
+        sigs().forEach((value, i) => assert.notStrictEqual(value, saved[i], "入力・設定・版・保存の署名に明示修正が反映される"));
+        A.state.rules.run_length[key] = raw; assert.strictEqual(A.isDirty(), false, "元値へ戻せば保存済みと同じ");
+      }
+      A.state.rules.run_length = base; const absent = sigs();
+      for (const raw of [null, "", undefined]) { A.state.rules.run_length[key] = raw; assert.deepStrictEqual(sigs(), absent, "有効な既定値のnull・空文字・未指定は従来どおり同じ"); }
+    }
+    assert.deepStrictEqual(A.canon({ run_length: { exempt_qual: [] }, other: { max: [] }, nested: { run_length: { min: {} } } }), { run_length: {}, other: {}, nested: { run_length: {} } }, "連勤max/min以外の空値の扱いは変えない");
+    // 自動保存はdirty判定を通る。明示修正後の月JSONが実際に更新され、保存済みに戻ることも確かめる。
+    for (const key of ["max", "min"]) for (const raw of [[], {}]) {
+      for (const k of Object.keys(files)) delete files[k];
+      Object.assign(A.state, { rules: { profile: { id: "test" }, doctors: [{ name: "Dr A", team: "I" }], run_length: { max: 5, min: 3, [key]: raw } }, month: { year: 2026, month: 11 }, result: null, meta: null, base: null, baseRules: null, renames: [] });
+      assert.strictEqual(await A.saveToFolder(), "saved"); assert.deepStrictEqual(JSON.parse(files["202611_data.json"]).rules.run_length[key], raw);
+      delete A.state.rules.run_length[key]; assert.strictEqual(await A.autosaveJson(), "saved", "空値修正を未変更として保存スキップしない");
+      assert.strictEqual(Object.hasOwn(JSON.parse(files["202611_data.json"]).rules.run_length, key), false); assert.strictEqual(A.isDirty(), false);
+    }
+  }
   // 保存中に月を切り替えない: 進行中の保存は awaitSaves / saveBeforeSwitch で待つ。写しの年月でフォルダ・ファイルを決め、写しと現在の月が違えば保存基準に触れない
   { for (const k of Object.keys(files)) delete files[k];
     Object.assign(A.state, { rules: { profile: { id: "test", label: "test" }, doctors: [{ name: "Dr A", team: "I" }], name_order: ["Dr A"] }, month: { year: 2026, month: 11, notes: "before" }, result: null, meta: null }); A.markSaved();
