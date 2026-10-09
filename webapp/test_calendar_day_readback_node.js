@@ -7,7 +7,7 @@ globalThis.document = { querySelector: s => elements.get(s) || null, querySelect
 globalThis.location = { pathname: "/synthetic/calendar-day-readback.html" };
 globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.T = {};
-for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "check.js", "app-core.js", "app-input.js"])
+for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "check.js", "app-core.js", "app-input.js", "app-month.js"])
   vm.runInThisContext(fs.readFileSync(f === "app-input.js" && process.env.TOBAN_UI_INPUT_SOURCE || path.join(__dirname, "src", f), "utf8"), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, "src/rules")).filter(f => f.endsWith(".js")).sort())
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src/rules", f), "utf8"), { filename: "rules/" + f });
@@ -122,5 +122,56 @@ test("saved and reloaded calendar inputs retain the model's wish penalties", () 
   const before = T.penalty(P, asg).total; assert.ok(before > 0, "fixture includes unsatisfied wishes");
   A.readAll(); const saved = JSON.parse(JSON.stringify(M)), after = new T.Problem(R, T.normalizeMonth(saved, R));
   assert.strictEqual(T.penalty(after, asg).total, before); assert.deepStrictEqual(after.wishNight[names[0]], [5, 12]); assert.deepStrictEqual(after.wishDay[names[0]], [7, 14]);
+});
+// Pattern expansion uses a month-wide option, so read it before every save/navigation.
+const patternControls = root => {
+  const original = root.querySelectorAll.bind(root);
+  root.querySelectorAll = sel => sel === "#patTbl tr[data-i]" ? [{ querySelector(s) {
+    const key = s.match(/data-f="([^"]+)"/)[1];
+    return root.controls.find(c => c.dataset.f === key);
+  } }] : original(sel);
+};
+const clickExpand = root => root.handlers.click({ target: { closest: () => ({ dataset: { act: "patExpand" } }) } });
+test("pattern holiday setting persists across unrelated edits, navigation and JSON save", () => {
+  const { M, root, change } = setup(); const cb = elements.get("#patHol"), undo = [];
+  M.duty_days[names[1]] = { 4: { am: "external" } }; const fixed = clone(M.fixed), duties = clone(M.duty_days);
+  A.pushUndo = () => undo.push(M.duties_on_holidays);
+  cb.checked = true; root.handlers.change({ target: cb });
+  assert.strictEqual(M.duties_on_holidays, true); assert.strictEqual(undo[0], undefined);
+  change("wish", 6, true); root.handlers.change({ target: { id: "docSel", value: "1" } });
+  assert.strictEqual(elements.get("#patHol").checked, true);
+  root.handlers.change({ target: { id: "docSel", value: "0" } });
+  assert.strictEqual(JSON.parse(A.payloadJson()).month.duties_on_holidays, true);
+  const off = elements.get("#patHol"); off.checked = false; root.handlers.change({ target: off }); A.renderDoctor();
+  assert.strictEqual(M.duties_on_holidays, false); assert.strictEqual(elements.get("#patHol").checked, false);
+  assert.strictEqual(JSON.parse(A.payloadJson()).month.duties_on_holidays, false);
+  assert.deepStrictEqual(M.fixed, fixed); assert.deepStrictEqual(M.duty_days, duties); delete A.pushUndo;
+});
+test("repeated expansion retains weekend duties and carries the setting into next month", () => {
+  const { R, M, root } = setup(); R.profile.calendar = { holidays: "none", closure: [] };
+  M.regular_duties[names[0]] = [{ kind: "ward", dow: "Sat", part: "full", carry: true }];
+  A.renderDoctor(); patternControls(root);
+  const cb = elements.get("#patHol"); cb.checked = true; root.handlers.change({ target: cb });
+  clickExpand(root); assert.deepStrictEqual(M.duty_days[names[0]][7], { am: "ward", pm: "ward" });
+  assert.strictEqual(elements.get("#patHol").checked, true);
+  clickExpand(root); assert.deepStrictEqual(M.duty_days[names[0]][7], { am: "ward", pm: "ward" });
+  const next = A.fromPrevious({ rules: R, month: JSON.parse(JSON.stringify(M)), result: null });
+  assert.strictEqual(next.duties_on_holidays, true); assert.deepStrictEqual(next.duty_days[names[0]][5], { am: "ward", pm: "ward" });
+  const off = elements.get("#patHol"); off.checked = false; root.handlers.change({ target: off }); clickExpand(root);
+  assert.strictEqual(M.duty_days[names[0]][7], undefined);
+});
+test("holiday option preserves weekday holiday patterns until explicitly disabled", () => {
+  const { M, root } = setup(); M.holidays = [2];
+  M.regular_duties[names[0]] = [{ kind: "ward", dow: "Mon", part: "am", carry: true }];
+  A.renderDoctor(); patternControls(root);
+  const cb = elements.get("#patHol"); cb.checked = true; root.handlers.change({ target: cb });
+  clickExpand(root); clickExpand(root);
+  assert.deepStrictEqual(M.duty_days[names[0]][2], { am: "ward" });
+  const off = elements.get("#patHol"); off.checked = false; root.handlers.change({ target: off }); clickExpand(root);
+  assert.strictEqual(M.duty_days[names[0]][2], undefined); assert.deepStrictEqual(M.duty_days[names[0]][9], { am: "ward" });
+});
+test("missing pattern holiday control preserves the stored option", () => {
+  const { M } = setup(); M.duties_on_holidays = true; elements.delete("#patHol"); A.readAll();
+  assert.strictEqual(M.duties_on_holidays, true);
 });
 console.log(`calendar day readback: ${passed} passed, ${failed} failed`); if (failed) process.exitCode = 1;

@@ -261,6 +261,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     const m = state.month, R = state.rules, root = $("#doctorPane"); if (!root.children.length) return;
     const n = root.dataset.doctor; // 描画したときの医師（名簿の並べ替え・改名の後に別人へ書き戻さないため）
     if (!n || !A.names().includes(n)) { renderDoctor(); return; }
+    const patHol = $("#patHol"); if (patHol) m.duties_on_holidays = patHol.checked; // 曜日パターンの土日祝への展開も月の入力として保存・翌月へ引き継ぐ。
     const dd = Object.assign({}, m.duty_days[n] || {}), seen = new Set(); // 出している日だけ作り直す（業務欄を隠す施設では当月の分を残し、翌月 1 日の欄だけ読む）
     root.querySelectorAll('[data-cal="duty"]').forEach(el => { const d = +el.dataset.d; if (!seen.has(d)) { seen.add(d); delete dd[d]; } if (el.value) (dd[d] ||= {})[el.dataset.part] = el.value; });
     m.duty_days[n] = dd;
