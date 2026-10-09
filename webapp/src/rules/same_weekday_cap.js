@@ -13,7 +13,8 @@ T.rules.register({
     if (!prm.max) return;
     for (const n of ctx.names) for (let w = 0; w < 7; w++) {
       const cnt = ctx.LP.sum(ctx.slots.filter(s => ctx.P.dow(s[0]) === w).map(s => ctx.work(s, n)));
-      ctx.limit("same_weekday_cap", cnt, "<=", prm.max, { aux: "dowex", ub: 10 });
+      const fixedExcess = Math.max(0, ctx.slots.filter(s => ctx.P.dow(s[0]) === w && ctx.fixedWorkAt(s, n)).length - prm.max);
+      ctx.limit("same_weekday_cap", cnt, "<=", prm.max, { aux: "dowex", ub: 10, fixed: fixedExcess > 0, fixedExcess });
     }
   },
   // 検算: 曜日ごとに勤務した枠を数え、上限を超えた分を違反にする
@@ -21,14 +22,22 @@ T.rules.register({
     if (!prm.max) return;
     for (const n of ctx.names) {
       const cnt = {}; for (const s of ctx.P.slots) if (ctx.worked(n, s)) cnt[ctx.P.dow(s[0])] = (cnt[ctx.P.dow(s[0])] || 0) + 1;
-      for (const [w, c] of Object.entries(cnt)) ctx.limit("same_weekday_cap", c, "<=", prm.max, { code: "SAME_WEEKDAY_OVER", args: { who: n, dow: T.dowLabel(+w), count: c, max: prm.max }, names: [n] });
+      for (const [w, c] of Object.entries(cnt)) {
+        const fixedCount = ctx.P.slots.filter(s => ctx.P.dow(s[0]) === +w && ctx.fixedWorkAt(s, n)).length;
+        const fixedExcess = Math.max(0, fixedCount - prm.max);
+        ctx.limit("same_weekday_cap", c, "<=", prm.max, { code: "SAME_WEEKDAY_OVER", args: { who: n, dow: T.dowLabel(+w), count: c, max: prm.max }, names: [n], fixed: fixedExcess > 0, fixedExcess });
+      }
     }
   },
   // 減点: 曜日ごとの超過分 × 重み（7 曜日すべてを見る。勤務が無い曜日は 0）
   penalty(ctx, prm) {
     if (!prm.max) return;
-    for (const n of ctx.names) for (let w = 0; w < 7; w++)
-      ctx.limit("same_weekday_cap", ctx.P.slots.filter(s => ctx.P.dow(s[0]) === w && ctx.worked(n, s)).length, "<=", prm.max);
+    for (const n of ctx.names) for (let w = 0; w < 7; w++) {
+      let fixedCount = 0;
+      for (const s of ctx.P.slots) if (ctx.P.dow(s[0]) === w && ctx.fixedWorkAt(s, n)) fixedCount++;
+      const fixedExcess = Math.max(0, fixedCount - prm.max);
+      ctx.limit("same_weekday_cap", ctx.P.slots.filter(s => ctx.P.dow(s[0]) === w && ctx.worked(n, s)).length, "<=", prm.max, { fixed: fixedExcess > 0, fixedExcess });
+    }
   },
 
   summary(P, prm, tv) { return prm.max ? tv("月 {n} 回まで", { n: prm.max }) : tv("上限なし"); },

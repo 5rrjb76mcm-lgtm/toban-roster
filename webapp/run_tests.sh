@@ -80,6 +80,9 @@ run test_fixed_only_caps_node.js "$HP"
 run test_fixed_only_engagement_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_fixed_only_contract_node.js "$HP" "$PY"
+  run test_python_same_weekday_cap_node.js "$HP" "$PY"
+  echo "== Python same-weekday cap contract"
+  "$PY" ../tools/test_same_weekday_cap.py || fail=1
   echo "== Python supported fixed-only contract"
   "$PY" ../tools/test_fixed_only_contract.py || fail=1
 else echo "--  Python fixed-only contract checks skipped (../tools/.venv is unavailable)"; fi
