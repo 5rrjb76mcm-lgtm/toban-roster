@@ -855,9 +855,21 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
     if mx_dow:
         for n in names:
             for w in range(7):
-                ex = M.NewIntVar(0, 10, f"dowex_{n}_{w}")
-                M.Add(ex >= sum(work[s, n] for s in slots if P.dow(s[0]) == w) - int(mx_dow))
-                obj.append(W.get("same_weekday_excess", 0) * ex)
+                weekday_slots = [s for s in slots if P.dow(s[0]) == w]
+                count = sum(work[s, n] for s in weekday_slots)
+                if P.same_weekday_state == "hard":
+                    # 固定された当月の実在勤務枠だけが、不可避な超過の上限を証明する。
+                    allowance = max(0, sum(fixed_work(s, n) for s in weekday_slots) - int(mx_dow))
+                    if not allowance:
+                        M.Add(count <= int(mx_dow))
+                        continue
+                    ex = M.NewIntVar(0, allowance, f"dowex_{n}_{w}")
+                    weight = W.get("fixed_conflict", 50)
+                else:
+                    ex = M.NewIntVar(0, 10, f"dowex_{n}_{w}")
+                    weight = W.get("same_weekday_excess", 0)
+                M.Add(ex >= count - int(mx_dow))
+                obj.append(weight * ex)
 
     # 金曜夜勤 月1回以上 等（friday_night_min: 最低回数。上限は付けない）
     for n, k in (P.rules.get("friday_night_min") or {}).items():
@@ -1248,6 +1260,15 @@ def check(P: Problem, asg: dict):
             V.append(f"{n}: 勤務{tot}回が当月の範囲 {max(0, lo)}〜{hi} 回の外" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}の範囲外")
         elif tot > hi:
             viol(f"{n}: 勤務{tot}回が当月の上限 {hi} 回を超える（固定指定 {fc} 件のため）" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}を超える（固定指定 {fc} 件のため）", fixed=True)
+    # 同じ曜日の上限: 回数の単位ではなく当月の実勤務枠を数える（OC・前後月は除く）。
+    mx_dow = P.rules.get("max_same_weekday_shifts")
+    if P.same_weekday_state == "hard" and mx_dow:
+        for n in names:
+            for w in range(7):
+                count = sum(1 for s in P.slots if P.dow(s[0]) == w and A.worked(n, s))
+                if count > int(mx_dow):
+                    fixed_count = sum(1 for s in P.slots if P.dow(s[0]) == w and P.is_fixed_work(s, n))
+                    viol(f"{n}: {DOW_JA[w]}曜の勤務{count}回が上限{int(mx_dow)}回を超える", count <= fixed_count)
     # 4 実勤務の連続
     first_prev = min([s[0] for s in P.prev_slots], default=1)
     for n in names:
