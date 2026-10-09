@@ -11,7 +11,7 @@
     target_deviation: "当月目標からの乖離（1回あたり）",
     wish_night: "当直希望の未反映",
     chief_duty: "{reserve}を勤務に登用する（1回あたり。月1回まで。例外的な登用のときだけ）",
-    fixed_conflict: "固定指定が連続禁止などと競合したまま配置（1件あたり）",
+    fixed_conflict: "固定入力だけで避けられない連続禁止などの違反（1件あたり）",
     missing_young_oc: "{other}の勤務で{junior}OCを置けない（不足 1 名あたり）",
     avoid_day: "できれば避けたい日への配置（1枠あたり）",
     avoid_no_reduction: "避けたい日を申告した人の勤務回数が参照解（避けたい日を無視した計算）を下回る分（1回あたり。実質禁止）",

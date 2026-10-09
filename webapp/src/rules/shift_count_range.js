@@ -26,22 +26,22 @@ T.rules.register({
   solve(ctx, prm) {
     const { P, LP } = ctx;
     for (const [k, r] of Object.entries(prm.range)) for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue;
-      const tot = LP.sum(ctx.slots.filter(s => s[1] === k).map(s => ctx.work(s, n))), mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && P.isFixedWork(s, n)).length;
+      const tot = LP.sum(ctx.slots.filter(s => s[1] === k).map(s => ctx.work(s, n))), mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && ctx.fixedWorkAt(s, n)).length;
       if (r.min != null) ctx.limit("shift_count_range", tot, ">=", r.min, { aux: "scrl", ub: 31 });
-      if (mx != null) ctx.limit("shift_count_range", tot, "<=", mx, { aux: "scru", ub: 31, fixed: fx > mx }); } // 固定だけで上限を超えるなら、検算と同じく「固定指定により許容」（減点 fixed_conflict）
+      if (mx != null) ctx.limit("shift_count_range", tot, "<=", mx, { aux: "scru", ub: 31, fixed: fx > mx, fixedExcess: Math.max(0, fx - mx) }); } // 固定だけで上限を超えるなら、検算と同じく「固定指定により許容」（減点 fixed_conflict）
   },
   check(ctx, prm) {
     const { P } = ctx;
     for (const [k, r] of Object.entries(prm.range)) for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue;
-      const tot = P.slots.filter(s => s[1] === k && ctx.worked(n, s)).length, mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && P.isFixedWork(s, n)).length;
+      const tot = P.slots.filter(s => s[1] === k && ctx.worked(n, s)).length, mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && ctx.fixedWorkAt(s, n)).length;
       if (r.min != null && tot < r.min) ctx.viol("SHIFT_COUNT_SHORT", { who: n, shift: P.shiftLabel(k), got: tot, min: r.min }, null, n);
-      if (mx != null && tot > mx) ctx.viol("SHIFT_COUNT_OVER", { who: n, shift: P.shiftLabel(k), got: tot, max: mx }, null, n, fx > mx); } // 固定だけで上限を超えるなら「固定指定により許容」
+      if (mx != null && tot > mx) ctx.viol("SHIFT_COUNT_OVER", { who: n, shift: P.shiftLabel(k), got: tot, max: mx }, null, n, fx > mx && tot <= fx); } // 固定だけで上限を超えるなら「固定指定により許容」
   },
   penalty(ctx, prm) {
     const { P } = ctx;
     for (const [k, r] of Object.entries(prm.range)) for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue;
-      const tot = P.slots.filter(s => s[1] === k && ctx.worked(n, s)).length, mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && P.isFixedWork(s, n)).length;
-      if (r.min != null) ctx.limit("shift_count_range", tot, ">=", r.min); if (mx != null) ctx.limit("shift_count_range", tot, "<=", mx, { fixed: fx > mx }); }
+      const tot = P.slots.filter(s => s[1] === k && ctx.worked(n, s)).length, mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && ctx.fixedWorkAt(s, n)).length;
+      if (r.min != null) ctx.limit("shift_count_range", tot, ">=", r.min); if (mx != null) ctx.limit("shift_count_range", tot, "<=", mx, { fixed: fx > mx, fixedExcess: Math.max(0, fx - mx) }); }
   },
   ui: {
     render(R, h) { const c = R.shift_counts || { night: { min: 3, max: 5 } };

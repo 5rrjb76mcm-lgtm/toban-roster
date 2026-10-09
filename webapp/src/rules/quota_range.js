@@ -12,7 +12,7 @@ T.rules.register({
     const { lp, P } = ctx;
     for (const n of ctx.names) { if (P.isExempt(n)) continue;
       // 回数は整数なので同値の整数境界を使う。小数境界が整数に近いときも、ソルバーの許容誤差で範囲外の回数を通さない。
-      lp.add(ctx.total(n), ">=", Math.ceil(P.countLo(n))); lp.add(ctx.total(n), "<=", Math.floor(Math.max(P.countHi(n), P.fixedWorkCount(n)))); } // 固定指定で上限を超える場合はその数まで許す
+      lp.add(ctx.total(n), ">=", Math.ceil(P.countLo(n))); lp.add(ctx.total(n), "<=", Math.floor(Math.max(P.countHi(n), ctx.slots.filter(s => ctx.fixedWorkAt(s, n)).length))); } // 固定指定で上限を超える場合はその数まで許す
   },
   check(ctx, prm) {
     const { P } = ctx;
@@ -21,7 +21,7 @@ T.rules.register({
       const fc = P.fixedWorkCount(n), lo = P.countLo(n), hi = P.countHi(n), ub = Math.max(hi, fc), lim = P.hasCountLimit(n); // 固定指定で上限を超える分は許容（固定指定により許容として表示）
       const fixedDays = () => [...P.fixedWorkKeys].filter(k => k.slice(k.indexOf("|") + 1) === n).map(k => +k.split(":")[0]);
       if (tot < lo || tot > ub) { if (lim) ctx.viol("COUNT_OUT_OF_LIMIT", { who: n, total: tot, lo: Math.max(0, lo), hi }, null, n); else ctx.viol("QUOTA_OUT_OF_RANGE", { who: n, total: tot, quota: q, tol: prm.tol }, null, n); }
-      else if (tot > hi) { if (lim) ctx.viol("COUNT_LIMIT_OVER_BY_FIXED", { who: n, total: tot, hi, fixed: fc }, fixedDays(), n); else ctx.viol("QUOTA_OVER_BY_FIXED", { who: n, total: tot, quota: q, tol: prm.tol, fixed: fc }, fixedDays(), n); } }
+      else if (tot > hi) { if (lim) ctx.viol("COUNT_LIMIT_OVER_BY_FIXED", { who: n, total: tot, hi, fixed: fc }, fixedDays(), n, true); else ctx.viol("QUOTA_OVER_BY_FIXED", { who: n, total: tot, quota: q, tol: prm.tol, fixed: fc }, fixedDays(), n, true); } }
   },
   summary(P, prm, tv) { const lim = P.names.filter(n => !P.isExempt(n) && P.hasCountLimit(n)).map(n => `${n} ${P.countMin[n] ?? ""}〜${P.countMax[n] ?? ""}`);
     return tv("目安 ±{n} 回", { n: prm.tol }) + (lim.length ? tv("（当月の下限・上限を入れた人: {list}）", { list: lim.join(T.listSep()) }) : ""); },

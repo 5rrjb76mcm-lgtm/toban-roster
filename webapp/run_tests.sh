@@ -28,6 +28,7 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+run test_merge_scalar_clear_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_settings_import_node.js
@@ -51,6 +52,8 @@ run test_import_previous_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
 run test_absent_assignment_node.js
+run test_diagnose_node.js "$HP"
+run test_diagnose_ui_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_docx_node.js /tmp/toban_test.docx
@@ -71,6 +74,15 @@ if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tool
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
+run test_fixed_only_pairs_node.js "$HP"
+run test_fixed_only_windows_node.js "$HP"
+run test_fixed_only_caps_node.js "$HP"
+run test_fixed_only_engagement_node.js "$HP"
+if [ -x "$PY" ]; then
+  run test_python_fixed_only_contract_node.js "$HP" "$PY"
+  echo "== Python supported fixed-only contract"
+  "$PY" ../tools/test_fixed_only_contract.py || fail=1
+else echo "--  Python fixed-only contract checks skipped (../tools/.venv is unavailable)"; fi
 run test_fixed_input_preservation_node.js "$HP"
 run test_avoid_reference_node.js "$HP"
 run test_reserve_permission_node.js "$HP"

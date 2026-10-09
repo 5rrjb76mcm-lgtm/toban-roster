@@ -14,15 +14,17 @@
     const boot = "\nself.onmessage = async (e) => { const m = e.data; try { if (m.type === 'init') { self._h = await Module({ wasmBinary: m.wasm, print: () => {}, printErr: () => {} }); postMessage({ id: m.id, ok: true }); return; } const sol = self._h.solve(m.text, m.opts); postMessage({ id: m.id, sol }); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };";
     const url = URL.createObjectURL(new Blob([src + boot], { type: "text/javascript" }));
     const w = new Worker(url);
-    const pending = new Map(); let seq = 0;
+    const pending = new Map(); let seq = 0, terminated = false, terminalError = null;
     const failAll = msg => { for (const p of pending.values()) p.reject(new Error(msg)); pending.clear(); };
     w.onmessage = ev => { const d = ev.data || {}; const p = pending.get(d.id); if (!p) return; pending.delete(d.id); if (d.err) p.reject(new Error(d.err)); else p.resolve(d.sol ?? d.ok); };
-    w.onerror = ev => failAll((ev && ev.message) || T.t("Worker でエラー"));
-    const call = msg => new Promise((resolve, reject) => { const id = ++seq; pending.set(id, { resolve, reject }); w.postMessage(Object.assign({ id }, msg)); });
-    return { isWorker: true, init: () => call({ type: "init", wasm: T.b64ToBytes(T.WASM_B64) }), solve: (text, opts) => call({ type: "solve", text, opts }), terminate: () => { try { w.terminate(); } catch (e) { } failAll("中止しました"); } };
+    w.onerror = ev => { terminalError = (ev && ev.message) || T.t("Worker でエラー"); failAll(terminalError); };
+    const call = msg => new Promise((resolve, reject) => { if (terminated) { reject(new Error("中止しました")); return; } if (terminalError !== null) { reject(new Error(terminalError)); return; } const id = ++seq; pending.set(id, { resolve, reject }); w.postMessage(Object.assign({ id }, msg)); });
+    return { isWorker: true, get usable() { return !terminated && terminalError === null; }, init: () => call({ type: "init", wasm: T.b64ToBytes(T.WASM_B64) }), solve: (text, opts) => call({ type: "solve", text, opts }), terminate: () => { terminated = true; try { w.terminate(); } catch (e) { } failAll("中止しました"); } };
   }
   async function ensureHighs() {
-    if (A.highs) return A.highs;
+    if (A.highs && A.highs.usable !== false) return A.highs;
+    if (A.highs && A.highs.terminate) A.highs.terminate(); // 失敗した Worker は次のクリックで作り直す
+    A.highs = null;
     $("#calcLog").textContent += T.t("計算エンジンを読み込み中…") + "\n"; await new Promise(r => setTimeout(r, 30));
     try { const hw = makeHighsWorker(); await hw.init(); A.highs = hw; }
     catch (e) {
@@ -83,25 +85,56 @@
     if (!res.asg && res.status !== "Infeasible") { // 時間切れなどで整数解が見つからなかった（解なしと証明されたわけではない）
       log(T.t("時間内に解が見つかりませんでした（{st}）。必須条件が両立しないとは限りません。上限時間を延ばすか、規則を減らして（特に減点の規則を「なし」にして）再計算してください", { st: res.status })); return; }
     if (!res.asg) {
-      log(T.t("解なし。必須条件が両立しません。衝突している条件を診断します（各20秒）…"));
+      const perTrial = 20, totalTimeLimit = 120;
+      log(T.t("解なし。必須条件が両立しません。衝突している条件を診断します（1試行は最大 {trial} 秒、全体の時間予算は {total} 秒）…", { trial: perTrial, total: totalTimeLimit }));
+      log(T.t("時間予算は目安です。モデルの準備や実行中の試行により超過する場合があります。"));
       await new Promise(r => setTimeout(r, 30));
-      // 診断の進み具合（いま試している条件・何件目か・経過時間）を表示する。中止もできる
-      const d0 = Date.now(); let dcur = T.t("準備中"); $("#btnSolve").disabled = true; $("#btnCancel").hidden = !A.highs.isWorker;
-      const dshow = () => { $("#calcStatus").textContent = T.t(A.highs && A.highs.isWorker ? "診断中… {cur}　{s} 秒経過（画面は操作できます）" : "診断中… {cur}　{s} 秒経過", { cur: dcur, s: Math.round((Date.now() - d0) / 1000) }); };
+      // 残りは終了予想ではなく時間予算。試行の間にも経過を更新し、予算を超えたら 0 に留める。
+      const d0 = Date.now(); let dcur = T.t("準備中"), dpr = null, dat = d0; $("#btnSolve").disabled = true; $("#btnCancel").hidden = !A.highs.isWorker;
+      const dshow = () => {
+        const now = Date.now(), since = (now - dat) / 1000;
+        const elapsed = Math.max((now - d0) / 1000, dpr && Number.isFinite(dpr.elapsedSeconds) ? dpr.elapsedSeconds + since : 0);
+        const budget = dpr && Number.isFinite(dpr.totalTimeLimit) ? dpr.totalTimeLimit : totalTimeLimit;
+        const remaining = Math.max(0, Math.min(budget - elapsed, dpr && Number.isFinite(dpr.remainingSeconds) ? dpr.remainingSeconds - since : budget));
+        const trial = dpr && Number.isFinite(dpr.timeLimit) ? dpr.timeLimit : perTrial;
+        $("#calcStatus").textContent = T.t("診断中… {cur}　{s} 秒経過（1試行の上限 {trial} 秒、全体の時間予算は残り {remaining}/{total} 秒）", { cur: dcur, s: Math.floor(elapsed), trial: Math.round(trial * 10) / 10, remaining: Math.ceil(remaining), total: budget });
+      };
       const dprog = setInterval(dshow, 500); dshow();
       const ddone = () => { clearInterval(dprog); $("#calcStatus").textContent = ""; $("#btnSolve").disabled = false; $("#btnCancel").hidden = true; };
-      let diag; try { diag = await T.diagnose(P, A.highs, 20, pr => { dcur = T.t("「{label}」を外して試行中（{step}/{total}）", { label: T.t(pr.label), step: pr.step, total: pr.total }) + (pr.sub ? T.t("　絞り込み {sub}", { sub: pr.sub }) : ""); dshow(); }); } catch (e) { ddone(); log(T.t("診断を中止しました")); A.highs = null; return; }
+      let diag;
+      try { diag = await T.diagnose(P, A.highs, perTrial, pr => { dpr = pr; dat = Date.now(); dcur = T.t("「{label}」を確認中（グループ {step}/{total}）", { label: T.t(pr.label), step: pr.step, total: pr.total }) + (pr.sub ? T.t("　絞り込み {sub}", { sub: pr.sub }) : ""); dshow(); }, { totalTimeLimit }); }
+      catch (e) { ddone(); const err = String(e && e.message || e); log((e && e.cancelled) || /中止/.test(err) ? T.t("診断を中止しました") : T.t("診断を続けられませんでした: {e}。条件を変えずに再計算するか、作成者に知らせてください", { e: err })); A.highs = null; return; }
       ddone();
       if (!inputsStillCurrent()) return;
       log(T.t("診断 {s} 秒", { s: Math.round((Date.now() - d0) / 1000) }));
-      if (!diag.length) log(T.t("- 単一の条件を外しても解なし。複数の条件が同時に衝突しています。上の「入力に矛盾の疑い」から順に直してください。"));
+      if (!diag.length) log(T.t("- 確認した条件グループでは、解除による解を確認できませんでした。上の「入力に矛盾の疑い」も確認してください。"));
+      const reason = r => {
+        let text;
+        if (r.reason === "budget") text = T.t("診断全体の時間予算を使い切りました");
+        else if (r.reason === "error") text = T.t("エラー: {e}", { e: r.error || r.status || T.t("詳細なし") });
+        else if (r.reason === "invalid-witness") text = T.t("解の検証に通らなかったため、解の有無は未確認です");
+        else text = T.t("解が得られず、解の有無は未確認です");
+        return text + (r.status ? T.t("（状態 {st}）", { st: r.status }) : "");
+      };
       for (const d of diag) {
-        if (d.undecided) { log(T.t("- 「{label}」を外しても時間内に判定できず（解なしとも解ありとも言えません）", { label: T.t(d.label) })); continue; }
-        log(T.t("- 「{label}」を外すと解あり", { label: T.t(d.label) }) + d.note);
-        if (d.items && d.items.length) d.items.forEach(it => log(T.t("   ● {label} を外すと解あり", { label: it.label }) + `\n      → ${T.term(it.hint, state.rules)}`));
-        else if ((T.RULE_DEFS.find(r => r.relax === d.key) || {}).diagnoseHint) log("      → " + T.t(T.RULE_DEFS.find(r => r.relax === d.key).diagnoseHint)); // プラグインが持つ直し方
+        if (d.undecided) { log(T.t("- 「{label}」は判定できませんでした: {reason}", { label: T.t(d.label), reason: reason(d) })); continue; }
+        log(T.t("- 「{label}」を外すと解あり", { label: T.t(d.label) }) + (d.note || ""));
+        if (d.combined) {
+          if (d.items && d.items.length) {
+            log(T.t("   以下の {n} 項目をまとめて外した条件で解を確認しました:", { n: d.items.length }));
+            if (d.items.length > 1) log(T.t("   個々の項目を1つだけ外しても解が得られるとは限りません。"));
+            for (const it of d.items) {
+              log("   ● " + it.label + (it.undecided ? T.t("（必要性は未確認: {reason}）", { reason: reason(it) }) : ""));
+              if (it.hint) log("      → " + T.term(it.hint, state.rules));
+            }
+            if (d.incomplete) log(T.t("   絞り込みは未完了です。未判定の項目を含むため、さらに小さい解除の組合せがある可能性があります。"));
+          } else log(T.t("   個別項目を外さない条件でも解を確認しました。元の条件で再計算してください。"));
+        } else if (d.narrowing) {
+          log(d.narrowing.outcome === "infeasible" ? T.t("   個別項目をすべて外しても解なし。グループの一括解除とは条件が異なるため、項目の組合せは示せません。") : T.t("   個別項目への絞り込みは未完了: {reason}", { reason: reason(d.narrowing) }));
+        } else if (d.items && d.items.length) log(T.t("   個別項目の組合せは未確認です。"));
+        if (!d.combined && (T.RULE_DEFS.find(r => r.relax === d.key) || {}).diagnoseHint) log("      → " + T.t(T.RULE_DEFS.find(r => r.relax === d.key).diagnoseHint)); // プラグインが持つ直し方
       }
-      log(T.t("最も上に出た項目から1つずつ直して再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。"));
+      log(T.t("診断で確認できた条件や項目の組合せを参考に入力を見直し、再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。"));
       return;
     }
     state.month.plugins_used = T.plugins.ruleIds().filter(id => T.ruleState(state.rules, id) !== "off"); // プラグインの規則のうち使ったもの（無い環境で開いたときの入力チェック用）

@@ -362,7 +362,7 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const it = T.lint(P).find(x => x.code === "LINT_PLUGIN_MISSING"); assert(it && /local\.absent\.rule/.test(it.args.who), "plugins_used が無くても設定から欠落を知らせる");
     rules.rule_states["local.absent.rule"] = "off"; assert(!T.lint(new T.Problem(rules, T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23] }, rules))).some(x => x.code === "LINT_PLUGIN_MISSING"), "「なし」なら止めない");
   });
-  test("明け休みと連勤の上限は、月内でも固定した枠が絡めば減点付きで許し、検算の許容と全枠固定の可否が一致する", () => {
+  test("明け休みと連勤の上限は、違反を作る両方の勤務が固定されたときだけ許容し、自動追加は違反に残す", () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); rules.rule_states.run_length_min = "off"; T.fillDefaultRules(rules); // 連勤の下限は外す（枠を 1 つ渡した人が 1 日だけの勤務になる）
     const a = rules.doctors[0].name;
     const month = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed: { day: { 6: a } }, unavailable_other: [{ name: a, day: 4, part: "allday" }, { name: a, day: 5, part: "day" }] }, rules); // 6 日の日勤を a で固定。4 日は不可、5 日の日勤帯は不可（夜勤は可）
@@ -371,19 +371,24 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     const breakIt = (P, r) => { const asg = clone(r.asg), w5 = asg["5:night"].work; assert(w5 !== a && !worksOn(asg, a, 5), "a は 5 日に入っていない"); asg["5:night"].work = a;
       if (w5 && w5 !== a) { const k = Object.keys(asg).find(k => { const d = +k.split(":")[0]; return k !== "5:night" && k !== "6:day" && asg[k].work === a && d !== 5 && d !== 6 && !worksOn(asg, w5, d - 1) && !worksOn(asg, w5, d) && !worksOn(asg, w5, d + 1); }); assert(k, "渡せる枠がある"); asg[k].work = w5; }
       return asg; };
-    const verify = (P, asg, what) => {
-      const c = T.check(P, asg); assert.deepStrictEqual(c.V.filter(x => x.includes(a)), [], what + ": a の違反は V に残らない");
+    const verify = (P, asg, what, fullyFixed = false) => {
+      const c = T.check(P, asg);
+      if (!fullyFixed) { assert(c.VC.some(x => x.args.who === a && ["SHIFT_SEQUENCE", "RUN_TOO_LONG"].includes(x.code)), what + ": 自動追加が作る違反は V");
+        assert(!c.WC.some(x => x.args.who === a && ["SHIFT_SEQUENCE", "RUN_TOO_LONG"].includes(x.code)), what + ": 片方だけの固定では許容しない");
+        assert.strictEqual(T.solve(P, highs, { timeLimit: 60, pin: asg }).status, "Infeasible", what + ": 全枠 pin は解なし"); return; }
+      assert.deepStrictEqual(c.V.filter(x => x.includes(a)), [], what + ": 両方固定なら a の違反は V に残らない");
       assert(c.W.some(x => x.includes(a)), what + ": 固定指定により許容に入る: " + c.W.join(" / "));
       const pin = T.solve(P, highs, { timeLimit: 60, pin: asg }); assert(pin.asg, what + ": 解く側でも全枠固定で解あり（減点付き）: " + pin.status + " / V: " + c.V.join(" / "));
       assert(Math.abs(pin.objective - T.penalty(P, asg).total) < 1e-6, what + ": fixed_conflict の点数も一致: " + pin.objective + " / " + T.penalty(P, asg).total); };
     const P = new T.Problem(rules, month); const r = T.solve(P, highs, { timeLimit: 60 }); assert(r.asg, "解ける: " + r.status);
-    verify(P, breakIt(P, r), "明け休み");
+    const asg = breakIt(P, r); verify(P, asg, "明け休み");
+    const both = clone(month); both.fixed.night[5] = a; verify(new T.Problem(rules, both), asg, "明け休み・両方固定", true);
     const r3 = clone(rules); r3.run_length = { max: 1 }; r3.rule_states.run_length_max = "hard"; T.fillDefaultRules(r3); const P3 = new T.Problem(r3, month); // 連勤上限 1 日（2 連勤を禁止）
     const s3 = T.solve(P3, highs, { timeLimit: 60 }); assert(s3.asg, "連勤上限 1 日でも解ける: " + s3.status);
-    const asg3 = breakIt(P3, s3); assert(T.check(P3, asg3).W.some(x => /連勤|run/.test(x) && x.includes(a)), "連勤上限の違反が許容へ");
-    verify(P3, asg3, "連勤上限");
+    const asg3 = breakIt(P3, s3); verify(P3, asg3, "連勤上限");
+    verify(new T.Problem(r3, both), asg3, "連勤上限・両方固定", true);
   });
-  test("長い連勤の許容は窓ごと: 固定の無い窓は違反に残り、全窓に固定が絡めば許容して全枠固定でも解ける", () => {
+  test("長い連勤の許容は窓ごと: 窓の全勤務が固定された分だけ許容し、固定と自動配置の混在窓は違反に残す", () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, "data/profiles/two-shift.json"), "utf8")); rules.rule_states.run_length_min = "off"; rules.run_length = { max: 1 }; rules.rule_states.run_length_max = "hard"; T.fillDefaultRules(rules);
     const a = rules.doctors[0].name;
     const un = [{ name: a, day: 4, part: "allday" }, { name: a, day: 5, part: "day" }, { name: a, day: 7, part: "day" }, { name: a, day: 8, part: "allday" }]; // a は 5 日夜勤・6 日日勤・7 日夜勤の 3 連勤にする
@@ -394,38 +399,46 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     for (const s of ["5:night", "7:night"]) { const w = asg[s].work; asg[s].work = a; // 元の人には隣接しない a の枠を 1 つ渡して回数を保つ
       const k = Object.keys(asg).find(k => { const d = +k.split(":")[0]; return asg[k].work === a && d < 4 || asg[k].work === a && d > 8 ? !worksOn(asg, w, d - 1) && !worksOn(asg, w, d) && !worksOn(asg, w, d + 1) : false; }); assert(k, "渡せる枠がある"); asg[k].work = w; }
     const runs = c => c.VC.filter(x => x.code === "RUN_TOO_LONG"), runsW = c => c.WC.filter(x => x.code === "RUN_TOO_LONG");
-    const c6 = T.check(P6, asg); assert.deepStrictEqual(runs(c6), [], "両方の窓に固定が絡むので V には残らない"); assert.strictEqual(runsW(c6).length, 1); assert.strictEqual(runsW(c6)[0].args.len, 3, "3 連勤として 1 件");
-    const pin6 = T.solve(P6, highs, { timeLimit: 60, pin: asg }); assert(pin6.asg, "全枠固定で解あり: " + pin6.status);
-    assert(Math.abs(pin6.objective - T.penalty(P6, asg).total) < 1e-6, "点数一致: " + pin6.objective + " / " + T.penalty(P6, asg).total);
-    // 5 日（端）だけ固定: 5〜6 日の窓は許容、6〜7 日の窓は固定が無いので違反。解く側も全枠固定では解なし
+    const c6 = T.check(P6, asg); assert.strictEqual(runs(c6).length, 1, "真ん中だけ固定でも両窓とも自動追加が違反を作る"); assert.strictEqual(runs(c6)[0].args.len, 3); assert.strictEqual(runsW(c6).length, 0);
+    const pin6 = T.solve(P6, highs, { timeLimit: 60, pin: asg }); assert.strictEqual(pin6.status, "Infeasible", "全枠 pin は解なし");
+    // 5 日（端）だけ固定しても、どちらの窓も固定入力だけでは違反にならないので V。
     const month5 = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed: { night: { 5: a } }, unavailable_other: un }, rules); const P5 = new T.Problem(rules, month5);
-    const c5 = T.check(P5, asg); assert.strictEqual(runs(c5).length, 1, "固定の無い窓が V に残る: " + JSON.stringify(runs(c5))); assert.strictEqual(runs(c5)[0].args.len, 2); assert(/11\/6/.test(runs(c5)[0].args.from), "6 日から");
-    assert.strictEqual(runsW(c5).length, 1, "固定の絡む窓は許容"); assert.strictEqual(runsW(c5)[0].args.len, 2);
+    const c5 = T.check(P5, asg); assert.strictEqual(runs(c5).length, 1); assert.strictEqual(runs(c5)[0].args.len, 3, "自動追加が作る両窓をまとめる"); assert(/11\/5/.test(runs(c5)[0].args.from), "5 日から");
+    assert.strictEqual(runsW(c5).length, 0, "片方だけの固定では許容しない");
     const pin5 = T.solve(P5, highs, { timeLimit: 60, pin: asg }); assert(!pin5.asg, "解く側も解なし: " + pin5.status);
-    // 勤務の固定なし・OC だけ固定・勤務を固定 の 3 通りを同じ割当で比べる（2 連勤 5〜6 日、6 日夜勤の OC だけを a に固定しても許容しない）
+    // 5〜6 日を固定すると最初の窓だけ W、6〜7 日は V。3 日とも固定なら両窓が W。
+    const month56 = clone(month6); month56.fixed.night[5] = a; const P56 = new T.Problem(rules, month56), c56 = T.check(P56, asg);
+    assert.strictEqual(runs(c56).length, 1); assert.strictEqual(runs(c56)[0].args.len, 2); assert(/11\/6/.test(runs(c56)[0].args.from));
+    assert.strictEqual(runsW(c56).length, 1); assert.strictEqual(runsW(c56)[0].args.len, 2); assert.strictEqual(T.solve(P56, highs, { timeLimit: 60, pin: asg }).status, "Infeasible");
+    const month567 = clone(month56); month567.fixed.night[7] = a; const P567 = new T.Problem(rules, month567), c567 = T.check(P567, asg);
+    assert.strictEqual(runs(c567).length, 0); assert.strictEqual(runsW(c567).length, 1); assert.strictEqual(runsW(c567)[0].args.len, 3);
+    const pin567 = T.solve(P567, highs, { timeLimit: 60, pin: asg }); assert(pin567.asg); assert(Math.abs(pin567.objective - T.penalty(P567, asg).total) < 1e-6);
+    // 勤務の固定なし・OC だけ固定・片方の勤務を固定・両方固定を同じ割当で比べる（2 連勤 5〜6 日、6 日夜勤の OC だけを a に固定しても許容しない）
     const asg2 = clone(asg); { const w7 = r.asg["7:night"].work; asg2["7:night"].work = w7; // 7 日夜勤を元の人に戻し、渡していた枠も a に戻す（a は 5〜6 日の 2 連勤だけ）
       const gave = Object.keys(asg2).find(k => asg2[k].work === w7 && r.asg[k].work === a); if (gave) asg2[gave].work = a; }
     const un2 = un.filter(u => u.day !== 7 && u.day !== 8);
     const mk = fixed => { const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed, unavailable_other: un2 }, rules); return new T.Problem(rules, m); };
-    const P0 = mk({}), Poc = mk({ night_oc: { 6: [a] } }), Pw = mk({ day: { 6: a } });
+    const P0 = mk({}), Poc = mk({ night_oc: { 6: [a] } }), Pw = mk({ day: { 6: a } }), Pb = mk({ day: { 6: a }, night: { 5: a } });
     assert.strictEqual(runs(T.check(P0, asg2)).length, 1, "固定なし: 違反"); assert.strictEqual(runs(T.check(Poc, asg2)).length, 1, "OC だけ固定: 違反のまま（許容しない）"); assert.strictEqual(runsW(T.check(Poc, asg2)).length, 0);
-    assert.strictEqual(runs(T.check(Pw, asg2)).length, 0, "勤務を固定: 許容"); assert.strictEqual(runsW(T.check(Pw, asg2)).length, 1);
+    assert.strictEqual(runs(T.check(Pw, asg2)).length, 1, "片方の勤務だけ固定: 違反"); assert.strictEqual(runsW(T.check(Pw, asg2)).length, 0);
+    assert.strictEqual(runs(T.check(Pb, asg2)).length, 0, "両方の勤務を固定: 許容"); assert.strictEqual(runsW(T.check(Pb, asg2)).length, 1);
     assert(!T.solve(Poc, highs, { timeLimit: 60, pin: asg2 }).asg, "OC だけ固定: 解く側も解なし");
-    const pw = T.solve(Pw, highs, { timeLimit: 60, pin: asg2 }); assert(pw.asg && Math.abs(pw.objective - T.penalty(Pw, asg2).total) < 1e-6, "勤務を固定: 解あり・点数一致");
+    assert.strictEqual(T.solve(Pw, highs, { timeLimit: 60, pin: asg2 }).status, "Infeasible", "片方の勤務だけ固定: 解なし");
+    const pb = T.solve(Pb, highs, { timeLimit: 60, pin: asg2 }); assert(pb.asg && Math.abs(pb.objective - T.penalty(Pb, asg2).total) < 1e-6, "両方の勤務を固定: 解あり・点数一致");
   });
-  test("連日の実勤務の許容も解く側と同じ判定: OC だけの固定では許容せず、勤務を固定すれば許容して全枠固定でも解ける", () => {
+  test("連日の実勤務は両日の勤務固定だけ許容: OC だけ・片側固定・固定なしは全枠 pin で解なし", () => {
     const rules = clone(real.rules); T.fillDefaultRules(rules);
     for (const k of Object.keys(rules.rule_states)) if ((((T.RULE_BY_ID[k] || {}).states) || []).includes("off")) rules.rule_states[k] = "off"; rules.rule_states.consecutive_days = "hard"; rules.rule_states.oncall = "hard"; // 切り分けのため他の規則は「なし」（OC の枠は要るので待機は残す）
     const a = rules.doctors.find(d => d.team === "I").name; // 2026/11/7（土）・8（日）の日勤に入り、8 日夜勤の OC にもなる
     const un = [{ name: a, day: 6, part: "allday" }, { name: a, day: 9, part: "allday" }];
     const mk = fixed => new T.Problem(rules, T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23], fixed, unavailable_other: un }, rules));
-    const Pw = mk({ day: { 7: a, 8: a }, night_oc: { 8: [a] } }), Poc = mk({ night_oc: { 8: [a] } }), P0 = mk({});
+    const Pw = mk({ day: { 7: a, 8: a }, night_oc: { 8: [a] } }), Poc = mk({ night_oc: { 8: [a] } }), Pone = mk({ day: { 7: a }, night_oc: { 8: [a] } }), P0 = mk({});
     const r = T.solve(Pw, highs, { timeLimit: 60 }); assert(r.asg, "勤務を固定: 解ける（連日は固定なので減点付き）: " + r.status);
     const asg = clone(r.asg); assert(asg["7:day"].work === a && asg["8:day"].work === a && asg["8:night"].oc.includes(a));
     const cons = c => c.VC.filter(x => x.code === "CONSECUTIVE_DAYS"), consW = c => c.WC.filter(x => x.code === "CONSECUTIVE_DAYS");
     assert.strictEqual(cons(T.check(Pw, asg)).length, 0); assert.strictEqual(consW(T.check(Pw, asg)).length, 1, "勤務を固定: 許容");
     assert(Math.abs(r.objective - T.penalty(Pw, asg).total) < 1e-6, "点数一致: " + r.objective + " / " + T.penalty(Pw, asg).total);
-    for (const [P, what] of [[Poc, "OC だけ固定"], [P0, "固定なし"]]) { const c = T.check(P, asg);
+    for (const [P, what] of [[Poc, "OC だけ固定"], [Pone, "片側の勤務だけ固定"], [P0, "固定なし"]]) { const c = T.check(P, asg);
       assert.strictEqual(cons(c).length, 1, what + ": 違反のまま"); assert.strictEqual(consW(c).length, 0, what + ": 許容しない");
       assert(!T.solve(P, highs, { timeLimit: 60, pin: asg }).asg, what + ": 解く側も全枠固定で解なし"); }
   });

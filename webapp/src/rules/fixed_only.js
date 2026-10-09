@@ -19,15 +19,15 @@ T.rules.register({
   lint(ctx) {
     const { P } = ctx, offOn = P.state("days_off_min") !== "off" || P.state("days_off_max") !== "off";
     for (const n of ctx.names) { if (!P.isFixedOnly(n)) continue; let work = 0, ake = 0, afterNight = 0;
-      for (let d = 1; d <= P.N; d++) { const w = P.isFixedWork([d, "day"], n) || P.isFixedWork([d, "night"], n), pn = d > 1 ? P.isFixedWork([d - 1, "night"], n) : P.prevWorked([0, "night"], n);
-        if (w) work++; if (pn && !w && !P.akeIsOff) ake++; if (pn && P.isFixedWork([d, "day"], n)) afterNight++; }
+      for (let d = 1; d <= P.N; d++) { const w = ctx.fixedWorkDay(d, n), pn = ctx.fixedWorkAt([d - 1, "night"], n);
+        if (w) work++; if (pn && !w && !P.akeIsOff) ake++; if (pn && ctx.fixedWorkAt([d, "day"], n)) afterNight++; }
       if (!work) ctx.push("LINT_FIXED_ONLY_EMPTY", { who: n });
       if (offOn && P.N - work - ake < P.offTarget(n)) ctx.push("LINT_FIXED_ONLY_REST", { who: n, off: P.N - work - ake, need: P.offTarget(n) });
       if (afterNight && P.state("shift_sequence") !== "off") ctx.push("LINT_FIXED_ONLY_AKE", { who: n, n: afterNight }); }
   },
   messages: {
     FIXED_ONLY_ASSIGNED: { en: "{who} (fixed shifts only) is placed in {slot} without a fixed assignment", ja: "{who}（固定したときだけ）が固定していない {slot} に入っている" },
-    LINT_FIXED_ONLY_EMPTY: { en: "{who} is set to \"fixed shifts only\" but has no fixed shift this month", ja: "{who} は「固定したときだけ」ですが、この月の固定がありません" },
+    LINT_FIXED_ONLY_EMPTY: { en: "{who} is set to \"fixed shifts only\" but has no fixed work assignment in an active slot this month", ja: "{who} は「固定したときだけ」ですが、この月の実在する勤務枠への実勤務の固定がありません" },
     LINT_FIXED_ONLY_EMPTY_HINT: { en: "Enter the shifts in the fixed assignments (or change the duty column of the roster)", ja: "固定配置に勤務を入れる（または名簿の当番の欄を変える）" },
     LINT_FIXED_ONLY_REST: { en: "{who} (fixed shifts only): the fixed shifts leave {off} days off (needs {need})", ja: "{who}（固定したときだけ）の固定では休みが {off} 日で、決まった日数 {need} 日に足りません" },
     LINT_FIXED_ONLY_REST_HINT: { en: "Remove some fixed shifts", ja: "固定をいくつか外す" },

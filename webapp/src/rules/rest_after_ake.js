@@ -1,5 +1,5 @@
 // 規則のプラグイン: 明けの翌日も休み（rest_after_ake）。夜勤 → 明け → 休み、つまり夜勤の 2 日後に勤務を入れない（2 交代の病棟など）。docs/rule-modules.md
-// 前月末の夜勤（前月末の接続）からも数える。固定した日が絡む組は減点付きで許す（検算では「固定指定により許容」）。「固定したときだけ」の人には当てはめない。
+// 前月末の夜勤（前月末の接続）からも数える。夜勤と 2 日後の実勤務が両方とも固定・前月の定数の組だけ減点付きで許す（検算では「固定指定により許容」）。「固定したときだけ」の人には当てはめない。
 T.rules.register({
   id: "rest_after_ake", api: 1, order: 722, group: "combo",
   label: "夜勤 → 明け → 休み（夜勤の 2 日後にも勤務を入れない）", states: ["hard", "soft", "off"], def: "off",
@@ -9,26 +9,25 @@ T.rules.register({
   solve(ctx) {
     const { P, LP } = ctx;
     for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1) continue;
+      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1 || (e > P.N && (ctx.relaxed("fixed") || ctx.relaxed("fixed:next")))) continue;
         const nite = d >= 1 ? ctx.work([d, "night"], n) : (P.prevWorked([d, "night"], n) ? 1 : 0); if (d < 1 && !nite) continue;
-        const after = e > P.N ? (P.nextFixedWorks(n) ? 1 : 0) : ctx.y(e, n); if (e > P.N && !after) continue;
-        const days = [d, e].filter(x => x >= 1 && x <= P.N), fixed = e > P.N ? P.isFixedWork([d, "night"], n) : ctx.fixedInvolved(days, n); // 翌月へつながる窓は夜勤の枠の固定だけ（shift_sequence と同じ）
+        const after = e > P.N ? (ctx.fixedWorkDay(e, n) ? 1 : 0) : ctx.y(e, n); if (e > P.N && !after) continue;
+        const fixed = ctx.fixedWorkAt([d, "night"], n) && ctx.fixedWorkDay(e, n); // 夜勤そのものと後日の実勤務の両方が固定・定数であること
         ctx.limit("rest_after_ake", LP.sum([nite, after]), "<=", 1, { fixed, aux: "rak", ub: 2 }); } }
   },
   check(ctx) {
     const { P } = ctx;
     for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1) continue; const nite = d >= 1 ? ctx.worked(n, [d, "night"]) : P.prevWorked([d, "night"], n);
-        const after = e > P.N ? P.nextFixedWorks(n) : ctx.anyWork(n, e);
-        if (nite && after) { const days = [d, e].filter(x => x >= 1 && x <= P.N); ctx.viol("REST_AFTER_AKE", { who: n, day: ctx.lab(d), next: ctx.lab(e) }, days, n, e > P.N ? P.isFixedWork([d, "night"], n) : ctx.fixedInvolved(days, n)); } } }
+      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1) continue; const nite = ctx.has([d, "night"]) && (d >= 1 ? ctx.worked(n, [d, "night"]) : P.prevWorked([d, "night"], n));
+        const after = e > P.N ? ctx.fixedWorkDay(e, n) : ctx.y(n, e);
+        if (nite && after) { const days = [d, e].filter(x => x >= 1 && x <= P.N); ctx.viol("REST_AFTER_AKE", { who: n, day: ctx.lab(d), next: ctx.lab(e) }, days, n, ctx.fixedWorkAt([d, "night"], n) && ctx.fixedWorkDay(e, n)); } } }
   },
   penalty(ctx) {
     const { P } = ctx;
     for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1) continue; const nite = d >= 1 ? (ctx.worked(n, [d, "night"]) ? 1 : 0) : (P.prevWorked([d, "night"], n) ? 1 : 0); if (d < 1 && !nite) continue;
-        const after = e > P.N ? (P.nextFixedWorks(n) ? 1 : 0) : (ctx.anyWork(n, e) ? 1 : 0); if (e > P.N && !after) continue;
-        const days = [d, e].filter(x => x >= 1 && x <= P.N);
-        ctx.limit("rest_after_ake", nite + after, "<=", 1, { fixed: e > P.N ? P.isFixedWork([d, "night"], n) : ctx.fixedInvolved(days, n) }); } }
+      for (let d = ctx.firstPrev; d + 2 <= P.N + 1; d++) { const e = d + 2; if (e < 1) continue; const nite = d >= 1 ? (ctx.has([d, "night"]) && ctx.worked(n, [d, "night"]) ? 1 : 0) : (P.prevWorked([d, "night"], n) ? 1 : 0); if (d < 1 && !nite) continue;
+        const after = e > P.N ? (ctx.fixedWorkDay(e, n) ? 1 : 0) : ctx.y(n, e); if (e > P.N && !after) continue;
+        ctx.limit("rest_after_ake", nite + after, "<=", 1, { fixed: ctx.fixedWorkAt([d, "night"], n) && ctx.fixedWorkDay(e, n) }); } }
   },
   messages: { REST_AFTER_AKE: { en: "{who}: works on {next}, two days after the night shift of {day} (the day after the post-night day must be off)", ja: "{who}: {day} の夜勤の 2 日後 {next} に勤務している（明けの翌日は休み）" } },
   fixtures: [{ label: "明けの翌日の休みを減点、重み 1", base: "ward-2shift", states: { rest_after_ake: "soft" }, unitWeights: true }],

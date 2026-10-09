@@ -3,7 +3,7 @@
 // 1 つの規則を 1 つのプラグインにまとめる。プラグインは T.rules.register({...}) で登録し、
 //   solve(ctx, prm)   … 解く側（整数計画の制約と目的関数の項）
 //   check(ctx, prm)   … 検算（必須のときの違反）
-//   penalty(ctx, prm) … 減点の数え直し（減点のときの点。必須でも固定指定が絡む分）
+//   penalty(ctx, prm) … 減点の数え直し（減点のときの点。必須でも固定入力だけで不可避な分）
 // を別々に書く（1 つの式から両方を作らない。式の誤りが両方に同じ形で入ると突き合わせで見つからないため）。
 //
 // 移行中は、まだプラグインにしていない規則が solver.js / check.js の中にそのまま残っている。プラグインにした規則は、
@@ -61,10 +61,36 @@
     }
   }
 
+  // Fixed input facts, not a test for a fixed value merely near a violation.
+  // Previous endpoints are constants; removed next connections are not fixed facts.
+  function fixedFacts(P, relaxed = () => false) {
+    const active = s => P.allSlotSet.has(`${s[0]}:${s[1]}`);
+    const current = (s, kind) => !relaxed("fixed") && !relaxed(`fixed:${kind}:${s[0]}`) && active(s);
+    const fixedWorkAt = (s, n) => s[0] < 1 ? active(s) && P.prevWorked(s, n) : s[0] === P.N + 1 ? !relaxed("fixed") && !relaxed("fixed:next") && P.nextFixedWorked(n, s[1]) :
+      s[0] <= P.N && current(s, s[1]) && P.isFixedWork(s, n);
+    const fixedOcAt = (s, n) => s[0] < 1 ? active(s) && ((P.prevFixed[`${s[0]}:${s[1]}`] || {}).oc || []).includes(n) : s[0] === P.N + 1 ?
+      !relaxed("fixed") && !relaxed("fixed:next") && P.nextSlotExists(s[1]) && P.shiftHasOncall(s[1]) && (P.nextFixed[s[1] + "_oc"] || []).includes(n) :
+      s[0] <= P.N && current(s, s[1] + "oc") && P.shiftHasOncall(s[1]) && ((s[1] === "day" ? P.fixedDayOc : P.fixedNightOc)[s[0]] || []).includes(n);
+    const fixedWorkDay = (d, n) => ["day", "night"].some(k => fixedWorkAt([d, k], n));
+    const fixedEngAt = (s, n) => fixedWorkAt(s, n) || fixedOcAt(s, n) || (s[0] >= 1 && s[0] <= P.N && active(s) &&
+      !relaxed("fixed") && !relaxed(`fixed:charge:${s[0]}`) && !relaxed("charge") && P.on("period_charge") && P.I.includes(n) && P.fixedCharge[s[0]] === n &&
+      P.periods.some(p => { const first = p.slots.filter(x => x[0] === s[0]).sort((a, b) => (a[1] === "day" ? 0 : 1) - (b[1] === "day" ? 0 : 1))[0]; return first && first[1] === s[1]; }));
+    return { fixedWorkAt, fixedOcAt, fixedWorkDay, fixedEngAt };
+  }
+  // Boolean proof is sufficient only for a unit violation. Larger unavoidable
+  // excess needs an explicit bound, never a licence for discretionary excess.
+  function fixedAllowance(opts) {
+    if (!opts.fixed) return 0;
+    const x = opts.fixedExcess ?? 1;
+    if (!Number.isInteger(x) || x < 0) throw new Error("fixedExcess must be a nonnegative integer");
+    return x;
+  }
+
   // ---- 解く側の道具（SolveCtx）。buildLP の局所変数を名前付きで渡す。docs/rule-modules.md §5.1 ----
   function solveCtx(b) {
     const { P, lp, LP, names, slots, key, has, work, oc, Wv, Ov, Ev, total, workday, yOf, busyOf, fxW, firstPrev, relax, ni, opts } = b;
     const ctx = {
+      ...fixedFacts(P, k => relax.has(k)),
       P, lp, LP, E: LP.E, W: P.weights, names, slots, key, has, firstPrev, ni, opts: opts || {},
       work: (s, n) => work[key(s) + "|" + n] ?? 0, oc: (s, n) => oc[key(s) + "|" + n] ?? 0,
       Wv, Ov, Ev, total: n => total[n], workday: (d, n) => workday(d, n), y: (d, n) => yOf(d, n), busy: (d, n) => busyOf(d, n),
@@ -91,16 +117,17 @@
         return LP.E(d, f, times(z, -2 * f));
       },
       // 3 状態の仕掛け: expr sense rhs を規則 id の状態に従って入れる
-      //   必須: 制約。ただし fixed が真（固定指定が絡む）なら、減点付きで許す（重み fixed_conflict）
+      //   必須: fixed は固定入力だけで不可避な違反の証明。許容は fixedExcess（省略時 1）まで（重み fixed_conflict）
       //   減点: 超過分の補助変数 v（aux 名は opts.aux、上限 opts.ub）を作り、P.softW(id) を掛けて目的関数へ
       //   なし: 何もしない（呼ばれない）
       //   減点の式の形は v ≥ expr − rhs（sense "<="）／ v ≥ rhs − expr（sense ">="）
       limit(id, expr, sense, rhs, opts = {}) {
         const st = P.state(id); if (st === "off") return;
         const over = sense === "<=" ? LP.sub(expr, rhs) : LP.sub(rhs, expr);
-        if (st === "hard" && !opts.fixed) { lp.add(expr, sense, rhs); return; }
-        const v = lp.auxInt(opts.aux || (st === "hard" ? "fxc" : "ex"), 0, opts.ub ?? 10);
-        if (st === "hard") { lp.add(over, "<=", v); lp.objAdd(P.weights.fixed_conflict, v); } // 固定指定が絡む必須（le1 と同じ形）
+        const allowance = st === "hard" ? fixedAllowance(opts) : 0;
+        if (st === "hard" && !allowance) { lp.add(expr, sense, rhs); return; }
+        const v = lp.auxInt(opts.aux || (st === "hard" ? "fxc" : "ex"), 0, st === "hard" ? allowance : (opts.ub ?? 10));
+        if (st === "hard") { lp.add(over, "<=", v); lp.objAdd(P.weights.fixed_conflict, v); } // 不可避な固定超過まで。追加の裁量違反は許さない
         else { lp.add(v, ">=", over); lp.objAdd(P.softW(id), v); }
       },
     };
@@ -117,7 +144,7 @@
     const busy = (n, d) => y(n, d) || (!P.akeIsOff && (d - 1 < 1 ? P.prevWorked([d - 1, "night"], n) : worked(n, [d - 1, "night"]))) ? 1 : 0;
     const pos = x => Math.max(0, x);
     const firstPrev = P.prevSlots.length ? Math.min(...P.prevSlots.map(s => s[0])) : 1;
-    const anyWork = (n, d) => ["day", "night"].some(k => worked(n, [d, k]));
+    const anyWork = (n, d) => ["day", "night"].some(k => has([d, k]) && worked(n, [d, k]));
     const runs = n => { // 連続して勤務した日の並び（前月末から翌月 1 日まで）
       const out = []; let cur = null;
       for (let d = firstPrev; d <= N + 1; d++) { const w = d > N ? P.nextFixedWorks(n) : anyWork(n, d); if (w) { if (cur) cur.push(d); else cur = [d]; } else if (cur) { out.push(cur); cur = null; } }
@@ -139,9 +166,9 @@
       return !unO(n, d); };
     let fw = null;
     const fixedWork = () => { if (!fw) { fw = {};
-      for (const [ds, ns] of Object.entries(P.fixedNight)) for (const n of ns) if (names.includes(n)) (fw[n] ||= []).push(+ds);
-      for (const [ds, ns] of Object.entries(P.fixedDay)) for (const n of ns) if (P.slotExists(+ds, "day") && names.includes(n)) (fw[n] ||= []).push(+ds); } return fw; };
+      for (const s of P.slots) for (const n of names) if (P.isFixedWork(s, n)) (fw[n] ||= []).push(s[0]); } return fw; };
     const ctx = {
+      ...fixedFacts(P),
       P, A, mode, opts, names, N, has, lab: d => P.label(d), slab: s => `${P.label(s[0])}${P.shiftLabel(s[1])}`,
       unN, unO, canWork, fixedWork, join: xs => xs.join("・"),
       worked, onCall, engaged: (n, s) => A.eng(n, s), workday, y, busy, pos, anyWork, runs, ake, offDays, pairs,
@@ -152,13 +179,14 @@
       t: (s, v) => T.t(s, v), term: s => T.term(s, P.rules), sep: () => T.listSep(),
       facts: {}, provide(name, v) { ctx.facts[name] = v; }, use(name) { if (!(name in ctx.facts)) throw new Error(`事実 ${name} がまだ用意されていません`); return ctx.facts[name]; },
       // 3 状態の仕掛け（解く側の limit と同じ引数の並び）。value sense rhs が破れている分 over を、
-      //   check: 必須なら違反（opts.code, args, days, names）。固定指定による許容は opts.fixed（解く側と同じ判定）。fixed を渡さない規則は本体が days・names で分類する
-      //   penalty: 減点なら P.softW(id) × over、必須で fixed が絡めば fixed_conflict × over
+      //   check: 必須なら違反（opts.code, args, days, names）。固定入力だけによる許容は opts.fixed と fixedExcess（解く側と同じ判定）。省略時は必須違反
+      //   penalty: 減点なら P.softW(id) × over、必須なら証明された許容量まで fixed_conflict × over
       limit(id, value, sense, rhs, opts = {}) {
         const st = P.state(id); if (st === "off") return 0;
         const over = pos(sense === "<=" ? value - rhs : rhs - value);
-        if (mode === "check") { if (st === "hard" && over > 0) ctx.viol(opts.code, opts.args || {}, opts.days ?? null, opts.names || [], "fixed" in opts ? !!opts.fixed : undefined); } // fixed を渡した規則は、その判定が許容の可否になる
-        else if (mode === "penalty") { if (st === "soft") ctx.add(byId[id].weight, P.softW(id), over); else if (opts.fixed) ctx.add("fixed_conflict", P.weights.fixed_conflict, over); }
+        const allowance = st === "hard" ? fixedAllowance(opts) : 0;
+        if (mode === "check") { if (st === "hard" && over > 0) ctx.viol(opts.code, opts.args || {}, opts.days ?? null, opts.names || [], over <= allowance); }
+        else if (mode === "penalty") { if (st === "soft") ctx.add(byId[id].weight, P.softW(id), over); else if (allowance) ctx.add("fixed_conflict", P.weights.fixed_conflict, Math.min(over, allowance)); }
         return over;
       },
     };

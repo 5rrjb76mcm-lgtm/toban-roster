@@ -9,37 +9,37 @@ T.rules.register({
     const { P, lp, LP, E } = ctx;
     for (const r of prm.rules) for (const n of ctx.names) for (let d = 1; d < P.N; d++) {
       if (!ctx.has([d, r.from])) continue;
-      for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([d + 1, k]))) // 固定した枠が絡む組は減点付きで許す（他の必須条件と同じ。検算では「固定指定により許容」）
-        ctx.limit("shift_sequence", E(ctx.work([d, r.from], n), ctx.work([d + 1, k], n)), "<=", 1, { fixed: P.isFixedEng([d, r.from], n) || P.isFixedEng([d + 1, k], n), aux: "seq", ub: 1 }); }
+      for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([d + 1, k]))) // 両方の実勤務枠が固定された組だけ減点付きで許す（他の必須条件と同じ。検算では「固定指定により許容」）
+        ctx.limit("shift_sequence", E(ctx.work([d, r.from], n), ctx.work([d + 1, k], n)), "<=", 1, { fixed: ctx.fixedWorkAt([d, r.from], n) && ctx.fixedWorkAt([d + 1, k], n), aux: "seq", ub: 1 }); }
     // 月またぎ: 前月最終日の勤務（定数）→ 当月 1 日、当月末 → 翌月 1 日の固定指定。固定した枠は減点付きで許す（他の規則と同じ）
     for (const r of prm.rules) for (const n of ctx.names) {
       if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([1, k])))
-        ctx.limit("shift_sequence", ctx.work([1, k], n), "<=", 0, { fixed: P.isFixedEng([1, k], n), aux: "seq", ub: 1 });
-      if (P.nextFixedAny() && ctx.has([P.N, r.from]) && nextFixedIn(P, n, r.to))
-        ctx.limit("shift_sequence", ctx.work([P.N, r.from], n), "<=", 0, { fixed: P.isFixedEng([P.N, r.from], n), aux: "seq", ub: 1 }); }
+        ctx.limit("shift_sequence", ctx.work([1, k], n), "<=", 0, { fixed: ctx.fixedWorkAt([1, k], n), aux: "seq", ub: 1 });
+      if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny() && ctx.has([P.N, r.from]) && nextFixedIn(ctx, n, r.to))
+        ctx.limit("shift_sequence", ctx.work([P.N, r.from], n), "<=", 0, { fixed: ctx.fixedWorkAt([P.N, r.from], n), aux: "seq", ub: 1 }); }
   },
   check(ctx, prm) {
     const { P } = ctx;
     for (const r of prm.rules) for (const n of ctx.names) for (let d = 1; d < P.N; d++) {
-      if (!ctx.worked(n, [d, r.from])) continue;
-      for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.worked(n, [d + 1, k])) // 許容は解く側の例外と同じ 2 枠のどちらかが固定のときだけ
-        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(d), next: ctx.lab(d + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(k), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[d, r.from], [d + 1, k]], n); }
+      if (!ctx.has([d, r.from]) || !ctx.worked(n, [d, r.from])) continue;
+      for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.has([d + 1, k]) && ctx.worked(n, [d + 1, k])) // 両方の実勤務枠の固定だけで違反が避けられない場合に許容
+        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(d), next: ctx.lab(d + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(k), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[d, r.from], [d + 1, k]], n, ctx.fixedWorkAt([d, r.from], n) && ctx.fixedWorkAt([d + 1, k], n)); }
     for (const r of prm.rules) for (const n of ctx.names) { // 月またぎ
-      if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.worked(n, [1, k]))
-        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(0), next: ctx.lab(1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(k), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[1, k]], n);
-      if (P.nextFixedAny() && ctx.worked(n, [P.N, r.from]) && nextFixedIn(P, n, r.to))
-        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(P.N), next: ctx.lab(P.N + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(r.to === "any" ? (P.nextFixedWorked(n, "day") ? "day" : "night") : r.to), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[P.N, r.from]], n); }
+      if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.has([1, k]) && ctx.worked(n, [1, k]))
+        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(0), next: ctx.lab(1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(k), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[1, k]], n, ctx.fixedWorkAt([1, k], n));
+      if (P.nextFixedAny() && ctx.has([P.N, r.from]) && ctx.worked(n, [P.N, r.from]) && nextFixedIn(ctx, n, r.to))
+        ctx.viol("SHIFT_SEQUENCE", { day: ctx.lab(P.N), next: ctx.lab(P.N + 1), who: n, from: P.shiftLabel(r.from), to: P.shiftLabel(r.to === "any" ? (P.nextFixedWorked(n, "day") ? "day" : "night") : r.to), kind: P.msg(r.to === "any" ? "SHIFT_SEQUENCE_REST" : "SHIFT_SEQUENCE_FORBIDDEN") }, [[P.N, r.from]], n, ctx.fixedWorkAt([P.N, r.from], n)); }
   },
   penalty(ctx, prm) {
     const { P } = ctx;
     for (const n of ctx.names) for (const r of prm.rules) for (let d = 1; d < ctx.N; d++) { if (!ctx.has([d, r.from])) continue;
       for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([d + 1, k])))
-        ctx.limit("shift_sequence", (ctx.worked(n, [d, r.from]) ? 1 : 0) + (ctx.worked(n, [d + 1, k]) ? 1 : 0), "<=", 1, { fixed: P.isFixedEng([d, r.from], n) || P.isFixedEng([d + 1, k], n) }); }
+        ctx.limit("shift_sequence", (ctx.worked(n, [d, r.from]) ? 1 : 0) + (ctx.worked(n, [d + 1, k]) ? 1 : 0), "<=", 1, { fixed: ctx.fixedWorkAt([d, r.from], n) && ctx.fixedWorkAt([d + 1, k], n) }); }
     for (const r of prm.rules) for (const n of ctx.names) { // 月またぎ（解く側と同じく、固定した枠は fixed_conflict）
       if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([1, k])))
-        ctx.limit("shift_sequence", ctx.worked(n, [1, k]) ? 1 : 0, "<=", 0, { fixed: P.isFixedEng([1, k], n) });
-      if (P.nextFixedAny() && ctx.has([P.N, r.from]) && nextFixedIn(P, n, r.to))
-        ctx.limit("shift_sequence", ctx.worked(n, [P.N, r.from]) ? 1 : 0, "<=", 0, { fixed: P.isFixedEng([P.N, r.from], n) }); }
+        ctx.limit("shift_sequence", ctx.worked(n, [1, k]) ? 1 : 0, "<=", 0, { fixed: ctx.fixedWorkAt([1, k], n) });
+      if (P.nextFixedAny() && ctx.has([P.N, r.from]) && nextFixedIn(ctx, n, r.to))
+        ctx.limit("shift_sequence", ctx.worked(n, [P.N, r.from]) ? 1 : 0, "<=", 0, { fixed: ctx.fixedWorkAt([P.N, r.from], n) }); }
   },
   ui: {
     acts: { seqAdd: "つながりの禁止を追加", seqDel: "つながりの禁止を削除" }, // 表のボタン（data-act）と、戻るための操作名
@@ -66,4 +66,4 @@ T.rules.register({
   python: false,
 });
 // 翌月 1 日の固定指定で、その人が「これに入れない」勤務帯に入っているか（to が any ならどの勤務帯でも）
-function nextFixedIn(P, n, to) { return to === "any" ? P.nextFixedWorks(n) : P.nextFixedWorked(n, to); }
+function nextFixedIn(ctx, n, to) { return to === "any" ? ctx.fixedWorkDay(ctx.P.N + 1, n) : ctx.fixedWorkAt([ctx.P.N + 1, to], n); }

@@ -129,7 +129,7 @@
     LINT_FIXED_OC_TWO_SAME_ROLE: { en: "Fixed \"{day} {slot} {who}\": {n} on-call assignments for {role}, but this slot allows at most {count}", ja: "固定指定「{day} {slot} {who}」: {role}のOCはこの枠では最大{count}名ですが、{n}名が固定されています" },
     LINT_FIXED_OVER_QUOTA: { en: "{count} shifts are fixed for {who}, above the target {quota} + {tol} (they will be assigned anyway and reported as allowed by the fixed assignment)", ja: "固定指定で {who} の勤務が {count} 件あり、目安 {quota}+{tol} 回を超えます（そのまま配置され、検算で「固定指定により許容」と出ます）" },
     LINT_FIXED_OVER_QUOTA_HINT: { en: "Fix fewer shifts, or review the target on the settings tab", ja: "固定指定を減らすか、設定の目安を見直す" },
-    LINT_FIXED_SAME_DAY: { en: "{who} is fixed to both the day and the night shift on {day} (two shifts on one day are forbidden; the fixed assignment wins and is penalised)", ja: "固定指定で {who} が {day} の日勤と夜勤の両方に入っています（同日の実勤務は禁止。固定指定が優先され減点付きで配置されます）" },
+    LINT_FIXED_SAME_DAY: { en: "{who} is fixed to both the day and the night shift on {day} (both shifts are fixed, so this otherwise forbidden double is unavoidable and is penalised)", ja: "固定指定で {who} が {day} の日勤と夜勤の両方に入っています（両枠とも固定のため、この禁止違反だけは不可避として減点付きで許容されます）" },
     LINT_FIXED_SAME_DAY_HINT: { en: "Month tab → fixed assignments → remove one of them", ja: "月の設定 → 固定指定 のどちらかを削除" },
     LINT_FIXED_CONSECUTIVE: { en: "{who} is fixed to work on {day} and {next}, which are consecutive (or the same) days (forbidden)", ja: "固定指定で {who} が {day} と {next} の連日（または同日）の実勤務になります（禁止）" },
     LINT_FIXED_CHARGE_NOT_ROLE: { en: "Fixed \"{day} {charge} duty {who}\": {who} is not {charge}", ja: "固定指定「{day} {charge}担当 {who}」: {who} は{charge}ではありません" },

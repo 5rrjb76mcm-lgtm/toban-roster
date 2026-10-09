@@ -43,13 +43,14 @@ test("複数名の枠: 日勤 2 名の施設で、日勤に 1 名なら枠ごと
   assert.strictEqual(T.check(P, rotation(D)).V.length, 30); const a = rotation(D, 30, 2); assert.strictEqual(T.check(P, a).V.length, 0);
   a["8:day"].work = [D[2], D[3], D[4]]; const r = T.check(P, a); assert.deepStrictEqual(codes(r), ["SLOT_WORKER_COUNT"]);
 });
-test("月またぎ（夜勤 → 明け → 休み）: 前月 31 日の夜勤の人が 2 日に勤務すると違反。当月の夜勤 7 日 → 9 日の勤務も違反、その夜勤を固定していれば許容", () => {
+test("月またぎ（夜勤 → 明け → 休み）: 前月 31 日の夜勤の人が 2 日に勤務すると違反。当月の夜勤 7 日 → 9 日の勤務も違反、両方の実勤務を固定したときだけ許容", () => {
   const { R, m, D } = base({ states: { rest_after_ake: "hard" }, month: { prev_month: { last_days: [{ date: 31, night: "Dr B" }] } } }); // 前月＝2026 年 10 月は 31 日まで
   const a = rotation(D); a["2:day"].work = "Dr B"; // 基準では 2 日の日勤は Dr D
   let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["REST_AFTER_AKE"], "前月末の夜勤からも数える"); assert.strictEqual(r.W.length, 0);
   a["2:day"].work = D[1]; assert.strictEqual(T.check(new T.Problem(R, m), a).V.length, 0, "2 日に入らなければ 0");
   a["7:night"].work = "Dr B"; a["9:day"].work = "Dr B"; r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["REST_AFTER_AKE"]); // 当月の中（基準では 7 日の夜勤は Dr G、9 日の日勤は Dr F。Dr B の基準の夜勤 3・8・13 日と日勤 1・6・11 日に 2 日後の組が新たにできない日を選ぶ）
-  const m2 = clone(m); m2.fixed.night[7] = "Dr B"; r = T.check(new T.Problem(R, m2), a); assert.strictEqual(r.V.length, 0); assert.deepStrictEqual(wcodes(r), ["REST_AFTER_AKE"], "固定が絡めば許容");
+  const m2 = clone(m); m2.fixed.night[7] = "Dr B"; r = T.check(new T.Problem(R, m2), a); assert.deepStrictEqual(codes(r), ["REST_AFTER_AKE"], "片方だけの固定では任意の違反を許容しない"); assert.strictEqual(r.W.length, 0);
+  m2.fixed.day[9] = "Dr B"; r = T.check(new T.Problem(R, m2), a); assert.strictEqual(r.V.length, 0); assert.deepStrictEqual(wcodes(r), ["REST_AFTER_AKE"], "固定だけで不可避の組は許容");
 });
 test("勤務帯ごとの連続（日勤は 3 日まで）: 日勤 1〜4 日で違反 1。1〜3 日＋4 日の夜勤は 0。前月 30・31 日の日勤に続く 1・2 日の日勤も違反", () => {
   const { R, m, D } = base({ states: { shift_run_max: "hard" }, rules: { shift_run_max: { day: 3 } } });
@@ -65,18 +66,22 @@ test("連勤の上限 4 日: 5 日続けて勤務すると違反 1。6 日続け
   const a = rotation(D); for (const d of [2, 3, 4, 5]) a[`${d}:day`].work = "Dr B"; let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]);
   a["6:day"].work = "Dr B"; r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]); assert.ok(/6/.test(r.V[0]), "6 日と分かる: " + r.V[0]);
 });
-test("連勤の指摘の数え方: 上限 4 で 1〜6 日勤務、1 日だけ固定 → 固定が絡む窓（1〜5 日）は許容 1、絡まない窓（2〜6 日）は違反 1。減点なら窓ごと: 重み 100 × 2 = 200", () => {
-  // 「6 連勤でも 1 件」は各窓の固定の関与が同じときのまとめ表示。関与が違う窓は分けて出る。減点は max+1 日の窓ごと（5 日の窓が 2 つ）
+test("連勤の指摘の数え方: 上限 4 で 1〜6 日勤務、1 日だけ固定では全窓が違反。1〜5 日固定なら最初の窓だけ許容。減点なら重み 100 × 2 = 200", () => {
+  // 同じ許容判定の窓はまとめる。固定入力だけで上限を超える窓だけ許容。減点は max+1 日の窓ごと（5 日の窓が 2 つ）
   const { R, m, D } = base({ states: { run_length_max: "hard" }, rules: { run_length: { max: 4 } }, month: { fixed: { day: { 1: "Dr B" } } } });
   const a = rotation(D); for (const d of [2, 3, 4, 5, 6]) a[`${d}:day`].work = "Dr B";
-  const r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]); assert.deepStrictEqual(wcodes(r), ["RUN_TOO_LONG"]);
+  const r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["RUN_TOO_LONG"]); assert.deepStrictEqual(wcodes(r), []); assert.strictEqual(r.VC[0].args.len, 6);
+  const m5 = clone(m); for (const d of [2, 3, 4, 5]) m5.fixed.day[d] = "Dr B";
+  const r5 = T.check(new T.Problem(R, m5), a); assert.deepStrictEqual(codes(r5), ["RUN_TOO_LONG"]); assert.deepStrictEqual(wcodes(r5), ["RUN_TOO_LONG"]);
+  assert.strictEqual(r5.VC[0].args.len, 5); assert.strictEqual(r5.WC[0].args.len, 5);
   const { R: R2, m: m2 } = base({ states: { run_length_max: "soft" }, rules: { run_length: { max: 4 } }, weights: { run_length_over: 100 } });
   const it = pen(new T.Problem(R2, m2), a); assert.strictEqual(it.run_length_over, 200);
 });
-test("同じ日の 2 枠: 同じ人を同じ日の日勤と夜勤に入れると違反 1。その日勤を固定していれば許容", () => {
+test("同じ日の 2 枠: 同じ人を同じ日の日勤と夜勤に入れると違反 1。日勤と夜勤の両方を固定したときだけ許容", () => {
   const { R, m, D } = base({ states: { same_day_double: "hard" } }); const a = rotation(D); a["5:night"].work = a["5:day"].work;
   let r = T.check(new T.Problem(R, m), a); assert.deepStrictEqual(codes(r), ["SAME_DAY_DOUBLE"]);
-  const m2 = clone(m); m2.fixed.day[5] = a["5:day"].work; r = T.check(new T.Problem(R, m2), a); assert.strictEqual(r.V.length, 0); assert.deepStrictEqual(wcodes(r), ["SAME_DAY_DOUBLE"]);
+  const m2 = clone(m); m2.fixed.day[5] = a["5:day"].work; r = T.check(new T.Problem(R, m2), a); assert.deepStrictEqual(codes(r), ["SAME_DAY_DOUBLE"]); assert.strictEqual(r.W.length, 0);
+  m2.fixed.night[5] = a["5:night"].work; r = T.check(new T.Problem(R, m2), a); assert.strictEqual(r.V.length, 0); assert.deepStrictEqual(wcodes(r), ["SAME_DAY_DOUBLE"]);
 });
 test("当月目標: 目標 4 回の人が 12 回働くと、ずれ 8 × 重み 15 = 120 の減点。ほかの人は按分の目安どおり（12 回）で 0", () => {
   const { R, m, D } = base({ states: { quota_target: "soft" }, weights: { target_deviation: 15 }, month: { targets: { "Dr B": 4 } } }); // 2 交代は比重で按分: 60 枠 ÷ 5 名 = 12 回
