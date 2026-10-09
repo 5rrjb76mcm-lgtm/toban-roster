@@ -100,7 +100,7 @@
     const y = {};
     const yOf = (d, n) => {
       if (d < 1) return P.prevSlots.some(s => s[0] === d) && ["day", "night"].some(k => Wv([d, k], n) === 1) ? 1 : 0;
-      if (d > P.N) return P.nextFixedWorks(n) ? 1 : 0;
+      if (d > P.N) return !relax.has("fixed") && !relax.has("fixed:next") && P.nextFixedWorks(n) ? 1 : 0;
       const k2 = `${d}|${n}`;
       if (y[k2] === undefined) {
         const ws = ["day", "night"].filter(k => has([d, k])).map(k => work[`${d}:${k}|${n}`]);
@@ -148,11 +148,11 @@
     for (const n of names) {
       if (relax.has("unavailable") || relax.has("unavail:" + n)) continue;
       // 固定指定した枠・医師には不可を適用しない（固定指定が優先。検算で「固定指定により許容」として表示）
-      for (const d of P.unavailNight[n] || []) if (d >= 1 && d <= P.N && !P.isFixedEng([d, "night"], n)) { lp.add(work[`${d}:night|${n}`], "=", 0); lp.add(oc[`${d}:night|${n}`], "=", 0); }
+      for (const d of P.unavailNight[n] || []) if (d >= 1 && d <= P.N && !ctx.fixedEngAt([d, "night"], n)) { lp.add(work[`${d}:night|${n}`], "=", 0); lp.add(oc[`${d}:night|${n}`], "=", 0); }
       for (const [d, part] of P.unavailOther[n] || []) {
         if (d < 1 || d > P.N) continue;
-        if (has([d, "day"]) && !P.isFixedEng([d, "day"], n)) { lp.add(work[`${d}:day|${n}`], "=", 0); lp.add(oc[`${d}:day|${n}`], "=", 0); }
-        if (part === "allday" && !P.isFixedEng([d, "night"], n)) { lp.add(work[`${d}:night|${n}`], "=", 0); lp.add(oc[`${d}:night|${n}`], "=", 0); } // 前夜からの担当は除外しない（未明から不可なら前日も不可にする運用）
+        if (has([d, "day"]) && !ctx.fixedEngAt([d, "day"], n)) { lp.add(work[`${d}:day|${n}`], "=", 0); lp.add(oc[`${d}:day|${n}`], "=", 0); }
+        if (part === "allday" && !ctx.fixedEngAt([d, "night"], n)) { lp.add(work[`${d}:night|${n}`], "=", 0); lp.add(oc[`${d}:night|${n}`], "=", 0); } // 前夜からの担当は除外しない（未明から不可なら前日も不可にする運用）
       }
     }
     // 勤務回数（total は上で定義）
@@ -223,6 +223,55 @@
     return (sol && typeof sol.then === "function") ? sol.then(post) : post(sol);
   }
 
+  // 診断専用: 同じ制約・変数領域のまま目的関数だけを 0 にする。通常計算の採点・最適性には使わない。
+  // HiGHS の状態だけで解ありとせず、返された全列を整数に丸めた証人が、外した条件を除く全 LP 行を満たすか確かめる。
+  // 元の T.check は外した条件まで検査するので、ここでの証人の検証には使えない。
+  function solveFeasibility(P, highs, opts = {}) {
+    const started = Date.now(); let built;
+    const result = (outcome, status, extra = {}) => Object.assign({ outcome, status, asg: null, seconds: (Date.now() - started) / 1000,
+      vars: built ? built.lp.vars.size : 0, cons: built ? built.lp.cons.length : 0 }, extra);
+    const failed = e => {
+      if (e && (e.cancelled || /中止/.test(String(e.message)))) throw e; // Worker の中止は呼出元まで伝える
+      return result("undecided", "Error", { reason: "error", error: String(e && e.message || e) });
+    };
+    const remaining = () => Math.min(opts.timeLimit ?? 30, opts.deadline == null ? Infinity : (opts.deadline - Date.now()) / 1000);
+    try {
+      if (!(remaining() > 0)) return result("undecided", "Not run", { reason: "budget" });
+      built = buildLP(P, opts);
+      built.lp.obj.clear(); built.lp.objC = 0; // 補助変数と、それに関する制約もすべて残す
+      const text = built.lp.toLP(), timeLimit = remaining(); // モデル生成にも予算を使う。0 を solver の既定 60 秒へ変換しない
+      if (!(timeLimit > 0)) return result("undecided", "Not run", { reason: "budget" });
+      const post = sol => {
+        const status = sol && sol.Status || "Unknown";
+        if (status === "Infeasible") return result("infeasible", status);
+        const cols = sol && sol.Columns;
+        if (!cols || !Object.keys(cols).length) return result("undecided", status, { reason: /error/i.test(status) ? "error" : "no-witness" });
+        const vals = {}, tol = 1e-6;
+        const invalid = detail => result("undecided", status, { reason: "invalid-witness", detail });
+        for (const [v, d] of built.lp.vars) {
+          const raw = cols[v] && cols[v].Primal;
+          if (!Number.isFinite(raw)) return invalid("column: " + v); // 欠けた列を 0 とみなさない
+          const x = Math.round(raw), lo = d.type === "B" ? 0 : d.lb, hi = d.type === "B" ? 1 : d.ub;
+          if (Math.abs(raw - x) > tol || x < lo - tol || x > hi + tol) return invalid("domain: " + v);
+          vals[v] = x;
+        }
+        for (let i = 0; i < built.lp.cons.length; i++) {
+          const c = built.lp.cons[i], lhs = c.terms.reduce((sum, [v, coef]) => sum + coef * vals[v], 0);
+          if (c.trivialFalse || !Number.isFinite(lhs) || !Number.isFinite(c.rhs) ||
+            !(c.sense === "=" ? Math.abs(lhs - c.rhs) <= tol : c.sense === "<=" ? lhs <= c.rhs + tol : lhs >= c.rhs - tol)) return invalid("row: " + i);
+        }
+        const asg = {};
+        for (const s of built.slots) {
+          const k = key(s), ws = built.names.filter(n => vals[built.work[k + "|" + n]] === 1);
+          asg[k] = { work: P.countOf(s) === 1 ? ws[0] : ws, oc: built.names.filter(n => vals[built.oc[k + "|" + n]] === 1) };
+        }
+        return result("feasible", status, { asg }); // Unknown/時間切れでも有効な証人は解ありの証拠（元の目的関数の最適性ではない）
+      };
+      const sol = highs.solve(text, { time_limit: timeLimit, output_flag: false, mip_rel_gap: 0 });
+      return sol && typeof sol.then === "function" ? sol.then(post).catch(failed) : post(sol);
+    } catch (e) { return failed(e); }
+  }
+
   // 避けたい日の参照解方式: まず避けたい日を無視して計算し（参照解）、申告者の回数を基準回数として本計算に渡す。
   // 規則の部品が refDeclarers で名乗った人（土日の実勤務の上限 dayoff_work_cap など。その規則も参照解では無視される）も申告者に含める
   async function solveWithAvoidRef(P, highs, opts = {}) { // 常に Promise を返す（同期の highs でも可）
@@ -236,17 +285,24 @@
     return Object.assign(res, { avoidRef, refSeconds: ref.seconds });
   }
   T.solveWithAvoidRef = solveWithAvoidRef;
-  async function diagnose(P, highs, timeLimit = 30, onProgress) { // 常に Promise を返す。onProgress({label, step, total, sub}) は試行のたびに呼ぶ（画面の進捗表示用）
-    const lines = []; let step = 0; const total = T.RELAXATIONS.length; const tell = (label, sub) => { try { onProgress && onProgress({ label, step, total, sub }); } catch (e) { } };
-    const feasible = async keys => !!(await solve(P, highs, { relax: keys, timeLimit })).asg;
+  async function diagnose(P, highs, timeLimit = 30, onProgress, opts = {}) { // 常に Promise。全体予算は既定 120 秒（モデル生成・検証を含む。実行中の solver を強制終了する期限ではない）
+    const totalTimeLimit = opts.totalTimeLimit ?? 120;
+    if (!Number.isFinite(timeLimit) || timeLimit <= 0 || !Number.isFinite(totalTimeLimit) || totalTimeLimit < 0) throw new Error("Invalid diagnostic time budget");
+    const started = Date.now(), deadline = started + totalTimeLimit * 1000;
+    const remaining = () => Math.max(0, (deadline - Date.now()) / 1000);
+    const lines = []; let step = 0; const total = T.RELAXATIONS.length;
+    const tell = (label, sub) => { try { onProgress && onProgress({ label, step, total, sub, elapsedSeconds: (Date.now() - started) / 1000,
+      remainingSeconds: remaining(), timeLimit: Math.min(timeLimit, remaining()), totalTimeLimit }); } catch (e) { } };
+    const trial = keys => solveFeasibility(P, highs, { relax: keys, timeLimit, deadline });
+    const evidence = r => ({ status: r.status, reason: r.reason, error: r.error, detail: r.detail });
     for (const [k, label] of T.RELAXATIONS) {
-      step++; { const owners = (T.RULE_DEFS || []).filter(d => d.relax === k); if (owners.length && owners.every(d => P.state(d.id) === "off")) continue; } // その条件を持つ規則が「なし」なら、外しても同じ問題なので試さない
+      step++; { const owners = (T.RULE_DEFS || []).filter(d => d.relax === k); if (owners.length && owners.every(d => P.state(d.id) === "off")) continue; }
       tell(label, "");
-      const r = await solve(P, highs, { relax: [k], timeLimit });
-      if (!r.asg) { if (r.status !== "Infeasible") lines.push({ key: k, label, undecided: true, note: "", items: [] }); continue; } // 時間切れは「判定できず」として残す（解なしと区別）
+      const r = await trial([k]);
+      if (r.outcome !== "feasible") { if (r.outcome !== "infeasible") lines.push(Object.assign({ key: k, label, undecided: true, note: "", items: [] }, evidence(r))); continue; }
       let note = "", items = [];
       if (k === "weekend_balance") { const { charge } = T.check(P, r.asg); const fw = T.fullWeekendUnits(P, charge); const vals = Object.values(fw); note = T.t("（この条件を外した解の完全な土日の担当（組）: {fw}、差 {diff}）", { fw: T.fmtHalf(fw), diff: (Math.max(...vals) - Math.min(...vals)) / 2 }); }
-      // 1件・1人単位に絞り込む: グループ全部を外した状態（解あり）から1件ずつ戻し、戻すと解なしになるものを衝突として挙げる
+      // 1件・1人単位に絞り込む。解ありを確かめた外し方だけを採用し、判定不能は解なしと区別する
       let cands = [];
       if (k === "fixed") {
         for (const [d, ns] of Object.entries(P.fixedNight)) cands.push({ key: `fixed:night:${d}`, label: T.t("固定指定「{day} {slot} {who}」", { day: P.label(+d), slot: P.shiftLabel("night"), who: ns.join(T.nameSep ? T.nameSep() : "・") }), hint: T.t("月の設定 → 固定指定 で削除するか、その{person}のカレンダーで同日の不可・翌日の業務を見直す") });
@@ -260,19 +316,30 @@
       } else if (k === "duties") {
         for (const n of P.names) cands.push({ key: "duties:" + n, label: T.t("{who} の定期業務（外勤・午後業務の翌日制約）", { who: n }), hint: T.t("{person}別カレンダー → {who} の業務を見直す", { who: n }) });
       }
+      const line = { key: k, label, note, items };
       if (cands.length) {
-        const kept = new Set(cands.map(c => c.key)); // 外している集合
-        let ci = 0;
-        for (const c of cands) {
-          tell(label, `${++ci}/${cands.length}`);
-          kept.delete(c.key);
-          if (!(await feasible([...kept]))) { items.push(c); kept.add(c.key); }
+        const kept = new Set(cands.map(c => c.key)), decisions = new Map();
+        tell(label, `0/${cands.length}`);
+        // プラグインのグループ単位の relax が個別キーにも対応するとは限らない。まず正確にこの集合を検証する。
+        const initial = await trial([...kept]);
+        if (initial.outcome !== "feasible") line.narrowing = Object.assign({ outcome: initial.outcome }, evidence(initial));
+        else {
+          let ci = 0;
+          for (const c of cands) {
+            tell(label, `${++ci}/${cands.length}`);
+            const r2 = await trial([...kept].filter(k2 => k2 !== c.key));
+            if (r2.outcome === "feasible") kept.delete(c.key);
+            else decisions.set(c.key, Object.assign({}, c, evidence(r2), { undecided: r2.outcome !== "infeasible" }));
+          }
+          line.items = cands.filter(c => kept.has(c.key)).map(c => decisions.get(c.key));
+          line.combined = true; // この集合をまとめて外した解の存在だけを保証する（各項目を単独で外す意味ではない）
+          line.incomplete = line.items.some(c => c.undecided);
         }
       }
-      lines.push({ key: k, label, note, items });
+      lines.push(line);
     }
     return lines;
   }
 
-  T.LP = LP; T.buildLP = buildLP; T.solve = solve; T.diagnose = diagnose;
+  T.LP = LP; T.buildLP = buildLP; T.solve = solve; T.solveFeasibility = solveFeasibility; T.diagnose = diagnose;
 })(globalThis.T = globalThis.T || {});

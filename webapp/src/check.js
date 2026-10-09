@@ -35,11 +35,12 @@
   function check(P, asg) {
     const A = new Asg(P, asg), V = [], VC = [], VD = [], Tm = P.team, names = P.dutyNames, lab = d => P.label(d);
     // 違反は「種類（code）＋差し込む値（args）」で積み、文面はその言語で組み立てる（messages.js）。
-    // VD は関わる日・医師で、固定指定による許容の判定に使う
-    const viol = (code, args = {}, days = null, ns = [], fixed) => { // fixed: プラグインが判定した「固定指定が絡む」（true/false）。省略時は本体が days・names と固定指定の集合で判定する
+    // VD は違反の対象と、規則が証明した固定入力だけによる不可避性。
+    const viol = (code, args = {}, days = null, ns = [], fixed) => { // fixed: この違反が固定入力だけで不可避と規則が証明したときだけ true。省略時は false。
       V.push(P.msg(code, args)); VC.push({ code, args });
       VD.push({ days: days == null ? [] : [].concat(days), names: [].concat(ns), fixed: fixed === undefined ? undefined : !!fixed });
     };
+    const cctx = T.rules.checkCtx(P, A, "check", viol);
     const slab = s => `${lab(s[0])}${P.shiftLabel(s[1])}`;
     // 入力で勤務帯を減らしても旧結果は保持される。存在しない枠の非空の割当は固定でも許容しない。
     // asg だけを見る（A.a には、当月の枠ではない正式な前月末の接続 P.prevFixed も入る）。
@@ -74,10 +75,10 @@
     }
     // 2 不可
     for (const n of names) {
-      for (const d of P.unavailNight[n] || []) if (d >= 1 && d <= P.N && A.eng(n, [d, "night"])) viol("UNAVAIL_NIGHT", { day: lab(d), who: n }, [[d, "night"]], n);
+      for (const d of P.unavailNight[n] || []) if (d >= 1 && d <= P.N && A.eng(n, [d, "night"])) viol("UNAVAIL_NIGHT", { day: lab(d), who: n }, [[d, "night"]], n, cctx.fixedEngAt([d, "night"], n));
       for (const [d, part] of P.unavailOther[n] || []) {
-        if (A.eng(n, [d, "day"])) viol("UNAVAIL_DAY", { day: lab(d), who: n, scope: T.t(part === "allday" ? "日夜両方の" : "日勤帯") }, [[d, "day"]], n);
-        if (part === "allday" && A.eng(n, [d, "night"])) viol("UNAVAIL_ALLDAY_NIGHT", { day: lab(d), who: n }, [[d, "night"]], n);
+        if (A.eng(n, [d, "day"])) viol("UNAVAIL_DAY", { day: lab(d), who: n, scope: T.t(part === "allday" ? "日夜両方の" : "日勤帯") }, [[d, "day"]], n, cctx.fixedEngAt([d, "day"], n));
+        if (part === "allday" && A.eng(n, [d, "night"])) viol("UNAVAIL_ALLDAY_NIGHT", { day: lab(d), who: n }, [[d, "night"]], n, cctx.fixedEngAt([d, "night"], n));
       }
     }
     // 3 回数（予備の役割の登用。目安の範囲はプラグイン quota_range）
@@ -85,7 +86,6 @@
       if (tot && (P.doctors[n].duty === "never" || !P.allowChief)) viol("RESERVE_ASSIGNED", { who: n, count: tot }, null, n);
       else if (tot > 1) viol("RESERVE_OVER", { who: n, count: tot }); } // 登用を許した月でも月 1 回まで（解く側は固定があっても緩めないので、固定による許容にしない）
     // プラグインにした規則の検算（docs/rule-modules.md）。id を並べているのは、違反の並びを移す前と同じに保つため
-    const cctx = T.rules.checkCtx(P, A, "check", viol);
     T.rules.runCheck(cctx, ["quota_range", "same_day_double", "consecutive_days", "run_length_max", "shift_sequence", "days_off_min", "days_off_pair", "composition"]);
     // 6 期間責任者と週末の均等（プラグイン）。日ごとの担当はプラグインが事実 "charge" として出す（結果の表示にも使う）
     T.rules.runCheck(cctx, ["period_charge", "weekend_balance"]);
@@ -98,16 +98,13 @@
     T.rules.runCheck(cctx, ["friday_night_min", "same_weekday_cap"]); // プラグイン（移す前にここにあった順）
     T.rules.runCheck(cctx, ["duty_conflicts", "rest_day"]); // 8 定期業務・10 週休日（プラグイン）
     T.rules.runCheck(cctx); // 残りのプラグイン
-    // 固定指定した枠・医師に関わる違反は「固定指定により許容（要確認）」として分ける（固定指定との不一致そのものは違反のまま）。
-    // 判定は文言ではなく、違反に関わる日・医師（VD）と固定指定の集合の照合で行う
-    const W = [], V2 = [], WC = [], VC2 = [], fixedByDay = {};
-    for (const k of P.fixedEngKeys) { const [sl, ...ns] = k.split("|"), n = ns.join("|"); const d = +sl.split(":")[0]; (fixedByDay[d] ||= new Set()).add(n); }
-    const NEVER_BY_FIXED = new Set(["FIXED_MISMATCH", "PERIOD_CHARGE_FIXED_MISMATCH", "PERIOD_CHARGE_NEXT_LINK"]); // 固定指定そのものとの不一致は許容しない
+    // 固定入力だけで不可避な違反を、規則の明示した証明でのみ W に分ける。
+    // days/names の接触は証明ではない。未対応プラグインも安全側で V にする。
+    const W = [], V2 = [], WC = [], VC2 = [];
+    const NEVER_BY_FIXED = new Set(["FIXED_MISMATCH", "PERIOD_CHARGE_FIXED_MISMATCH", "PERIOD_CHARGE_NEXT_LINK"]);
     V.forEach((v, i) => {
       const d = VD[i] || { days: [], names: [] };
-      // days の要素が [日, 勤務帯] の枠なら、その枠そのものが固定されているときだけ許容（不可の違反など。解く側の例外 isFixedEng と同じ範囲）。日だけなら同じ日の固定で許容
-      // プラグインが固定の関与を明示していれば（ctx.limit の fixed。解く側と同じ範囲）それに従う。OC だけの固定で勤務の規則を許容へ広げない
-      const byFixed = !NEVER_BY_FIXED.has(VC[i].code) && (d.fixed !== undefined ? d.fixed : d.days.some(day => Array.isArray(day) ? d.names.some(n => P.fixedEngKeys.has(`${day[0]}:${day[1]}|${n}`)) : d.names.some(n => (fixedByDay[day] || new Set()).has(n))));
+      const byFixed = !NEVER_BY_FIXED.has(VC[i].code) && d.fixed === true;
       if (byFixed) { W.push(v); WC.push(VC[i]); } else { V2.push(v); VC2.push(VC[i]); }
     });
     return { V: V2, W, VC: VC2, WC, charge, A };

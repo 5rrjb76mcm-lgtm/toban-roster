@@ -74,7 +74,8 @@
     for (const k of ["cath_off_days", "next_month_first_day_duties", "allow_split_weekend"]) delete m[k]; // 旧形式の項目は持ち込まない（相手の版に残っていても復活させない）
     for (const k of Object.keys(m)) if (!KNOWN.has(k)) delete m[k]; // 本体が知らない項目も展開した値から作り直す（片方が消した項目を template から復活させない）
     const P = k => (f[k] === undefined ? undefined : JSON.parse(f[k]));
-    for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) { const v = P("s:" + k); if (v !== undefined) m[k] = v; else if (k === "notes") m[k] = ""; else if (["duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty"].includes(k)) m[k] = false; }
+    // 任意の表題・施設 ID が無いときも、統合元の古い値を復活させない（明示的に選んだ削除を含む）。
+    for (const k of ["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id"]) { const v = P("s:" + k); if (v !== undefined) m[k] = v; else if (k === "doc_label" || k === "profile_id") delete m[k]; else if (k === "notes") m[k] = ""; else if (["duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty"].includes(k)) m[k] = false; }
     m.exceptions = {}; { const v = P("s:exceptions.weekend_balance_max_diff"); if (v !== undefined) m.exceptions.weekend_balance_max_diff = v; }
     m.holidays = []; m.closure_days = []; m.cath_off_days_A = []; m.cath_off_days_I = []; m.targets = {}; m.count_min = {}; m.count_max = {}; m.duty_days = {}; m.unavailable_night = {}; m.unavailable_other = []; m.avoid = []; m.wishes = { weekend_dayshift: [], night_on: {}, day_on: {} };
     m.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; m.confirmed_pm_external_night = []; m.history = { weekend_charge: {}, holiday_charge: {}, work_balance: {} };

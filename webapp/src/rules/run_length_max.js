@@ -9,23 +9,24 @@ T.rules.register({
     const { P, LP } = ctx, K = prm.max;
     for (const n of ctx.names) { if (!P.runApplies(n)) continue;
       for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { if (d + K < 1) continue; // 前月の中だけの並びは対象外（前月の結果は変えられない）
-        const win = [], days = []; for (let j = 0; j <= K; j++) { win.push(ctx.y(d + j, n)); if (d + j >= 1 && d + j <= P.N) days.push(d + j); }
-        ctx.limit("run_length_max", LP.sum(win), "<=", K, { fixed: ctx.fixedInvolved(days, n), aux: "rlo", ub: K + 1 }); } } // 固定した日が絡む窓は減点付きで許す（検算では「固定指定により許容」）
+        if (d + K > P.N && (ctx.relaxed("fixed") || ctx.relaxed("fixed:next"))) continue; // 診断で翌月の固定接続を外した窓
+        const win = []; let forced = 0; for (let j = 0; j <= K; j++) { win.push(ctx.y(d + j, n)); if (ctx.fixedWorkDay(d + j, n)) forced++; }
+        ctx.limit("run_length_max", LP.sum(win), "<=", K, { fixed: forced > K, aux: "rlo", ub: K + 1 }); } } // 固定入力だけで上限を超える窓だけ減点付きで許す（前月末・翌月の定数も含む）
   },
   check(ctx, prm) {
-    // 解く側と同じく max+1 日の窓ごとに固定の関与を見る。関与の有無が同じ窓はまとめて 1 件にする（固定の無い窓が 1 つでもあれば、その部分は違反 V に残る）
+    // 解く側と同じく max+1 日の窓ごとに固定入力だけで超過するかを見る。許容の可否が同じ窓はまとめて 1 件にする（自動配置が超過を作る窓は違反 V に残る）
     const K = prm.max, inM = d => d >= 1 && d <= ctx.N;
     for (const n of ctx.names.filter(x => ctx.P.runApplies(x))) for (const r of ctx.runs(n)) { if (r.length <= K || r[r.length - 1] < 1) continue;
       let seg = null; const flush = () => { if (seg) ctx.viol("RUN_TOO_LONG", { who: n, from: ctx.lab(Math.max(seg.days[0], 1)), len: seg.days.length, max: K }, seg.days.filter(inM), n, seg.fx); seg = null; }; // 許容の可否は窓の判定（勤務の固定だけ。OC の固定では許容しない）
       for (let i = 0; i + K < r.length; i++) { const win = r.slice(i, i + K + 1); if (win[win.length - 1] < 1) continue; // 前月の中だけの窓は対象外
-        const fx = ctx.fixedInvolved(win.filter(inM), n);
+        const fx = win.filter(d => ctx.fixedWorkDay(d, n)).length > K;
         if (seg && seg.fx === fx) { for (const d of win) if (!seg.days.includes(d)) seg.days.push(d); } else { flush(); seg = { fx, days: win.slice() }; } }
       flush(); }
   },
   penalty(ctx, prm) {
     const { P } = ctx, K = prm.max;
-    for (const n of ctx.names) if (P.runApplies(n)) for (let d = ctx.firstPrev; d + K <= ctx.N + 1; d++) { if (d + K < 1) continue; let c = 0; const days = []; for (let j = 0; j <= K; j++) { c += ctx.y(n, d + j); if (d + j >= 1 && d + j <= ctx.N) days.push(d + j); }
-      ctx.limit("run_length_max", c, "<=", K, { fixed: ctx.fixedInvolved(days, n) }); }
+    for (const n of ctx.names) if (P.runApplies(n)) for (let d = ctx.firstPrev; d + K <= ctx.N + 1; d++) { if (d + K < 1) continue; let c = 0, forced = 0; for (let j = 0; j <= K; j++) { c += ctx.y(n, d + j); if (ctx.fixedWorkDay(d + j, n)) forced++; }
+      ctx.limit("run_length_max", c, "<=", K, { fixed: forced > K }); }
   },
   ui: {
     render(R, h) { return `<label>${h.esc(h.tx("連勤は"))} <input type="text" inputmode="numeric" id="setRunMax" value="${h.esc((R.run_length || {}).max ?? 5)}" style="width:4em"> ${h.esc(h.tx("日まで"))}</label>

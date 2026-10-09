@@ -9,8 +9,8 @@ T.rules.register({
     const { P, lp, LP, E, W, key } = ctx;
     const samePeriod = (s1, s2) => { const a = P.periodOfSlot[key(s1)], b = P.periodOfSlot[key(s2)]; return a != null && a === b; };
     // 対象は「少なくとも片方が OC」の連続。両方が実勤務の組（勤務→勤務）は consecutive_days が扱うので、ここでは数えない:
-    // 両方が勤務のときだけ 1 にできる ww を引く（前月末の枠は定数。連日を必須で禁じていて固定も絡まない組は、両方が勤務にならないので ww は要らない）
-    const noBoth = (s1, s2, n) => P.isHard("consecutive_days") && !ctx.relaxed("consecutive") && s2[0] - s1[0] === 1 && !ctx.fixedInvolved([s1[0], s2[0]], n);
+    // 両方が勤務のときだけ 1 にできる ww を引く（前月末の枠は定数。連日を必須で禁じていて両日の勤務が固定だけで決まらない組は、両方が勤務にならないので ww は要らない）
+    const noBoth = (s1, s2, n) => P.isHard("consecutive_days") && !ctx.relaxed("consecutive") && s2[0] - s1[0] === 1 && !(ctx.fixedWorkDay(s1[0], n) && ctx.fixedWorkDay(s2[0], n));
     const pen = (s1, s2, n) => { const v = lp.aux("occ"), e = LP.sub(E(ctx.Ev(s1, n), ctx.Ev(s2, n)), 1), w1 = ctx.Wv(s1, n), w2 = ctx.Wv(s2, n);
       if (w1 === 0 || w2 === 0 || noBoth(s1, s2, n)) { /* 両方が勤務になることはない */ }
       else if (typeof w1 === "number") LP.addTo(e, w2, -1); else if (typeof w2 === "number") LP.addTo(e, w1, -1);

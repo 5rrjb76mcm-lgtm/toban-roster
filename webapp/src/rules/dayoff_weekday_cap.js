@@ -9,7 +9,7 @@
 // 曜日ごとの休日の日（当月の枠がある日だけ）
 const dayoffByDow = P => { const out = {}; for (let d = 1; d <= P.N; d++) if (P.isHoliday(d) && ["day", "night"].some(k => P.slotExists(d, k))) (out[P.dow(d)] ||= []).push(d); return out; };
 const slotsOf = (P, d) => ["day", "night"].filter(k => P.slotExists(d, k)).map(k => [d, k]);
-const fixedEng = (P, d, n) => slotsOf(P, d).some(s => P.isFixedEng(s, n));
+const fixedCount = (ctx, ds, n) => ds.filter(d => slotsOf(ctx.P, d).some(s => ctx.fixedEngAt(s, n))).length;
 const exempt = (P, n) => P.isRole(n, "reserve") || (P.isRole(n, "charge") && P.state("period_charge") !== "off");
 T.rules.register({
   id: "dayoff_weekday_cap", api: 1, order: 545, group: "combo",
@@ -25,20 +25,20 @@ T.rules.register({
     for (const n of ctx.names) { if (exempt(P, n)) continue;
       for (const ds of Object.values(byDow)) { if (ds.length <= prm.max) continue; // その曜日の休日が上限以下なら超えようがない
         const es = ds.map(d => { const ev = slotsOf(P, d).map(s => ctx.Ev(s, n)); if (ev.length === 1) return ev[0]; const e = lp.aux("dwe"); for (const x of ev) lp.add(e, ">=", x); return e; });
-        ctx.limit("dayoff_weekday_cap", LP.sum(es), "<=", prm.max, { aux: "dwex", ub: 6, fixed: ds.filter(d => fixedEng(P, d, n)).length > prm.max }); } }
+        ctx.limit("dayoff_weekday_cap", LP.sum(es), "<=", prm.max, { aux: "dwex", ub: 6, fixed: fixedCount(ctx, ds, n) > prm.max, fixedExcess: Math.max(0, fixedCount(ctx, ds, n) - prm.max) }); } }
   },
   // 検算: 人 × 曜日ごとに、休日に関わった日を数える
   check(ctx, prm) {
     const { P, A } = ctx, byDow = dayoffByDow(P);
     for (const n of ctx.names) { if (exempt(P, n)) continue;
       for (const [w, ds] of Object.entries(byDow)) { const on = ds.filter(d => slotsOf(P, d).some(s => A.eng(n, s)));
-        ctx.limit("dayoff_weekday_cap", on.length, "<=", prm.max, { code: "DAYOFF_WEEKDAY_OVER", args: { who: n, dow: T.dowLabel(+w), count: on.length, max: prm.max, days: on.map(d => P.label(d)).join(T.listSep()) }, days: on, names: [n], fixed: ds.filter(d => fixedEng(P, d, n)).length > prm.max }); } }
+        ctx.limit("dayoff_weekday_cap", on.length, "<=", prm.max, { code: "DAYOFF_WEEKDAY_OVER", args: { who: n, dow: T.dowLabel(+w), count: on.length, max: prm.max, days: on.map(d => P.label(d)).join(T.listSep()) }, days: on, names: [n], fixed: fixedCount(ctx, ds, n) > prm.max, fixedExcess: Math.max(0, fixedCount(ctx, ds, n) - prm.max) }); } }
   },
   // 減点: 超えた日数 × 重み（必須で固定により許容した分は fixed_conflict）
   penalty(ctx, prm) {
     const { P, A } = ctx, byDow = dayoffByDow(P);
     for (const n of ctx.names) { if (exempt(P, n)) continue;
-      for (const ds of Object.values(byDow)) ctx.limit("dayoff_weekday_cap", ds.filter(d => slotsOf(P, d).some(s => A.eng(n, s))).length, "<=", prm.max, { fixed: ds.filter(d => fixedEng(P, d, n)).length > prm.max }); }
+      for (const ds of Object.values(byDow)) ctx.limit("dayoff_weekday_cap", ds.filter(d => slotsOf(P, d).some(s => A.eng(n, s))).length, "<=", prm.max, { fixed: fixedCount(ctx, ds, n) > prm.max, fixedExcess: Math.max(0, fixedCount(ctx, ds, n) - prm.max) }); }
   },
   summary(P, prm, tv) { return tv("休日の同じ曜日は月 {n} 日まで", { n: prm.max }); },
   messages: { DAYOFF_WEEKDAY_OVER: { en: "{who}: on duty (work or on-call) on {count} days off falling on {dow} ({days}), above the cap of {max}", ja: "{who}: 休日の{dow}曜に当番へ入る日が {count} 日（{days}）で、上限 {max} 日を超える" } },

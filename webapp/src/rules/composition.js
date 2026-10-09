@@ -17,7 +17,7 @@ T.rules.register({
       const who = ctx.names.filter(n => P.compMatch(c, n));
       for (const s of ctx.slots) { if (!P.compOn(c, s)) continue;
         const cnt = LP.sum(who.map(n => ctx.work(s, n)));
-        if (st === "hard") { if (c.min != null) lp.add(cnt, ">=", c.min); if (c.max != null) lp.add(cnt, "<=", Math.max(c.max, who.filter(n => P.isFixedWork(s, n)).length)); continue; } // 上限は、固定した人の分だけは許す（固定しない限り入らない、の意味になる）
+        if (st === "hard") { if (c.min != null) lp.add(cnt, ">=", c.min); if (c.max != null) lp.add(cnt, "<=", Math.max(c.max, who.filter(n => ctx.fixedWorkAt(s, n)).length)); continue; } // 上限は、固定した人の分だけは許す（固定しない限り入らない、の意味になる）
         if (c.min != null) { const v = lp.auxInt("cmpl", 0, 50); lp.add(LP.sum([cnt, v]), ">=", c.min); lp.objAdd(P.softW("composition"), v); } // 減点: 足りない人数
         if (c.max != null) { const v = lp.auxInt("cmpu", 0, 50); lp.add(LP.sub(cnt, v), "<=", c.max); lp.objAdd(P.softW("composition"), v); } // 減点: 多すぎる人数
       } }
@@ -28,7 +28,7 @@ T.rules.register({
       const got = ctx.A.workers(s).filter(n => P.compMatch(c, n)).length;
       if (c.min != null && got < c.min) ctx.viol("COMPOSITION_SHORT", { slot: ctx.slab(s), cond: P.compLabel(c), got, min: c.min });
       if (c.max != null && got > c.max) { const fx = ctx.A.workers(s).filter(n => P.compMatch(c, n) && P.isFixedWork(s, n)); // 固定した人の分で超えた分は「固定指定により許容」
-        ctx.viol("COMPOSITION_OVER", { slot: ctx.slab(s), cond: P.compLabel(c), got, max: c.max }, got <= Math.max(c.max, fx.length) ? s[0] : null, got <= Math.max(c.max, fx.length) ? fx : []); } }
+        ctx.viol("COMPOSITION_OVER", { slot: ctx.slab(s), cond: P.compLabel(c), got, max: c.max }, got <= Math.max(c.max, fx.length) ? s[0] : null, got <= Math.max(c.max, fx.length) ? fx : [], got <= fx.length); } }
   },
   penalty(ctx, prm) {
     const { P, pos } = ctx; if (P.state("composition") !== "soft") return; // 必須のときは解く側が減点を足さない（固定した人の分で上限を超えるのは許容。検算が「固定指定により許容」として出す）

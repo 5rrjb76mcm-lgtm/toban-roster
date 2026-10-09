@@ -2,7 +2,7 @@
 //   node test_oc_matrix_node.js <highs パッケージのパス>
 // 規則 oc_consecutive は「少なくとも片方が OC の連続」だけを数える（勤務→勤務は consecutive_days）。解く側は両方が勤務のときだけ 1 にできる補助変数を引くので、
 // 前月末（定数）・翌月 1 日の固定・連日を必須にして固定で許容する場合・日勤の枠を挟む夜勤どうしで、場合分けを間違えやすい。ここでは待機に入れる役割を持つ小さな構成を使い、
-// 期待値は規則の文から決める: 勤務→勤務は 0（連日が必須で固定により許容なら固定の衝突 50）、OC→勤務・勤務→OC・OC→OC は 6。名前はすべて架空（A〜K）
+// 期待値は規則の文から決める: 勤務→勤務は 0（連日が必須で両日の勤務が固定・定数なら固定の衝突 50）、OC→勤務・勤務→OC・OC→OC は 6。名前はすべて架空（A〜K）
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
 globalThis.T = {};
 for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "solver.js", "check.js"]) vm.runInThisContext(fs.readFileSync(path.join(__dirname, "src", f), "utf8"), { filename: f });
@@ -18,7 +18,7 @@ function rulesOf(dayOn, hard) {
     doctors: "ABCDEFGHIJK".split("").map(c => ({ name: c, team: "S", quota: 0, years: 10 })), oncall_requirement: { S: { S: 1 } }, weights: {}, rule_states: {} };
   T.fillDefaultRules(r); for (const d of T.RULE_DEFS) if (d.states.includes("off")) r.rule_states[d.id] = "off";
   r.rule_states.oncall = "hard"; r.rule_states.oc_consecutive = "soft"; for (const k in r.weights) r.weights[k] = 0; r.weights.oc_consecutive = 6;
-  if (hard) { r.rule_states.consecutive_days = "hard"; r.weights.fixed_conflict = 50; } // 連日を必須にし、固定が絡む組は減点付きで許容
+  if (hard) { r.rule_states.consecutive_days = "hard"; r.weights.fixed_conflict = 50; } // 連日を必須にし、両日の勤務が固定・定数の組だけ減点付きで許容
   return r;
 }
 const put = (asg, key, mode) => { if (mode === "W") asg[key].work = "A"; else asg[key].oc = ["A"]; }; // A を勤務（W）か OC（O）に置く
@@ -34,7 +34,10 @@ let runs = 0, fails = 0;
     if (boundary === "month") { put(asg, "5:night", a); put(asg, `6:${second}`, b); fixedDay = 5; }
     else if (boundary === "prev") { m.prev_month = { last_days: [{ date: 31, night: a === "W" ? "A" : "J", night_oc: [a === "O" ? "A" : "K"] }] }; put(asg, `1:${second}`, b); fixedDay = 1; }
     else { put(asg, `${N}:night`, a); m.fixed[second + (b === "O" ? "_oc" : "")][N + 1] = b === "O" ? ["A"] : "A"; fixedDay = N; }
-    if (hard && a === "W" && b === "W") m.fixed[boundary === "prev" ? second : "night"][fixedDay] = "A"; // 勤務→勤務を連日の必須の下で許容するため、月内の側の勤務を固定する
+    if (hard && a === "W" && b === "W") { // 固定・前月定数だけで連日になる組だけ許容。月内では両方の勤務を固定する
+      m.fixed[boundary === "prev" ? second : "night"][fixedDay] = "A";
+      if (boundary === "month") m.fixed[second][6] = "A";
+    }
     const P = new T.Problem(r, T.normalizeMonth(m, r)), chk = T.check(P, asg), pen = T.penalty(P, asg), res = T.solve(P, highs, { pin: asg, timeLimit: 10, mipGap: 0 });
     const want = a === "W" && b === "W" ? (hard ? 50 : 0) : 6; runs++;
     try {

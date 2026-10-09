@@ -9,24 +9,26 @@ T.rules.register({
   solve(ctx, prm) {
     const { P, LP } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { const xs = []; let konst = 0; const days = [];
-        for (let j = 0; j <= K; j++) { const e = d + j; if (e < 1) konst += P.prevWorked([e, k], n) ? 1 : 0; else if (e > P.N) konst += P.nextFixedWorked(n, k) ? 1 : 0; else { if (ctx.has([e, k])) xs.push(ctx.work([e, k], n)); days.push(e); } }
+      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) {
+        if (d + K > P.N && (ctx.relaxed("fixed") || ctx.relaxed("fixed:next"))) continue; // 診断で翌月の固定接続を外した窓
+        const xs = []; let konst = 0, forced = 0;
+        for (let j = 0; j <= K; j++) { const e = d + j; if (e < 1) konst += P.prevWorked([e, k], n) ? 1 : 0; else if (e > P.N) konst += P.nextFixedWorked(n, k) ? 1 : 0; else if (ctx.has([e, k])) xs.push(ctx.work([e, k], n)); if (ctx.fixedWorkAt([e, k], n)) forced++; }
         if (!xs.length) continue;
-        ctx.limit("shift_run_max", LP.sum([LP.sum(xs), konst]), "<=", K, { fixed: ctx.fixedInvolved(days, n), aux: "srm", ub: K + 1 }); } }
+        ctx.limit("shift_run_max", LP.sum([LP.sum(xs), konst]), "<=", K, { fixed: forced > K, aux: "srm", ub: K + 1 }); } }
   },
   check(ctx, prm) {
     const { P } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.worked(n, [e, k]);
-      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0; const days = []; for (let j = 0; j <= K; j++) { if (at(d + j)) c++; if (d + j >= 1 && d + j <= P.N) days.push(d + j); }
-        if (c > K && days.length) ctx.viol("SHIFT_RUN_TOO_LONG", { who: n, from: ctx.lab(Math.max(d, 1)), shift: P.shiftLabel(k), max: K }, days, n, ctx.fixedInvolved(days, n)); } }
+      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.has([e, k]) && ctx.worked(n, [e, k]);
+      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0, forced = 0; const days = []; for (let j = 0; j <= K; j++) { if (at(d + j)) c++; if (ctx.fixedWorkAt([d + j, k], n)) forced++; if (d + j >= 1 && d + j <= P.N) days.push(d + j); }
+        if (c > K && days.length) ctx.viol("SHIFT_RUN_TOO_LONG", { who: n, from: ctx.lab(Math.max(d, 1)), shift: P.shiftLabel(k), max: K }, days, n, forced > K); } }
   },
   penalty(ctx, prm) {
     const { P } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
-      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.worked(n, [e, k]);
-      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0; const days = []; let any = false; for (let j = 0; j <= K; j++) { if (at(d + j)) c++; const e = d + j; if (e >= 1 && e <= P.N) { days.push(e); if (ctx.has([e, k])) any = true; } }
-        if (any) ctx.limit("shift_run_max", c, "<=", K, { fixed: ctx.fixedInvolved(days, n) }); } }
+      const at = e => e < 1 ? P.prevWorked([e, k], n) : e > P.N ? P.nextFixedWorked(n, k) : ctx.has([e, k]) && ctx.worked(n, [e, k]);
+      for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { let c = 0, forced = 0, any = false; for (let j = 0; j <= K; j++) { const e = d + j; if (at(e)) c++; if (ctx.fixedWorkAt([e, k], n)) forced++; if (e >= 1 && e <= P.N && ctx.has([e, k])) any = true; }
+        if (any) ctx.limit("shift_run_max", c, "<=", K, { fixed: forced > K }); } }
   },
   ui: {
     render(R, h) { const c = R.shift_run_max || { day: 3 }; return h.shifts.map(([id, lb]) => `<label>${h.esc(h.tx("{shift}は連続", { shift: lb }))} <input type="number" min="1" max="31" data-srm="${id}" value="${h.esc(c[id] ?? "")}" style="width:3.5em"> ${h.esc(h.tx("日まで（空欄＝制限なし）"))}</label>`).join("　"); },

@@ -436,10 +436,22 @@ class Problem:
         return out
 
     def is_fixed_work(self, s, n):
-        return (tuple(s), n) in self.fixed_work_keys
+        return tuple(s) in self.all_slots_set and (tuple(s), n) in self.fixed_work_keys
 
     def is_fixed_eng(self, s, n):
-        return (tuple(s), n) in self.fixed_eng_keys
+        return tuple(s) in self.all_slots_set and (tuple(s), n) in self.fixed_eng_keys
+
+    def is_fixed_oc(self, s, n):
+        if tuple(s) not in self.all_slots_set:
+            return False
+        table = self.fixed_day_oc if s[1] == "day" else self.fixed_night_oc
+        return n in table.get(s[0], [])
+
+    def fixed_work_day(self, d, n):
+        """実在する実勤務の固定だけ。前月の勤務は定数で、OC・主担当の固定は含めない。"""
+        if d < 1:
+            return any(self.prev_fixed.get((d, k), {}).get("work") == n for k in ("day", "night"))
+        return any(self.is_fixed_work((d, k), n) for k in ("day", "night"))
 
     def count_lo(self, n):
         return self.count_min.get(n, self.quotas[n] - self.tol)
@@ -448,7 +460,7 @@ class Problem:
         return self.count_max.get(n, self.quotas[n] + self.tol)
 
     def fixed_work_count(self, n):
-        return sum(1 for (_, m) in self.fixed_work_keys if m == n)
+        return sum(1 for s in self.slots if self.is_fixed_work(s, n))
 
     def next_day_is_holiday(self):
         return ((self.dow(self.N) + 1) % 7) >= 5 or self.next_first_holiday
@@ -457,7 +469,7 @@ class Problem:
         return "day" if self.next_day_is_holiday() else "night"
 
     def next_fixed_works(self, n):
-        return self.next_fixed["day"] == n or self.next_fixed["night"] == n
+        return (self.next_day_is_holiday() and self.next_fixed["day"] == n) or self.next_fixed["night"] == n
 
     def next_fixed_engaged(self, n, k):
         x = self.next_fixed
@@ -530,6 +542,12 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
     names = P.duty_names
     slots = P.slots
 
+    # 診断で固定の等式を外したときは、その入力を例外の根拠にしない。前月は常に定数。
+    fixed_work = lambda s, n: "fixed" not in relax and P.is_fixed_work(s, n)
+    fixed_oc = lambda s, n: "fixed" not in relax and P.is_fixed_oc(s, n)
+    fixed_eng = lambda s, n: "fixed" not in relax and P.is_fixed_eng(s, n)
+    fixed_day = lambda d, n: (d < 1 or "fixed" not in relax) and P.fixed_work_day(d, n)
+
     work, oc = {}, {}
     for s in slots:
         for n in names:
@@ -590,16 +608,16 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
     for n in (names if "unavailable" not in relax else []):
         # 固定指定した枠・医師には不可を適用しない（固定指定が優先。検算で「固定指定により許容」として表示）
         for d in P.unavail_night.get(n, ()):
-            if 1 <= d <= P.N and not P.is_fixed_eng((d, "night"), n):
+            if 1 <= d <= P.N and not fixed_eng((d, "night"), n):
                 M.Add(work[(d, "night"), n] == 0)
                 M.Add(oc[(d, "night"), n] == 0)
         for (d, part) in P.unavail_other.get(n, ()):
             if not (1 <= d <= P.N):
                 continue
-            if (d, "day") in work_slots(P) and not P.is_fixed_eng((d, "day"), n):
+            if (d, "day") in work_slots(P) and not fixed_eng((d, "day"), n):
                 M.Add(work[(d, "day"), n] == 0)
                 M.Add(oc[(d, "day"), n] == 0)
-            if part == "allday" and not P.is_fixed_eng((d, "night"), n):  # 前夜からの担当は除外しない（未明から不可なら前日も不可にする運用）
+            if part == "allday" and not fixed_eng((d, "night"), n):  # 前夜からの担当は除外しない（未明から不可なら前日も不可にする運用）
                 M.Add(work[(d, "night"), n] == 0)
                 M.Add(oc[(d, "night"), n] == 0)
 
@@ -641,7 +659,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             continue
         if "quota" not in relax:
             M.Add(total[n] >= math.ceil(P.count_lo(n)))
-            M.Add(total[n] <= math.floor(max(P.count_hi(n), P.fixed_work_count(n))))  # 目安は丸めず、整数の勤務回数が満たす同値の境界にする
+            M.Add(total[n] <= math.floor(max(P.count_hi(n), sum(fixed_work(s, n) for s in slots))))  # 目安は丸めず、整数の勤務回数が満たす同値の境界にする
         dev = count_deviation(n, P.targets[n], "dev")
         obj.append(W["target_deviation"] * dev)
         # できれば避けたい日（調整目標）: その枠の勤務・OCに減点。申告で負担が減らないよう、基準回数を下回る分に大きな減点。
@@ -675,26 +693,23 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             M.AddMaxEquality(v, [Wv((d, k), n) for k in ks])
             _yd[(d, n)] = v
         return _yd[(d, n)]
-    # 連続禁止は、固定指定した枠・医師が絡む組だけ「減点付きで許容」（fixed_conflict）。それ以外は必須
+    # 固定入力だけで避けられない実勤務の組だけ「減点付きで許容」（fixed_conflict）。
     def le1(fixed_involved, expr):
         if fixed_involved:
-            v = M.NewIntVar(0, 3, f"fxc_{len(obj)}")  # 超過分だけ減点（式の最大は4）
+            v = M.NewIntVar(0, 1, f"fxc_{len(obj)}")  # 実勤務2枠または2日の組。超過は1だけ。
             M.Add(expr <= 1 + v)
             obj.append(W.get("fixed_conflict", 50) * v)
         else:
             M.Add(expr <= 1)
 
-    def fx_w(d, n):
-        return any(P.is_fixed_work((d, k), n) for k in ("day", "night"))
-
     for n in (names if "consecutive" not in relax else []):
         if P.same_day_double_on:
             for d in range(1, P.N + 1):
                 if (d, "day") in P.all_slots_set:
-                    le1(fx_w(d, n), work[(d, "day"), n] + work[(d, "night"), n])
+                    le1(fixed_work((d, "day"), n) and fixed_work((d, "night"), n), work[(d, "day"), n] + work[(d, "night"), n])
         if P.consecutive_days_on:
             for d in range(max(first_prev, 0), P.N):  # 前月どうしの組は対象外（定数の式で解なしにしない）
-                le1(fx_w(d, n) or fx_w(d + 1, n), yday(d, n) + yday(d + 1, n))
+                le1(fixed_day(d, n) and fixed_day(d + 1, n), yday(d, n) + yday(d + 1, n))
 
     # 隣接枠の連続禁止（例外: 主担当の同一期間、若手の同日兼務）
     def same_period(s1, s2):
@@ -816,17 +831,14 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             # 月末の枠もその医師で固定されているとき（長い連休で主担当担当を2日連続にする等）は、連続を減点付きで許容（fixed_conflict）
             def le0(fixed_involved, expr):
                 if fixed_involved:
-                    v = M.NewIntVar(0, 3, f"fxc_{len(obj)}")
+                    v = M.NewIntVar(0, 1, f"fxc_{len(obj)}")
                     M.Add(expr <= v)
                     obj.append(W.get("fixed_conflict", 50) * v)
                 else:
                     M.Add(expr <= 0)
-            # 月末の日勤・夜勤どちらかの固定でも「固定が絡む」とみなす（休日の主担当医師は日勤に入れば同日の夜間にも主担当担当として入るため）
-            def fx_n(n):
-                return P.is_fixed_eng((N, "day"), n) or P.is_fixed_eng((N, "night"), n)
             for n in names:
-                if P.next_fixed_works(n):
-                    le0(fx_n(n), yday(N, n))
+                if P.consecutive_days_on and "consecutive" not in relax and P.next_fixed_works(n):
+                    le0(fixed_day(N, n), yday(N, n))
                 if P.next_fixed_engaged(n, first_k) and (N, "night") in P.all_slots_set:
                     if P.team[n] == "I" and cross and first_k == "day":
                         if not P.next_fixed["charge"]:  # 主担当担当の固定があればそれを優先（下で1本だけ張る）
@@ -862,18 +874,18 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 ext_am = P.busy(n, nd, "am", ("external",))
                 ext_pm = P.busy(n, nd, "pm", ("external",))
                 pm_full = P.busy(n, nd, "pm")  # 午後または終日の外来・病棟番・外勤
-                if (ext_am or ext_pm or pm_full) and not P.is_fixed_work((d, "night"), n):  # 固定指定した枠は適用しない
+                if (ext_am or ext_pm or pm_full) and not fixed_work((d, "night"), n):  # 固定指定した枠は適用しない
                     M.Add(work[(d, "night"), n] == 0)
-                if ext_am and not P.is_fixed_eng((d, "night"), n):
+                if ext_am and not fixed_oc((d, "night"), n):
                     M.Add(oc[(d, "night"), n] == 0)
             # 午後外勤日のOC禁止・同日夜勤
             if P.busy(n, d, "pm", ("external",)):  # 午後外勤日: 日勤OCは不可。夜勤・夜間OCは規則 pm_external_night（confirm / forbid / allow。固定指定した枠は適用しない）
-                if (d, "day") in P.all_slots_set and not P.is_fixed_eng((d, "day"), n):
+                if (d, "day") in P.all_slots_set and not fixed_oc((d, "day"), n):
                     M.Add(oc[(d, "day"), n] == 0)
                 if P.pm_ext_night_banned(d, n):
-                    if not P.is_fixed_eng((d, "night"), n):
+                    if not fixed_oc((d, "night"), n):
                         M.Add(oc[(d, "night"), n] == 0)
-                    if not P.is_fixed_work((d, "night"), n):
+                    if not fixed_work((d, "night"), n):
                         M.Add(work[(d, "night"), n] == 0)
 
     # カテ室責任医師の必要人数（平日）
@@ -987,7 +999,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             continue
         for d in P.pre_workday_nights():
             if mode == "forbid":
-                if not P.is_fixed_work((d, "night"), n):
+                if not fixed_work((d, "night"), n):
                     M.Add(work[(d, "night"), n] == 0)
             elif mode == "avoid":
                 obj.append(W["arrhythmia_pre_workday_night"] * work[(d, "night"), n])
@@ -1045,7 +1057,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
             continue
         def wd(d, n=n):
             if d > P.N:
-                return 1 if P.next_fixed_works(n) else 0
+                return 1 if "fixed" not in relax and P.next_fixed_works(n) else 0
             return yday(d, n)
         def prev_worked(d, n=n):
             return any(Wv((d, k), n) == 1 for k in ("day", "night") if (d, k) in P.all_slots_set)
@@ -1163,12 +1175,23 @@ def prev_charge_slots(P, p):
     return [slots[0] for d in p["prev_days"] if (slots := charge_day_slots({"slots": P.prev_slots}, d))]
 
 
+class CheckViolation(str):
+    """表示用文字列に、規則が確認した固定入力だけの例外を添える。文面から推測しない。"""
+    def __new__(cls, text, fixed=False):
+        value = super().__new__(cls, text)
+        value.fixed = bool(fixed)
+        return value
+
+
 def check(P: Problem, asg: dict):
     A = Asg(P, asg)
     V = []
     T = P.team
     names = P.duty_names
     lab = P.label
+
+    def viol(text, fixed=False):
+        V.append(CheckViolation(text, fixed))
 
     def slab(s):
         return f"{lab(s[0]) if s[0] >= 1 else '前月'+str(s)}{'日勤' if s[1]=='day' else '夜勤'}"
@@ -1202,12 +1225,12 @@ def check(P: Problem, asg: dict):
     for n in names:
         for d in P.unavail_night.get(n, ()):
             if 1 <= d <= P.N and A.eng(n, (d, "night")):
-                V.append(f"{lab(d)}: {n} は夜間不可だが夜間担当")
+                viol(f"{lab(d)}: {n} は夜間不可だが夜間担当", P.is_fixed_eng((d, "night"), n))
         for (d, part) in P.unavail_other.get(n, ()):
             if A.eng(n, (d, "day")):
-                V.append(f"{lab(d)}: {n} は{part}不可だが日勤帯担当")
+                viol(f"{lab(d)}: {n} は{part}不可だが日勤帯担当", P.is_fixed_eng((d, "day"), n))
             if part == "allday" and A.eng(n, (d, "night")):
-                V.append(f"{lab(d)}: {n} は終日不可だが当夜に担当")
+                viol(f"{lab(d)}: {n} は終日不可だが当夜に担当", P.is_fixed_eng((d, "night"), n))
     # 3 回数
     for n in P.names:
         tot = sum(1 for s in P.slots if A.worked(n, s))
@@ -1224,23 +1247,23 @@ def check(P: Problem, asg: dict):
         if tot < lo or tot > ub:
             V.append(f"{n}: 勤務{tot}回が当月の範囲 {max(0, lo)}〜{hi} 回の外" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}の範囲外")
         elif tot > hi:
-            V.append(f"{n}: 勤務{tot}回が当月の上限 {hi} 回を超える（固定指定 {fc} 件のため）" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}を超える（固定指定 {fc} 件のため）")
+            viol(f"{n}: 勤務{tot}回が当月の上限 {hi} 回を超える（固定指定 {fc} 件のため）" if lim else f"{n}: 勤務{tot}回が目安{q}±{P.tol}を超える（固定指定 {fc} 件のため）", fixed=True)
     # 4 実勤務の連続
     first_prev = min([s[0] for s in P.prev_slots], default=1)
     for n in names:
         for d in range(first_prev, P.N + 1):
-            if P.same_day_double_on and A.worked(n, (d, "day")) and A.worked(n, (d, "night")):
-                V.append(f"{lab(d)}: {n} 同日の日勤＋夜勤")
-            if P.consecutive_days_on and d < P.N and any(A.worked(n, (d, k)) for k in ("day", "night")) and any(A.worked(n, (d + 1, k)) for k in ("day", "night")):
-                V.append(f"{lab(max(d,1))}→翌日: {n} 連日の実勤務")
+            if d >= 1 and P.same_day_double_on and A.worked(n, (d, "day")) and A.worked(n, (d, "night")):
+                viol(f"{lab(d)}: {n} 同日の日勤＋夜勤", P.is_fixed_work((d, "day"), n) and P.is_fixed_work((d, "night"), n))
+            if P.consecutive_days_on and 0 <= d < P.N and any(A.worked(n, (d, k)) for k in ("day", "night")) and any(A.worked(n, (d + 1, k)) for k in ("day", "night")):
+                viol(f"{lab(max(d,1))}→翌日: {n} 連日の実勤務", P.fixed_work_day(d, n) and P.fixed_work_day(d + 1, n))
     # 5 隣接枠の連続
     # 5 隣接枠の連続: OC を含む連続は 2026-09-17 から減点（oc_consecutive）。実勤務どうしの連続は 4 で検出済み
     # 翌月1日の固定指定（カレンダーの翌月1日欄）との連続・接続
     if P.next_fixed_any():
         N, nl = P.N, lab(P.N + 1)
         for n in names:
-            if P.next_fixed_works(n) and any(A.worked(n, (N, k)) for k in ("day", "night") if (N, k) in P.all_slots_set):
-                V.append(f"{lab(N)}→{nl}: {n} 連日の実勤務（翌月1日の固定）")
+            if P.consecutive_days_on and P.next_fixed_works(n) and any(A.worked(n, (N, k)) for k in ("day", "night") if (N, k) in P.all_slots_set):
+                viol(f"{lab(N)}→{nl}: {n} 連日の実勤務（翌月1日の固定）", P.fixed_work_day(N, n))
     # 6 主担当担当（日ごとに1名。土日の分割は減点付きで常に候補）
     charge = {}  # period id -> {day: name}
     for p in P.periods:
@@ -1295,23 +1318,23 @@ def check(P: Problem, asg: dict):
         for n in P.rules.get("arrhythmia_responsible_night") or []:
             for d in P.pre_workday_nights():
                 if A.worked(n, (d, "night")):
-                    V.append(f"{lab(d)}夜勤: {n} 副担当責任医師の翌日が休日でない平日夜勤（禁止設定）")
+                    viol(f"{lab(d)}夜勤: {n} 副担当責任医師の翌日が休日でない平日夜勤（禁止設定）", P.is_fixed_work((d, "night"), n))
     # 8 定期業務
     for n in names:
         for d in range(1, P.N + 1):
             nd = d + 1  # 月末は翌月1日を翌日として判定
             if nd <= P.N + 1:
                 if A.worked(n, (d, "night")) and (P.busy(n, nd, "am", ("external",)) or P.busy(n, nd, "pm")):
-                    V.append(f"{lab(d)}夜勤: {n} 翌日に外勤または午後・終日の業務")
+                    viol(f"{lab(d)}夜勤: {n} 翌日に外勤または午後・終日の業務", P.is_fixed_work((d, "night"), n))
                 if n in A.oc((d, "night")) and P.busy(n, nd, "am", ("external",)):
-                    V.append(f"{lab(d)}夜間OC: {n} 翌朝に外勤")
+                    viol(f"{lab(d)}夜間OC: {n} 翌朝に外勤", P.is_fixed_oc((d, "night"), n))
             if P.busy(n, d, "pm", ("external",)):
                 if n in A.oc((d, "day")):
-                    V.append(f"{lab(d)}: {n} 午後外勤日に日勤OC")
+                    viol(f"{lab(d)}: {n} 午後外勤日に日勤OC", P.is_fixed_oc((d, "day"), n))
                 if n in A.oc((d, "night")) and P.pm_ext_night_banned(d, n):
-                    V.append(f"{lab(d)}: {n} 午後外勤後の夜間OC（{'禁止設定' if P.pm_ext_night == 'forbid' else '未確認'}）")
+                    viol(f"{lab(d)}: {n} 午後外勤後の夜間OC（{'禁止設定' if P.pm_ext_night == 'forbid' else '未確認'}）", P.is_fixed_oc((d, "night"), n))
                 if A.worked(n, (d, "night")) and P.pm_ext_night_banned(d, n):
-                    V.append(f"{lab(d)}: {n} 午後外勤後の夜勤（{'禁止設定' if P.pm_ext_night == 'forbid' else '未確認'}）")
+                    viol(f"{lab(d)}: {n} 午後外勤後の夜勤（{'禁止設定' if P.pm_ext_night == 'forbid' else '未確認'}）", P.is_fixed_work((d, "night"), n))
     # 9 カテ室
     cath = cath_table(P, A) if P.cath_on else []
     for row in cath:
@@ -1438,27 +1461,11 @@ def metrics(P: Problem, A: Asg, charge):
 # ----------------------------------------------------------------------------
 # 報告書（Markdown）
 # ----------------------------------------------------------------------------
-# 固定指定が絡んでいても「許容」に分けない違反の文面（check が出す文の一部）。文面を変えるときはここも合わせる（webapp/test_node.js が最終の件数で確かめる）
-NEVER_ALLOWED = ("OCなしの固定なのに", "月1回まで", "OCに同じ人が重ねて入っている", "OCが当番候補でない", "OC構成不一致", "がOCを兼ねている", "はOC対象外")
-
-
 def split_fixed_warnings(P: Problem, V):
-    """固定指定した枠・医師に関わる違反を「固定指定により許容（要確認）」に分ける（固定指定との不一致そのものは違反のまま）"""
-    by_day = {}
-    for (s, n) in P.fixed_eng_keys:
-        by_day.setdefault(s[0], set()).add(n)
+    """規則が固定入力だけで避けられないと確認した違反だけを許容に分ける。"""
     V2, Wf = [], []
     for v in V:
-        moved = False
-        if any(k in v for k in NEVER_ALLOWED):  # 固定との不一致・構造の違反は、固定が絡んでいても許容にしない（JS 版の検算と同じ）
-            V2.append(v)
-            continue
-        if "固定指定" not in v or "件のため" in v:
-            for d, ns in by_day.items():
-                if any(n in v for n in ns) and (P.label(d) in v or ("翌" in v and d > 1 and P.label(d - 1) in v)):
-                    Wf.append(v); moved = True; break
-        if not moved:
-            V2.append(v)
+        (Wf if isinstance(v, CheckViolation) and v.fixed else V2).append(v)
     return V2, Wf
 
 

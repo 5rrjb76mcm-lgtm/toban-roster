@@ -356,7 +356,7 @@
       // 翌月1日の固定（カレンダーの翌月1日欄）。当月の計算では月末との連続禁止と月またぎの土日の主担当担当の接続に使い、翌月作成時に1日の固定として引き継ぐ
       const nk = String(this.N + 1);
       this.nextFixed = { day: namesOf((f.day || {})[nk]), night: namesOf((f.night || {})[nk]), charge: (f.weekend_charge || {})[nk] || null, day_oc: [].concat((f.day_oc || {})[nk] || []), night_oc: [].concat((f.night_oc || {})[nk] || []) };
-      // 固定指定の集合。固定した枠・医師については、不可・連続禁止・定期業務の翌日制約などの必須条件を緩める（減点付き）
+      // 保存された固定指定の集合。例外は各規則が有効な固定入力だけで不可避と証明した違反に限る。
       this.fixedWorkKeys = new Set(); this.fixedEngKeys = new Set();
       for (const [d, ns] of Object.entries(this.fixedNight)) for (const n of ns) { this.fixedWorkKeys.add(`${d}:night|${n}`); this.fixedEngKeys.add(`${d}:night|${n}`); }
       for (const [d, ns] of Object.entries(this.fixedDay)) for (const n of ns) { this.fixedWorkKeys.add(`${d}:day|${n}`); this.fixedEngKeys.add(`${d}:day|${n}`); }
@@ -593,7 +593,7 @@
     isFixedEng(s, n) { return this.fixedEngKeys.has(`${s[0]}:${s[1]}|${n}`); }
     isFixedOnly(n) { return (this.doctors[n] || {}).duty === "fixed_only"; } // 名簿の当番の欄が「固定したときだけ」（師長など。固定した枠にだけ入る）
     isExempt(n) { return this.isRole(n, "reserve") || this.isFixedOnly(n); } // 回数・休み・偏りの規則を当てはめない人（予備の役割と「固定したときだけ」の人）
-    fixedWorkCount(n) { let c = 0; for (const k of this.fixedWorkKeys) if (k.slice(k.indexOf("|") + 1) === n) c++; return c; }
+    fixedWorkCount(n) { return this.slots.filter(s => this.isFixedWork(s, n)).length; }
     nextDayIsHoliday() { return ((this.dow(this.N) + 1) % 7) >= 5 || this.nextFirstHoliday; }
     nextSlotExists(kind) { const sh = (this.shifts || []).find(x => x.id === kind), h = this.nextDayIsHoliday(); if (!sh) return kind === "night" || h; return sh.on === "none" ? false : sh.on === "all" ? true : sh.on === "weekdays" ? !h : h; } // 翌月 1 日にその勤務帯の枠があるか（勤務帯の設定に従う。2 交代は平日にも日勤がある）
     nextFirstSlotKind() { return this.nextSlotExists("day") ? "day" : "night"; } // 翌月1日の最初の枠（月末の夜勤に隣接する枠）

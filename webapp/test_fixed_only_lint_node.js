@@ -48,7 +48,7 @@ const scenarios = [
   ["hard/OC-only/normal-staff-fills-work", { quotaA: 0, oncall: true, oc: allDays }, "Optimal", [EMPTY], false, 0],
   ["hard/next-month-only/no-work-capacity", { quotaA: 1, quotaB: 27, next: true }, "Infeasible", [HIGH, EMPTY], false, 0],
   ["hard/current-and-next-month", { quotaA: 0, quotaB: 27, fixed: [1], next: true }, "Optimal", [], false, 1],
-  ["hard/nonexistent-day-fixed/no-work-capacity", { quotaA: 0, quotaB: 27, absentDay: true }, "Infeasible", ["LINT_FIXED_NO_SLOT", HIGH], false, 0],
+  ["hard/nonexistent-day-fixed/no-work-capacity", { quotaA: 0, quotaB: 27, absentDay: true }, "Infeasible", ["LINT_FIXED_NO_SLOT", HIGH, EMPTY], false, 0],
   ["hard/day-and-night-count-as-two-slots", { quotaA: 0, quotaB: 54, fixed: [1], absentDay: true, dayAll: true }, "Optimal", [], false, 2],
   ["hard/two-fixed-shifts", { quotaA: 0, quotaB: 26, fixed: [1, 2] }, "Optimal", [], true, 2],
   ["hard/reserve-still-limited-to-one", { reserve: true, allow: true, quotaA: 0, quotaB: 26, fixed: [1, 2] }, "Infeasible", [HIGH], true, 2],

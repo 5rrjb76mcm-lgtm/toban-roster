@@ -101,6 +101,9 @@
 
 ## テスト
 
+- `test_fixed_only_pairs_node.js` / `test_fixed_only_windows_node.js` — 固定入力だけでは避けられない矛盾だけを W とする契約を、片側固定・全固定・前月末／翌月・勤務と OC・存在する枠・複数名の枠・役割・否定条件／最短連勤で検証。架空の手入力割当、HiGHS 固定解、目的関数と独立採点を突き合わせる
+- `test_fixed_only_caps_node.js` / `test_fixed_only_engagement_node.js` — 固定だけで上限を超えても裁量の追加超過は V／解なしとなること、勤務／OC／期間責任者の固定を混同しないこと、部品の明示的証明と許容量を検証
+
 - `test_calendar_day_readback_node.js` — 数値文字列で読み込んだ日勤・夜勤希望と夜勤不可をカレンダーに表示し、無関係な編集・保存・再読込でも日付を落とさず、明示的な解除ができることを架空データとDOM代替で確かめる。曜日パターンの「土日祝にも展開する」の保存・再描画・繰り返し展開・翌月への引き継ぎも確かめる
 - `test_next_fixed_work_slots_node.js` — 存在しない翌月勤務帯の古い固定入力を保持したまま、連日・連勤・勤務帯のつながり・明け休み・勤務間隔の判定に実在する枠だけを数えることを解く側・検算・減点・説明資料で確かめる
 - `test_fixed_oc_capacity_node.js` — 同じ役割のOCを複数名必要とする設定で、固定OCの入力チェックが一律1名ではなく勤務者に応じた必要数と照合し、人数超過・OCなし・無効な勤務帯も見分けることを架空データで確かめる
@@ -119,6 +122,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `test_input_escape_node.js` — JSON から復元した数値欄・日付の一覧も HTML 属性として無害化されることを、設定・月別入力・規則の欄で検査する（架空の文字列、Python 標準の HTMLParser。ブラウザでの実行試験ではない）
 - `test_delimited_names_node.js` — 氏名に `:`・`|` があるときも、月データの統合・履歴の読み戻し・固定の印・前月末の接続・翌月への引き継ぎ・固定指定の例外判定で人や入力を取り違えないことを架空データで確かめる
 - `test_refine_node.js` — assert 付きの回帰テスト（名簿の正規化、規則の欠損補完、固定指定の検算分類、docx の整形式、統合の往復、避パターン展開）
+- `test_merge_scalar_clear_node.js` — 任意の表題・施設 ID の削除が3者統合で復活しないことを確認（欠落・null・空文字、左右の変更、衝突時の選択、疑似フォルダへの自動保存）。通常の表題選択欄から空欄にはできないため、互換データを含む低水準の統合の回帰試験
 - `test_merge_node.js` `test_docx_node.js` `test_dutydays_node.js` `test_infer_node.js` `test_prevconn_node.js` `test_lint_node.js` — 各機能の確認（出力を目視）
 - `test_node.js` — Python 版との突き合わせ（上の 4 条件。外れれば失敗）
 - `test_penalty_node.js` — 減点の二重実装の突き合わせ。解いた割当について、検算の側で数え直した減点の合計（`check.js` の `penalty`）と、解く側の目的関数の値（同じ割当に全枠を固定して解いた値）が一致することを、見本の施設 4 種と規則の状態を変えた設定 19 通りで確かめる。乱数の重みで崩した割当（`solve` の `jitter`）も使い、どの設定でも 0 点だった項があれば一覧に出す

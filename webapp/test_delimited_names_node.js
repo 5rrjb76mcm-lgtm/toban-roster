@@ -120,14 +120,19 @@ test("calendar fixed removal deletes its pipe-name tag without touching another 
   pane("doctorPane", { '[data-cal="fixed"]': [el] }, { doctor: N[0] });
   A.readAll(); assert.strictEqual(m.fixed.night[5], N[1]); assert.deepStrictEqual(m.fixed_tags, { [`5:night|${N[1]}`]: "Second" });
 });
-test("day-level fixed exception matching keeps a pipe-containing staff name", () => {
-  // A synthetic plug-in exercises the documented day/name fallback classification.
+test("explicit fixed-only proof keeps a pipe-containing staff name; day/name contact alone stays strict", () => {
   const id = "local.synthetic_delimited_check", code = "SYNTHETIC_DELIMITED_CHECK";
-  T.rules.register({ id, api: 1, states: ["hard", "off"], defaultState: "off", label: "Synthetic name test", messages: { [code]: { en: "Synthetic {who}", ja: "Synthetic {who}" } }, check(ctx) { ctx.viol(code, { who: N[0] }, 5, N[0]); } });
+  let proof;
+  T.rules.register({ id, api: 1, states: ["hard", "off"], defaultState: "off", label: "Synthetic name test", messages: { [code]: { en: "Synthetic {who}", ja: "Synthetic {who}" } }, check(ctx) { ctx.viol(code, { who: N[0] }, 5, N[0], proof ? proof(ctx) : undefined); } });
   const m = setup({ fixed: { night: { 5: N[0] } } }); A.state.rules.rule_states[id] = "hard";
   const P = new T.Problem(A.state.rules, m), asg = Object.fromEntries(P.slots.map(([d, k]) => [`${d}:${k}`, { work: N[0], oc: [] }]));
-  const r = T.check(P, asg);
-  assert.ok(r.WC.some(x => x.code === code), "fixed day-level exception remains permitted"); assert.ok(!r.VC.some(x => x.code === code));
+  let r = T.check(P, asg);
+  assert.ok(r.VC.some(x => x.code === code), "a fixed name/date is not proof for an unspecified row"); assert.ok(!r.WC.some(x => x.code === code));
+  // A unary ban of this exact work slot is forced by its own fixed input.
+  proof = ctx => ctx.fixedWorkAt([5, "night"], N[0]); r = T.check(P, asg);
+  assert.ok(r.WC.some(x => x.code === code), "explicit proof preserves the complete pipe-containing name"); assert.ok(!r.VC.some(x => x.code === code));
+  proof = ctx => ctx.fixedWorkAt([5, "night"], N[1]); r = T.check(P, asg);
+  assert.ok(r.VC.some(x => x.code === code), "another full name cannot borrow the fixed proof"); assert.ok(!r.WC.some(x => x.code === code));
 });
 // Render actual previous-connection markup and decode it using a real HTML parser.
 // Only the minimal DOM selection API is substituted for readSettingsMonth.
