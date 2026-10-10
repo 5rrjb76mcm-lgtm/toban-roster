@@ -92,6 +92,23 @@ def _month_count_limits(month, key):
     return out
 
 
+def _single_worker_count(value):
+    """既定の1人配置と等価な count の表現だけを受け付ける。
+
+    JS workerCount と同じく未指定/null/空の枝は1。勤務帯・日種別の
+    既知キーだけを許し、未使用の枝も検査する。丸め・文字列変換はしない。
+    """
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return value == 1
+    return (isinstance(value, dict)
+            and all(k in ("day", "night", "weekday", "off_days")
+                    and _single_worker_count(v) for k, v in value.items()))
+
+
 class Problem:
     def __init__(self, rules: dict, month: dict):
         self.rules = rules
@@ -155,11 +172,12 @@ class Problem:
                 raise SystemExit("Python 版は役割の識別子の変更に未対応です（JS 版で計算してください）: " + "、".join(sorted(got)))
         pos = (((self.rules.get("profile") or {}).get("positions") or {}).get("work") or {})
         cnt = pos.get("count", pos if not isinstance(pos, dict) or "count" in pos else 1)
-        if cnt not in (None, 1) and cnt != {}:
-            raise SystemExit("Python 版は 1 枠に複数名を置く設定に未対応です（JS 版で計算してください）")
+        if not _single_worker_count(cnt):
+            raise SystemExit("Python 版は既定の1人配置だけに対応しています（profile.positions.work.count の配置人数・形式を確認するか、JS 版で計算してください）")
         sh = ((self.rules.get("profile") or {}).get("shifts") or [])
-        if any((x or {}).get("on") not in (None, "off_days" if (x or {}).get("id") == "day" else "all") for x in sh):
-            raise SystemExit("Python 版は勤務帯の設定（profile.shifts の on）に未対応です（JS 版で計算してください）")
+        if any((x or {}).get("id") not in ("day", "night")
+               or (x or {}).get("on") not in (None, "off_days" if (x or {}).get("id") == "day" else "all") for x in sh):
+            raise SystemExit("Python 版は勤務帯の設定（profile.shifts の id / on）に未対応です（JS 版で計算してください）")
         if isinstance(pos, dict) and pos.get("min") is not None:
             raise SystemExit("Python 版は 1 枠の人数の幅（profile.positions.work.min）に未対応です（JS 版で計算してください）")
         if (self.rules.get("profile") or {}).get("quota_mode") == "share":
@@ -1263,6 +1281,8 @@ def check(P: Problem, asg: dict):
                 V.append(f"{n}: 部長が勤務に配置されている（{tot}回）")
             elif tot > 1:
                 V.append(f"{n}: 部長の勤務が{tot}回（月1回まで）")
+            continue
+        if n not in names:  # 解く側・JS と同じ当番候補だけ。候補外の割当・固定不一致は別に検査する。
             continue
         fc = P.fixed_work_count(n)
         lo, hi, lim = P.count_lo(n), P.count_hi(n), (n in P.count_min or n in P.count_max)
