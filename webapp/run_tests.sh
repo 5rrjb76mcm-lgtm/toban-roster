@@ -33,6 +33,7 @@ run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_settings_import_node.js
 run test_role_edit_preservation_node.js
+run test_role_metadata_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
 run test_previous_selection_preservation_node.js
@@ -44,12 +45,14 @@ run test_undo_profile_identity_node.js
 run test_undo_month_node.js
 run test_numeric_validation_node.js "$HP"
 run test_fractional_targets_node.js "$HP" "$PY"
+run test_previous_fixed_integrity_node.js
 run test_save_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
 run test_save_local_input_node.js
 run test_import_previous_node.js
+run test_import_previous_role_identity_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
 run test_absent_assignment_node.js
@@ -77,6 +80,9 @@ run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_friday_night_off_node.js "$HP" "$PY"
+  run test_python_saved_count_node.js "$HP" "$PY"
+  echo "== Python saved count compatibility"
+  "$PY" ../tools/test_saved_count_compat.py || fail=1
   echo "== Python Friday minimum state contract"
   "$PY" ../tools/test_friday_night_off.py || fail=1
 else echo "--  Python Friday minimum checks skipped (../tools/.venv is unavailable)"; fi
@@ -109,6 +115,11 @@ run test_fixed_only_lint_node.js "$HP"
 run test_fixed_only_targets_node.js "$HP"
 run test_variable_capacity_node.js "$HP"
 run test_count_limits_node.js "$HP"
+if [ -x "$PY" ]; then
+  run test_python_quota_candidate_scope_node.js "$HP" "$PY"
+  echo "== Python quota candidate scope"
+  "$PY" ../tools/test_quota_candidate_scope.py || fail=1
+else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
 run test_count_limits_edges_node.js "$PY"
 run test_dayoff_weekday_node.js "$HP"
 run test_dayoff_work_node.js "$HP"

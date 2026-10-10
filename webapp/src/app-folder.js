@@ -32,6 +32,27 @@
     const list = ids.map(id => { const r = roles.find(x => x.id === id); return `${id}: ${r ? r.label : T.t("現在の設定にないID（未定義）")}`; }).join("\n");
     return Object.assign(roleLoadMark(o), { message: T.t("この月データには設定が含まれないため、固定「OCなし」のIDが作成時と同じ役割を指すか確認できません。\n現在の設定での対応:\n{roles}\n読み込む場合はIDを変更せず、現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。", { roles: list }) });
   }
+  // 履歴の取り込みは設定を採用しない。翌月1日の「OCなし」を現在の役割へ移す前に、IDの意味を確認する。
+  function confirmPreviousRoleImport(o, ny, nm) {
+    const shape = loadedShape(o); if (shape.error) throw new Error(shape.error);
+    const y = +shape.month.year, mo = +shape.month.month;
+    if (+ny * 12 + +nm !== y * 12 + mo + 1) return true;
+    const day = A.daysIn(y, mo) + 1, ids = roleFixedIds(shape.month, day);
+    if (!ids.length) return true;
+    let consent = roleLoadConsent(o, day);
+    if (shape.rules) {
+      const before = T.normalizeRolesOf(shape.rules), after = T.normalizeRolesOf(state.rules);
+      const roleMeaningSig = r => r && JSON.stringify(A.canon({ id: r.id, label: r.labelRaw, refs: r.refs.slice().sort(), standby: r.standby }));
+      const changed = ids.filter(id => { const old = before.find(r => r.id === id), cur = after.find(r => r.id === id); return !old || !cur || roleMeaningSig(old) !== roleMeaningSig(cur); });
+      if (changed.length) {
+        const refLabels = { charge: "期間の責任者になれる", other: "対になる役割", junior: "補助として入る役割", reserve: "原則配置しない予備" };
+        const describeRole = r => r ? `${r.label} (${T.t("規則での役目")}: ${r.refs.map(x => T.t(refLabels[x] || x)).join(T.listSep()) || T.t("なし")}; ${T.t("オンコールに入れる")}: ${r.standby ? "✓" : "−"})` : T.t("現在の設定にないID（未定義）");
+        const list = changed.map(id => `${id}: ${describeRole(before.find(r => r.id === id))} → ${describeRole(after.find(r => r.id === id))}`).join("\n");
+        consent = Object.assign(roleLoadMark(o), { message: T.t("前月と現在の設定では、固定「OCなし」の役割IDの対応が異なるか確認できません。\n前月 → 現在:\n{roles}\n履歴の取り込みでは設定は変更せず、IDをそのまま現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。", { roles: list }) });
+      }
+    }
+    return !consent || confirmRoleLoad(o, consent);
+  }
   function noteRoleLoadConsent(f) { // 共通の元がない・未編集・旧形式の月単体も、自動統合せず確認に回す
     f.roleConsent = roleLoadConsent(f.data); if (!f.roleConsent) return false;
     f.mergeBlockedReason = f.roleConsent.message; return true;
@@ -605,5 +626,5 @@
     if (A.clearUndo) A.clearUndo(); A.save(); A.renderAll(); if (typeof A.renderLangs === "function") A.renderLangs(); A.showTab("input"); A.toast(msg); // save: 未保存なら自動保存を予約（接続先との競合確認を経てフォルダに書く）
   }
 
-  Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded, buildFromPrevious, adoptNewMonth }); // 他のファイルから使う関数
+  Object.assign(A, { openMonth, repaintStartGate, renderHeader, openFolderUI, reconnectFolderUI, outputCheck, downloadMonthJson, loadJsonFile, createFromPrevFile, prepareSave, writeSave, commitSave, autosaveJson, fsOK, restoreFolder, refreshMonths, loadFolderPlugins, loadPendingPlugins, reconcileWithFolder, renderFolderBar, findMonthData, writeFile, ensureFolder, saveBeforeSwitch, saveToFolder, versionSig, applyLoaded, buildFromPrevious, adoptNewMonth, confirmPreviousRoleImport }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

@@ -261,11 +261,13 @@
     if (!rows.length) return { roles: null, renames };
     const oldRoles = T.normalizeRolesOf(R);
     const roles = rows.map(tr => {
-      const g = k => tr.querySelector(`[data-${k}]`), id = g("rid").value.trim();
-      // 空欄も検査に渡す。行を読み飛ばして役割を削除してしまわない。
-      const r = { id, label: g("rlabel").value.trim() || id, refs: g("rref").value ? [g("rref").value] : [] };
-      if (g("rstandby").checked) r.standby = true;
+      const g = k => tr.querySelector(`[data-${k}]`), id = g("rid").value.trim(), label = g("rlabel").value, ref = g("rref").value;
       const prev = oldRoles[+tr.dataset.ri];
+      // 空欄も検査に渡す。行を読み飛ばして役割を削除してしまわない。
+      // 表示名・役目を変えていなければ、多言語の表記と欄に出せない2つ目以降の役目も残す。
+      const r = { id, label: prev && label === prev.label ? (prev.labelRaw ?? prev.label) : label.trim() || id,
+        refs: prev && ref === (prev.refs[0] || "") ? [...prev.refs] : ref ? [ref] : [] };
+      if (g("rstandby").checked) r.standby = true;
       if (prev && prev.id !== id) renames.set(prev.id, id);
       return r;
     });

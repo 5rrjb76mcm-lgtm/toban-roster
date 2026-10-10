@@ -893,6 +893,7 @@
     "前月のデータに現在の名簿にない氏名があります（{who}）。改名した場合はその履歴・累計は引き継がれません": "The previous month has names that are not on the current roster ({who}). If someone was renamed, their history and running balance are not carried over",
     "前月の翌月1日欄の固定指定を {m}/1 の固定に引き継ぎ: {list}": "Fixed assignments from the previous month's \"1st of next month\" row were carried into {m}/1: {list}",
     "月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）": "Weekend across the month boundary: the person in charge on {m}/1 is fixed to {who} (continuing from {pm}/{pd})",
+    "月またぎの土日: 前月 {pm}/{pd} の計算結果（{actual}）と {m}/1 の期間責任者の固定（{fixed}）が異なります。固定指定を保持しました。前月の計算結果と当月の固定指定を確認してください": "Weekend across the month boundary: the previous result for {pm}/{pd} ({actual}) differs from the fixed charge for {m}/1 ({fixed}). The explicit fixed entry was kept. Review the previous result and the current fixed entry.",
     "{y}年{m}月 のデータから取り込んだため、前月末の接続は未入力です（月が連続していません）": "Imported from {y}-{m}, so the end-of-previous-month connection is left empty (the months are not consecutive)",
     "{y}年{m}月 は未計算のため、前月末の接続と実績の累計は取り込めません（履歴は前月までの値）": "{y}-{m} has not been solved, so the end-of-month connection and the running totals could not be imported (history stays at the previous values)",
     "前月のデータを読むにはフォルダの接続が必要です": "Connect the folder to read the previous month's data",
@@ -1168,7 +1169,8 @@
     "   個別項目をすべて外しても解なし。グループの一括解除とは条件が異なるため、項目の組合せは示せません。": "   Removing all individual candidates still gives no solution. This differs from removing the whole group, so no item combination can be reported.",
     "   個別項目への絞り込みは未完了: {reason}": "   Narrowing to individual items is incomplete: {reason}",
     "   個別項目の組合せは未確認です。": "   No individual-item combination has been verified.",
-    "診断で確認できた条件や項目の組合せを参考に入力を見直し、再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。": "Review the inputs using the confirmed rule groups or item combinations, then solve again. Get the roster owner's approval before widening exceptions (such as tolerances)."
+    "診断で確認できた条件や項目の組合せを参考に入力を見直し、再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。": "Review the inputs using the confirmed rule groups or item combinations, then solve again. Get the roster owner's approval before widening exceptions (such as tolerances).",
+    "前月と現在の設定では、固定「OCなし」の役割IDの対応が異なるか確認できません。\n前月 → 現在:\n{roles}\n履歴の取り込みでは設定は変更せず、IDをそのまま現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。": "The role IDs in the fixed “no OC” entries differ between the previous and current settings, or their correspondence cannot be verified.\nPrevious → current:\n{roles}\nImporting history keeps the current settings and interprets these IDs as current roles without changing them. Undefined IDs are retained, but may have no effect."
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",
