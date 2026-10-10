@@ -36,6 +36,7 @@ run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_calendar_boundary_count_node.js
 run test_previous_selection_preservation_node.js
 run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
