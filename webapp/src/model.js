@@ -483,7 +483,7 @@
     ocReqAt(s) { const sh = (this.shifts || []).find(x => x.id === s[1]); return !sh || sh.oncall !== false ? this.ocReq : this.ocReqNone; }
     shiftHasOncall(kind) { const sh = (this.shifts || []).find(x => x.id === kind); return this.ruleStates.oncall !== "off" && (!sh || sh.oncall !== false); }
     shiftLabel(kind) { const sh = (this.shifts || []).find(x => x.id === kind); return sh ? sh.label : (kind === "day" ? "日勤" : "夜勤"); }
-    isHoliday(d) { if (d < 1) return this.dow(d) >= 5; return this.isWeekend(d) || this.holidaysExtra.has(d); }
+    isHoliday(d) { if (d === this.N + 1) return this.nextDayIsHoliday(); if (d < 1) return this.dow(d) >= 5; return this.isWeekend(d) || this.holidaysExtra.has(d); }
     nth(d) { return Math.floor((d - 1) / 7) + 1; }
     nextIsHoliday(d) { return d + 1 <= this.N ? this.isHoliday(d + 1) : this.nextDayIsHoliday(); } // 月末は翌月1日（土日も休日）
     state(id) { return this.ruleStates[id] || "off"; } // 規則の状態（"hard" / "soft" / "off"）
