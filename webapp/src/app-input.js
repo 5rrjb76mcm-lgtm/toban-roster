@@ -73,13 +73,16 @@ ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人
     const LB = Math.max(T.prevLookback(R), ld.length), multi = T.isMultiWork(R) || ld.some(e => e && ["day", "night"].some(k => Array.isArray(e[k]) && e[k].length > 1)), ocOn = on("oncall"); // 前月が複数名の配置なら、当月が 1 名でも複数名の欄で見せる（1 名の欄に配列を渡すと空になり、読み戻しで消える）
     // 未変更の名簿は区切り文字で再解釈しない。元の配列は欄に持たせ、日付だけの変更や空行にも追随する。
     const listInput = (v, f, work = false) => { const ns = [].concat(v || []), shown = ns.join("・"); return `<input data-f="${f}" ${work ? "data-multi" : ""} data-prev-names="${esc(JSON.stringify(ns))}" data-shown="${esc(shown)}" value="${esc(shown)}" style="width:${work ? 14 : 8}em">`; };
-    const who = (v, f) => multi ? listInput(v, f, true) : A.nameSel(v, `data-f="${f}"`);
+    // 前月の実績は現在の名簿・役割とは別の記録。名簿から外した人や役割を変えた人も、
+    // 保存値だけは選択肢に残す（空欄を選んだときにだけ消す）。当月の配置候補は広げない。
+    const historicalNameSel = (v, attrs, list = A.names()) => { const name = v == null ? "" : String(v); return A.nameSel(v, attrs, name && !list.includes(name) ? list.concat(name) : list); };
+    const who = (v, f) => multi ? listInput(v, f, true) : historicalNameSel(v, `data-f="${f}"`);
     const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(e.date ?? "")}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
       (ocOn ? `<td>${listInput(e.day_oc, "day_oc")}</td>` : "") + `<td>${who(e.night, "night")}</td>` +
       (ocOn ? `<td>${listInput(e.night_oc, "night_oc")}</td>` : "") + `</tr>`; };
     h.push(`<div class="box"><h3>${esc(T.t("前月末の接続（前月の最後の{n}日）", { n: LB }))}</h3><table class="grid"><tr><th>${esc(T.t("前月の日付"))}</th><th>${esc(shiftLabel(R, "day"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("日勤OC（・区切り）"))}</th>` : ""}<th>${esc(shiftLabel(R, "night"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("夜間OC（・区切り）"))}</th>` : ""}</tr>${Array.from({ length: LB }, (_, i) => ldRow(i)).join("")}</table>
 <p class="note">${esc(T.t("連勤の上限・明け・隣接する勤務の規則が、月をまたいで効くように使います。前月の保存データから取り込むと自動で入ります。"))}</p>
-${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当")))} ${A.nameSel(pm.last_weekend_charge, 'data-path="prev_month.last_weekend_charge"', A.iNames())}　${esc(T.t("その1つ前の土日"))} ${A.nameSel(pm.prev_weekend_charge, 'data-path="prev_month.prev_weekend_charge"', A.iNames())}</p>` : ""}
+${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当")))} ${historicalNameSel(pm.last_weekend_charge, 'data-path="prev_month.last_weekend_charge"', A.iNames())}　${esc(T.t("その1つ前の土日"))} ${historicalNameSel(pm.prev_weekend_charge, 'data-path="prev_month.prev_weekend_charge"', A.iNames())}</p>` : ""}
 <p><button id="btnImportPrev">${esc(T.t("前月の保存データから接続・履歴・累計を取り込む"))}</button> <span class="note">${esc(T.t("翌月作成時にも自動で入ります。前月を後から計算し直したときはこのボタンで更新してください（月またぎの担当も自動で固定します）。"))}</span></p></div>`);
     const hs = m.history || {};
     if (on("period_charge")) h.push(`<div class="box"><h3>${esc(L(T.t("前月までの履歴（{charge}）")))}</h3><table class="grid"><tr><th></th>${A.iNames().map(n => `<th>${esc(n)}</th>`).join("")}</tr>

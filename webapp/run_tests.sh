@@ -35,6 +35,7 @@ run test_settings_import_node.js
 run test_role_edit_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_previous_selection_preservation_node.js
 run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
 run test_empty_roster_node.js
@@ -74,6 +75,11 @@ if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tool
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
+if [ -x "$PY" ]; then
+  run test_python_friday_night_off_node.js "$HP" "$PY"
+  echo "== Python Friday minimum state contract"
+  "$PY" ../tools/test_friday_night_off.py || fail=1
+else echo "--  Python Friday minimum checks skipped (../tools/.venv is unavailable)"; fi
 run test_fixed_only_pairs_node.js "$HP"
 run test_fixed_only_windows_node.js "$HP"
 run test_fixed_only_caps_node.js "$HP"
@@ -81,12 +87,20 @@ run test_fixed_only_engagement_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_fixed_only_contract_node.js "$HP" "$PY"
   run test_python_same_weekday_cap_node.js "$HP" "$PY"
+  run test_python_period_charge_off_node.js "$HP" "$PY"
+  echo "== Python disabled period charge contract"
+  "$PY" ../tools/test_period_charge_off.py || fail=1
   echo "== Python same-weekday cap contract"
   "$PY" ../tools/test_same_weekday_cap.py || fail=1
   echo "== Python supported fixed-only contract"
   "$PY" ../tools/test_fixed_only_contract.py || fail=1
 else echo "--  Python fixed-only contract checks skipped (../tools/.venv is unavailable)"; fi
 run test_fixed_input_preservation_node.js "$HP"
+if [ -x "$PY" ]; then
+  run test_python_oncall_off_node.js "$HP" "$PY"
+  echo "== Python oncall-state contract"
+  "$PY" ../tools/test_oncall_off.py || fail=1
+else echo "--  Python oncall-state checks skipped (../tools/.venv is unavailable)"; fi
 run test_avoid_reference_node.js "$HP"
 run test_reserve_permission_node.js "$HP"
 run test_reserve_lint_node.js "$HP"

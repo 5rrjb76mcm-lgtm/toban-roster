@@ -166,6 +166,26 @@ def cases():
         expected(x, score=weight)
         x["relaxed_objective"] = 0
         out.append(x)
+    # Empty standby-role groups have no spread, even with nonzero weights.
+    # Both deleting staff and selecting "never" are ordinary roster operations.
+    for mode in ("deleted", "never", "singleton", "pair"):
+        for weighted in (False, True):
+            x = fixture(f"standby spread {mode} weighted={weighted}")
+            if mode == "deleted":
+                x["rules"]["doctors"] = [d for d in x["rules"]["doctors"] if d["name"] != Y]
+                x["rules"]["name_order"].remove(Y)
+            elif mode == "never":
+                next(d for d in x["rules"]["doctors"] if d["name"] == Y)["duty"] = "never"
+            elif mode == "pair":
+                second = "Synthetic Young Two"
+                x["rules"]["doctors"].append({"name": second, "team": "Y", "quota": 0, "years": 1})
+                x["rules"]["name_order"].append(second)
+                # Two holiday shifts for one junior, zero for the other: spread 2.
+                for d, k in ((5, "night"), (6, "day")):
+                    x["asg"][f"{d}:{k}"] = {"work": Y, "oc": [A]}
+            x["rules"]["weights"].update(spread_Y_oc=2 if weighted else 0,
+                                         spread_Y_holiday_work=3 if weighted else 0)
+            out.append(expected(x, score=6 if mode == "pair" and weighted else 0))
     for x in out:
         if x["label"] in ("same day both", "consecutive both", "previous work current fixed=True", "unavailable night work exact=True", "unavailable night oc exact=True", "quota fixed count plus extra=False") or (x["label"].startswith("duty ") and x["label"].endswith("exact=True")):
             x["relaxed_objective"] = None
