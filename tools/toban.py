@@ -181,6 +181,10 @@ class Problem:
         if soft:
             raise SystemExit("Python 版は次の規則の「減点」に未対応です（JS 版で計算してください）: " + "、".join(soft))
         st = lambda rid, default: states.get(rid, default)
+        self.oncall_on = st("oncall", "hard") != "off"
+        if not self.oncall_on:
+            # 保存された構成表は残し、計算・検算・減点・報告で使う有効人数だけを0にする（JSと同じ）。
+            self.oc_req = {t: {k: 0 for k in row} for t, row in self.oc_req.items()}
         self.rest_day_required = st("rest_day", "hard" if self.rules.get("rest_day_required", True) is not False else "off") == "hard"
         self.pm_ext_night = self.rules.get("pm_external_night") or "confirm"
         self.same_day_IA_banned = states.get("same_day_charge_other", st("same_day_IA", "hard" if (self.rules.get("same_day_IA") or "allow") == "forbid" else "off")) == "hard"  # 規則 id は same_day_charge_other（旧 same_day_IA）
@@ -189,7 +193,8 @@ class Problem:
         self.cath_on = st("cath_requirement", "hard" if has_cath else "off") != "off"  # 同上。表か資格があれば既定で必須
         self.same_day_double_on = st("same_day_double", "hard") != "off"
         self.consecutive_days_on = states.get("consecutive_days", st("consecutive_work", "hard")) != "off"  # 旧 id consecutive_work（JS 側の aliases と同じ）
-        self.weekend_balance_on = st("weekend_balance", "hard") != "off"
+        self.period_charge_on = st("period_charge", "hard") != "off"
+        self.weekend_balance_on = self.period_charge_on and st("weekend_balance", "hard") != "off"  # JS の needs: ["period_charge"]
         self.friday_night_on = st("friday_night_min", "hard") != "off"
         self.same_weekday_state = st("same_weekday_cap", "soft")
 
@@ -244,10 +249,11 @@ class Problem:
             self.fixed_work_keys.add(((d, "night"), n)); self.fixed_eng_keys.add(((d, "night"), n))
         for d, n in self.fixed_day.items():
             self.fixed_work_keys.add(((d, "day"), n)); self.fixed_eng_keys.add(((d, "day"), n))
-        for d, ns in self.fixed_day_oc.items():
-            for n in ns: self.fixed_eng_keys.add(((d, "day"), n))
-        for d, ns in self.fixed_night_oc.items():
-            for n in ns: self.fixed_eng_keys.add(((d, "night"), n))
+        if self.oncall_on:  # 無効なOCの固定は残すが、不可日・定期業務の例外の根拠にはしない。
+            for d, ns in self.fixed_day_oc.items():
+                for n in ns: self.fixed_eng_keys.add(((d, "day"), n))
+            for d, ns in self.fixed_night_oc.items():
+                for n in ns: self.fixed_eng_keys.add(((d, "night"), n))
 
         ex = month.get("exceptions") or {}
         self.weekend_max_diff = int(ex.get("weekend_balance_max_diff", rules.get("weekend_balance_max_diff", 1)))
@@ -263,7 +269,7 @@ class Problem:
         self.weights = rules["weights"]
         self.build_calendar()
         # 期間責任者の固定例外は、有効な規則が拘束する最初の実在枠だけ。
-        if (self.rules.get("rule_states") or {}).get("period_charge", "hard") != "off":
+        if self.period_charge_on:
             for d, n in self.fixed_charge.items():
                 if n not in self.I:
                     continue
@@ -442,7 +448,7 @@ class Problem:
         return tuple(s) in self.all_slots_set and (tuple(s), n) in self.fixed_eng_keys
 
     def is_fixed_oc(self, s, n):
-        if tuple(s) not in self.all_slots_set:
+        if not self.oncall_on or tuple(s) not in self.all_slots_set:
             return False
         table = self.fixed_day_oc if s[1] == "day" else self.fixed_night_oc
         return n in table.get(s[0], [])
@@ -761,52 +767,53 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
     # その日の担当（cday）は、その日の最初の枠（日勤帯があれば日勤帯）に関わる人。後の枠（夜間）が別の人なら「日の途中の交代」で、
     # 必須ではなく減点（charge_handover）。各枠に関わる主担当は 1 名（必須）。JS の period_charge と同じ
     cday, chargedP, split = {}, {}, {}
-    for p in P.periods:
-        for d in p["days"]:
-            ds = charge_day_slots(p, d)
-            for n in P.I:
-                cday[d, n] = M.NewBoolVar(f"c_{d}_{n}")
-                if ds:
-                    M.Add(Ev(ds[0], n) == cday[d, n])
-            M.AddExactlyOne(cday[d, n] for n in P.I)
-            if len(ds) > 1:
-                hv = M.NewBoolVar(f"handover_{d}")
-                for s in ds[1:]:
-                    M.Add(sum(Ev(s, n) for n in P.I) == 1)
-                    for n in P.I:
-                        M.Add(Ev(s, n) - cday[d, n] <= hv)
-                        M.Add(cday[d, n] - Ev(s, n) <= hv)
-                obj.append(W.get("charge_handover", 200) * hv)
-        if p["kind"] == "weekend" and p["full"]:
-            d1, d2 = p["days"]
-            split[p["id"]] = M.NewBoolVar(f"split_{p['id']}")
-            for n in P.I:
-                M.Add(cday[d1, n] - cday[d2, n] <= split[p["id"]])
-                M.Add(cday[d2, n] - cday[d1, n] <= split[p["id"]])
-            obj.append(W.get("split_weekend", 60) * split[p["id"]])
-        for n in P.I:
-            chargedP[p["id"], n] = M.NewBoolVar(f"cp_{p['id']}_{n}")
-            for d in p["days"]:
-                M.Add(chargedP[p["id"], n] >= cday[d, n])
-            M.Add(chargedP[p["id"], n] <= sum(cday[d, n] for d in p["days"]))
-        for d, n in P.fixed_charge.items():
-            if d in p["days"] and "fixed" not in relax:  # 診断で固定指定を外すときは主担当担当の固定も外す（JS と同じ）
-                M.Add(cday[d, n] == 1)
-    # 月またぎの土日: 前月末（土曜）の主担当担当者が翌月1日（日曜）も担当する
-    if "prev_connection" not in relax:
+    if P.period_charge_on:
         for p in P.periods:
-            if not p["prev_days"]:
-                continue
-            prev_i = [n for n in P.I if any(Wv(s, n) == 1 or Ov(s, n) == 1 for s in prev_charge_slots(P, p))]
-            if len(prev_i) == 1:
-                M.Add(cday[p["days"][0], prev_i[0]] == 1)
-    # 完全な土日の均等配分（担当日数で比較。土日1組=2日、許容差は組数×2）
-    full_days = {n: sum(cday[d, n] for p in P.periods if p["kind"] == "weekend" and p["full"] for d in p["days"]) for n in P.I}
-    if any(p["kind"] == "weekend" and p["full"] for p in P.periods) and "weekend_balance" not in relax:
-        for a in P.I:
-            for b in P.I:
-                if a != b and P.weekend_balance_on:
-                    M.Add(full_days[a] - full_days[b] <= 2 * P.weekend_max_diff)
+            for d in p["days"]:
+                ds = charge_day_slots(p, d)
+                for n in P.I:
+                    cday[d, n] = M.NewBoolVar(f"c_{d}_{n}")
+                    if ds:
+                        M.Add(Ev(ds[0], n) == cday[d, n])
+                M.AddExactlyOne(cday[d, n] for n in P.I)
+                if len(ds) > 1:
+                    hv = M.NewBoolVar(f"handover_{d}")
+                    for s in ds[1:]:
+                        M.Add(sum(Ev(s, n) for n in P.I) == 1)
+                        for n in P.I:
+                            M.Add(Ev(s, n) - cday[d, n] <= hv)
+                            M.Add(cday[d, n] - Ev(s, n) <= hv)
+                    obj.append(W.get("charge_handover", 200) * hv)
+            if p["kind"] == "weekend" and p["full"]:
+                d1, d2 = p["days"]
+                split[p["id"]] = M.NewBoolVar(f"split_{p['id']}")
+                for n in P.I:
+                    M.Add(cday[d1, n] - cday[d2, n] <= split[p["id"]])
+                    M.Add(cday[d2, n] - cday[d1, n] <= split[p["id"]])
+                obj.append(W.get("split_weekend", 60) * split[p["id"]])
+            for n in P.I:
+                chargedP[p["id"], n] = M.NewBoolVar(f"cp_{p['id']}_{n}")
+                for d in p["days"]:
+                    M.Add(chargedP[p["id"], n] >= cday[d, n])
+                M.Add(chargedP[p["id"], n] <= sum(cday[d, n] for d in p["days"]))
+            for d, n in P.fixed_charge.items():
+                if d in p["days"] and "fixed" not in relax:  # 診断で固定指定を外すときは主担当担当の固定も外す（JS と同じ）
+                    M.Add(cday[d, n] == 1)
+        # 月またぎの土日: 前月末（土曜）の主担当担当者が翌月1日（日曜）も担当する
+        if "prev_connection" not in relax:
+            for p in P.periods:
+                if not p["prev_days"]:
+                    continue
+                prev_i = [n for n in P.I if any(Wv(s, n) == 1 or Ov(s, n) == 1 for s in prev_charge_slots(P, p))]
+                if len(prev_i) == 1:
+                    M.Add(cday[p["days"][0], prev_i[0]] == 1)
+        # 完全な土日の均等配分（担当日数で比較。土日1組=2日、許容差は組数×2）
+        full_days = {n: sum(cday[d, n] for p in P.periods if p["kind"] == "weekend" and p["full"] for d in p["days"]) for n in P.I}
+        if any(p["kind"] == "weekend" and p["full"] for p in P.periods) and "weekend_balance" not in relax:
+            for a in P.I:
+                for b in P.I:
+                    if a != b and P.weekend_balance_on:
+                        M.Add(full_days[a] - full_days[b] <= 2 * P.weekend_max_diff)
 
     # 固定指定
     if "fixed" not in relax:
@@ -841,13 +848,14 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                     le0(fixed_day(N, n), yday(N, n))
                 if P.next_fixed_engaged(n, first_k) and (N, "night") in P.all_slots_set:
                     if P.team[n] == "I" and cross and first_k == "day":
-                        if not P.next_fixed["charge"]:  # 主担当担当の固定があればそれを優先（下で1本だけ張る）
+                        # 同じ土日の主担当役割の OC 連続免除は、period_charge の状態と独立（JS と同じ）。
+                        if P.period_charge_on and not P.next_fixed["charge"]:  # 主担当担当の固定があればそれを優先（下で1本だけ張る）
                             M.Add(cday[N, n] == 1)
                     else:
                         obj.append(W["oc_consecutive"] * last_term(n, first_k))  # OC を含む連続は減点（実勤務どうしは上の workday で必須）
                 if P.team[n] != "I" and first_k == "day" and P.next_fixed_engaged(n, "night") and (N, "night") in P.all_slots_set:
                     obj.append(W["oc_consecutive"] * last_term(n, "night"))
-            if cross and P.next_fixed["charge"] and (N, P.next_fixed["charge"]) in cday:
+            if P.period_charge_on and cross and P.next_fixed["charge"] and (N, P.next_fixed["charge"]) in cday:
                 M.Add(cday[N, P.next_fixed["charge"]] == 1)
 
     # 同じ曜日の勤務は月 max_same_weekday_shifts 回まで
@@ -1015,30 +1023,31 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                     M.Add(work[(d, "night"), n] == 0)
             elif mode == "avoid":
                 obj.append(W["arrhythmia_pre_workday_night"] * work[(d, "night"), n])
-    # 連続する週末
-    wps = [p for p in P.periods if p["kind"] == "weekend"]
-    prev_c = P.prev_prev_weekend_charge if (wps and wps[0]["crossing"] and wps[0]["prev_days"]) else P.prev_last_weekend_charge
-    for i, p in enumerate(wps):
+    if P.period_charge_on:
+        # 連続する週末
+        wps = [p for p in P.periods if p["kind"] == "weekend"]
+        prev_c = P.prev_prev_weekend_charge if (wps and wps[0]["crossing"] and wps[0]["prev_days"]) else P.prev_last_weekend_charge
+        for i, p in enumerate(wps):
+            for n in P.I:
+                prev_term = chargedP[wps[i - 1]["id"], n] if i > 0 else (1 if prev_c == n else 0)
+                v = M.NewBoolVar(f"cw_{p['id']}_{n}")
+                M.Add(prev_term + chargedP[p["id"], n] - 1 <= v)
+                obj.append(W["consecutive_weekend"] * v)
+        # 履歴込みの週末担当数の偏り（土日1組=2日換算。月またぎの土日は1組として2日分）
+        tot_w = {n: int(round(2 * P.hist_weekend.get(n, 0))) + full_days[n]
+                 + 2 * sum(chargedP[p["id"], n] for p in wps if not p["full"]) for n in P.I}
+        wb = P.hist_weekend_bound()  # 上限はデータから決める（固定値だと履歴の累積で解なしになる）
+        mx, mn = M.NewIntVar(0, wb, "wmax"), M.NewIntVar(0, wb, "wmin")
         for n in P.I:
-            prev_term = chargedP[wps[i - 1]["id"], n] if i > 0 else (1 if prev_c == n else 0)
-            v = M.NewBoolVar(f"cw_{p['id']}_{n}")
-            M.Add(prev_term + chargedP[p["id"], n] - 1 <= v)
-            obj.append(W["consecutive_weekend"] * v)
-    # 履歴込みの週末担当数の偏り（土日1組=2日換算。月またぎの土日は1組として2日分）
-    tot_w = {n: int(round(2 * P.hist_weekend.get(n, 0))) + full_days[n]
-             + 2 * sum(chargedP[p["id"], n] for p in wps if not p["full"]) for n in P.I}
-    wb = P.hist_weekend_bound()  # 上限はデータから決める（固定値だと履歴の累積で解なしになる）
-    mx, mn = M.NewIntVar(0, wb, "wmax"), M.NewIntVar(0, wb, "wmin")
-    for n in P.I:
-        M.Add(mx >= tot_w[n])
-        M.Add(mn <= tot_w[n])
-    obj.append(W["weekend_history_spread"] * (mx - mn))
-    # 週末担当者の日勤
-    for p in P.periods:
-        for n in P.I:
-            v = M.NewBoolVar(f"cd_{p['id']}_{n}")
-            M.Add(chargedP[p["id"], n] - sum(work[s, n] for s in p["slots"] if s[1] == "day") <= v)
-            obj.append(W["charge_without_dayshift"] * v)
+            M.Add(mx >= tot_w[n])
+            M.Add(mn <= tot_w[n])
+        obj.append(W["weekend_history_spread"] * (mx - mn))
+        # 週末担当者の日勤
+        for p in P.periods:
+            for n in P.I:
+                v = M.NewBoolVar(f"cd_{p['id']}_{n}")
+                M.Add(chargedP[p["id"], n] - sum(work[s, n] for s in p["slots"] if s[1] == "day") <= v)
+                obj.append(W["charge_without_dayshift"] * v)
     # 夜間OC翌日の通常業務 / 夜勤翌日午前業務（月末は翌月1日を翌日とする）
     for n in names:
         for d in range(1, P.N + 1):
@@ -1084,6 +1093,8 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                 obj.append(w * v)
     # 偏り
     def spread(vals, key):
+        if len(vals) < 2:  # JS と同じく、対象が0〜1名なら偏りはない。空集合の最少を自由変数にしない。
+            return 0
         a, b = M.NewIntVar(0, 100, f"{key}_max"), M.NewIntVar(0, 100, f"{key}_min")
         for v in vals:
             M.Add(a >= v)
@@ -1286,35 +1297,36 @@ def check(P: Problem, asg: dict):
             if P.consecutive_days_on and P.next_fixed_works(n) and any(A.worked(n, (N, k)) for k in ("day", "night") if (N, k) in P.all_slots_set):
                 viol(f"{lab(N)}→{nl}: {n} 連日の実勤務（翌月1日の固定）", P.fixed_work_day(N, n))
     # 6 主担当担当（日ごとに1名。土日の分割は減点付きで常に候補）
-    charge = {}  # period id -> {day: name}
-    for p in P.periods:
-        cd = {}
-        for d in p["days"]:
-            per = []
-            for s in charge_day_slots(p, d):
-                e = {n for n in A.engaged(s) if T.get(n) == "I"}
-                if len(e) != 1:
-                    V.append(f"{slab(s)}: 主担当医師の担当が1名でない")
-                per.append(sorted(e))
-            # その日の担当は最初の枠の人。後の枠が別の人（日の途中の交代）は違反ではなく減点（charge_handover）
-            cd[d] = per[0][0] if per and len(per[0]) == 1 else None
-        charge[p["id"]] = cd
-        first = cd.get(p["days"][0])
-        prev_i = sorted({n for s in prev_charge_slots(P, p) for n in A.engaged(s) if T.get(n) == "I"})
-        if len(prev_i) == 1 and first and first != prev_i[0]:  # 前月末の最初の枠に主担当医師が2名いる入力はソルバーも接続しない（lint 相当の警告で知らせる）
-            V.append(f"{p['name']}: 前月末の主担当担当{prev_i[0]}と接続していない")
-        for d, n in P.fixed_charge.items():
-            if d in p["days"] and cd.get(d) != n:
-                V.append(f"{lab(d)}: 固定指定の主担当担当{n}と不一致")
-    cross = P.last_crossing_period()
-    if cross and P.next_fixed_any():
-        cd = charge[cross["id"]].get(P.N)
-        want = P.next_fixed["charge"] or next((n for n in P.I if P.next_fixed_engaged(n, "day")), None)
-        if want and cd and cd != want:
-            V.append(f"{cross['name']}: 翌月1日の固定 {want} と月末の主担当担当 {cd} が接続していない")
-    fw = full_weekend_units(P, charge)
-    if P.weekend_balance_on and fw and max(fw.values()) - min(fw.values()) > 2 * P.weekend_max_diff:
-        V.append(f"完全な土日の担当（組）の差が{P.weekend_max_diff}を超える: {fmt_half(fw)}")
+    charge = {p["id"]: {d: None for d in p["days"]} for p in P.periods}  # JS と同じ形。規則が「なし」なら担当者なし
+    if P.period_charge_on:
+        for p in P.periods:
+            cd = {}
+            for d in p["days"]:
+                per = []
+                for s in charge_day_slots(p, d):
+                    e = {n for n in A.engaged(s) if T.get(n) == "I"}
+                    if len(e) != 1:
+                        V.append(f"{slab(s)}: 主担当医師の担当が1名でない")
+                    per.append(sorted(e))
+                # その日の担当は最初の枠の人。後の枠が別の人（日の途中の交代）は違反ではなく減点（charge_handover）
+                cd[d] = per[0][0] if per and len(per[0]) == 1 else None
+            charge[p["id"]] = cd
+            first = cd.get(p["days"][0])
+            prev_i = sorted({n for s in prev_charge_slots(P, p) for n in A.engaged(s) if T.get(n) == "I"})
+            if len(prev_i) == 1 and first and first != prev_i[0]:  # 前月末の最初の枠に主担当医師が2名いる入力はソルバーも接続しない（lint 相当の警告で知らせる）
+                V.append(f"{p['name']}: 前月末の主担当担当{prev_i[0]}と接続していない")
+            for d, n in P.fixed_charge.items():
+                if d in p["days"] and cd.get(d) != n:
+                    V.append(f"{lab(d)}: 固定指定の主担当担当{n}と不一致")
+        cross = P.last_crossing_period()
+        if cross and P.next_fixed_any():
+            cd = charge[cross["id"]].get(P.N)
+            want = P.next_fixed["charge"] or next((n for n in P.I if P.next_fixed_engaged(n, "day")), None)
+            if want and cd and cd != want:
+                V.append(f"{cross['name']}: 翌月1日の固定 {want} と月末の主担当担当 {cd} が接続していない")
+        fw = full_weekend_units(P, charge)
+        if P.weekend_balance_on and fw and max(fw.values()) - min(fw.values()) > 2 * P.weekend_max_diff:
+            V.append(f"完全な土日の担当（組）の差が{P.weekend_max_diff}を超える: {fmt_half(fw)}")
     # 7 固定・金曜
     for d, n in P.fixed_night.items():
         if A.work((d, "night")) != n:
@@ -1331,6 +1343,8 @@ def check(P: Problem, asg: dict):
             if n not in A.oc((d, "night")):
                 V.append(f"{lab(d)}夜間OC: 固定指定{n}と不一致")
     for n, k in (P.rules.get("friday_night_min") or {}).items():
+        if not P.friday_night_on or n not in names:  # 解く側と同じく、なし・当直候補外の指定は検算しない
+            continue
         c = sum(1 for d in range(1, P.N + 1) if P.dow(d) == 4 and A.worked(n, (d, "night")))
         if c < int(k):
             V.append(f"{n}: 金曜夜勤{c}回（月{k}回以上の指定）")
@@ -1510,7 +1524,8 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         L.append(f"**違反 {len(V)} 件**")
         L.extend(f"- {v}" for v in V)
     else:
-        L.append("違反なし（全枠の充足とチーム構成、不可日、実勤務の連続、隣接枠の連続、月またぎ、主担当担当、固定指定、金曜夜勤、定期業務、カテ室責任医師、週休日、同日集約）")
+        charge_check = "、主担当担当" if P.period_charge_on else ""
+        L.append(f"違反なし（全枠の充足とチーム構成、不可日、実勤務の連続、隣接枠の連続、月またぎ{charge_check}、固定指定、金曜夜勤、定期業務、カテ室責任医師、週休日、同日集約）")
     if Wf:
         L.append("")
         L.append(f"**固定指定により許容した条件 {len(Wf)} 件（要確認。固定指定を優先し、次の条件は満たしていない）**")
@@ -1545,37 +1560,40 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     L.append("")
     L.append("## 4 週末・祝日の主担当担当")
     L.append("")
-    L.append("| 期間 | 区分 | 主担当担当 | 日勤 |")
-    L.append("| --- | --- | --- | --- |")
-    for p in P.periods:
-        kind = "完全な土日" if (p["kind"] == "weekend" and p["full"]) else ("月またぎ土日" if p["kind"] == "weekend" else "祝日")
-        cd = charge[p["id"]]
-        ds = "、".join(f"{P.month}/{s[0]}" for s in p["slots"] if s[1] == "day" and A.work(s) == cd.get(s[0]))
-        L.append(f"| {p['name']} | {kind} | {charge_label(P, p, cd)} | {ds or 'なし'} |")
-    fw = full_weekend_units(P, charge)
-    allw = {n: fw[n] + 2 * sum(1 for p in P.periods if p['kind'] == 'weekend' and not p['full'] and n in charge[p['id']].values()) for n in P.I}
-    hc = {n: sum(1 for p in P.periods if p['kind'] == 'holiday' and n in charge[p['id']].values()) for n in P.I}
-    splits = [p["name"] for p in P.periods if p["kind"] == "weekend" and p["full"] and len({v for v in charge[p["id"]].values() if v}) > 1]
-    L.append("")
-    L.append(f"- 完全な土日の担当（組。分割は0.5）: {fmt_half(fw)}（最多−最少 {(max(fw.values())-min(fw.values()))/2 if fw else 0:g}、許容差 {P.weekend_max_diff}）")
-    L.append(f"- 分割した土日: {'、'.join(splits) if splits else 'なし'}（分割は減点 {(P.rules.get('weights') or {}).get('split_weekend', 60)}。均等配分に必要なときだけ）")
-    hand = []
-    for p in P.periods:
-        for d in p["days"]:
-            who = [next((n for n in P.I if A.eng(n, s)), None) for s in charge_day_slots(p, d)]
-            if len(who) > 1 and any(x != who[0] for x in who[1:]):
-                hand.append(f"{P.label(d)} {'→'.join(x or '―' for x in who)}")
-    L.append(f"- 日の途中で担当が交代した日: {'、'.join(hand) if hand else 'なし'}（交代は 1 日あたり減点 {(P.rules.get('weights') or {}).get('charge_handover', 200)}。固定したとき・ほかに手が無いときだけ）")
-    L.append(f"- 月またぎを含む土日担当（土曜日の日付で1組）: {fmt_half(allw)}")
-    L.append(f"- 前月までの履歴込み: {fmt_half({n: 2*P.hist_weekend.get(n,0)+allw[n] for n in P.I})}（履歴 {fmt(P.hist_weekend)}）")
-    L.append(f"- 祝日の担当: {fmt(hc)}（履歴 {fmt(P.hist_holiday)}）")
-    # 連続週末
-    wps = [p for p in P.periods if p["kind"] == "weekend"]
-    prev_c = P.prev_prev_weekend_charge if (wps and wps[0]['crossing'] and wps[0]['prev_days']) else P.prev_last_weekend_charge
-    seq = [({prev_c} if prev_c else set(), "前月")]
-    seq += [({v for v in charge[p["id"]].values() if v}, p["name"]) for p in wps]
-    cons = [f"{a[1]}→{b[1]} {'・'.join(sorted(a[0] & b[0]))}" for a, b in zip(seq, seq[1:]) if a[0] & b[0]]
-    L.append(f"- 連続する週末担当: {'、'.join(cons) if cons else 'なし'}")
+    if not P.period_charge_on:
+        L.append("期間責任者の規則（period_charge）は「なし」。")
+    else:
+        L.append("| 期間 | 区分 | 主担当担当 | 日勤 |")
+        L.append("| --- | --- | --- | --- |")
+        for p in P.periods:
+            kind = "完全な土日" if (p["kind"] == "weekend" and p["full"]) else ("月またぎ土日" if p["kind"] == "weekend" else "祝日")
+            cd = charge[p["id"]]
+            ds = "、".join(f"{P.month}/{s[0]}" for s in p["slots"] if s[1] == "day" and A.work(s) == cd.get(s[0]))
+            L.append(f"| {p['name']} | {kind} | {charge_label(P, p, cd)} | {ds or 'なし'} |")
+        fw = full_weekend_units(P, charge)
+        allw = {n: fw[n] + 2 * sum(1 for p in P.periods if p['kind'] == 'weekend' and not p['full'] and n in charge[p['id']].values()) for n in P.I}
+        hc = {n: sum(1 for p in P.periods if p['kind'] == 'holiday' and n in charge[p['id']].values()) for n in P.I}
+        splits = [p["name"] for p in P.periods if p["kind"] == "weekend" and p["full"] and len({v for v in charge[p["id"]].values() if v}) > 1]
+        L.append("")
+        L.append(f"- 完全な土日の担当（組。分割は0.5）: {fmt_half(fw)}（最多−最少 {(max(fw.values())-min(fw.values()))/2 if fw else 0:g}、許容差 {P.weekend_max_diff}）")
+        L.append(f"- 分割した土日: {'、'.join(splits) if splits else 'なし'}（分割は減点 {(P.rules.get('weights') or {}).get('split_weekend', 60)}。均等配分に必要なときだけ）")
+        hand = []
+        for p in P.periods:
+            for d in p["days"]:
+                who = [next((n for n in P.I if A.eng(n, s)), None) for s in charge_day_slots(p, d)]
+                if len(who) > 1 and any(x != who[0] for x in who[1:]):
+                    hand.append(f"{P.label(d)} {'→'.join(x or '―' for x in who)}")
+        L.append(f"- 日の途中で担当が交代した日: {'、'.join(hand) if hand else 'なし'}（交代は 1 日あたり減点 {(P.rules.get('weights') or {}).get('charge_handover', 200)}。固定したとき・ほかに手が無いときだけ）")
+        L.append(f"- 月またぎを含む土日担当（土曜日の日付で1組）: {fmt_half(allw)}")
+        L.append(f"- 前月までの履歴込み: {fmt_half({n: 2*P.hist_weekend.get(n,0)+allw[n] for n in P.I})}（履歴 {fmt(P.hist_weekend)}）")
+        L.append(f"- 祝日の担当: {fmt(hc)}（履歴 {fmt(P.hist_holiday)}）")
+        # 連続週末
+        wps = [p for p in P.periods if p["kind"] == "weekend"]
+        prev_c = P.prev_prev_weekend_charge if (wps and wps[0]['crossing'] and wps[0]['prev_days']) else P.prev_last_weekend_charge
+        seq = [({prev_c} if prev_c else set(), "前月")]
+        seq += [({v for v in charge[p["id"]].values() if v}, p["name"]) for p in wps]
+        cons = [f"{a[1]}→{b[1]} {'・'.join(sorted(a[0] & b[0]))}" for a, b in zip(seq, seq[1:]) if a[0] & b[0]]
+        L.append(f"- 連続する週末担当: {'、'.join(cons) if cons else 'なし'}")
     L.append("")
     L.append("## 5 同日集約の対象一覧（全土日祝、昼夜両方向）")
     L.append("")
@@ -1731,7 +1749,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         else:
             L.append(f"- {P.label(d)}: 夜勤 {A.work((d,'night'))}（OC {'・'.join(A.oc((d,'night')))}）")
     last = P.periods[-1] if P.periods else None
-    if last and last["kind"] == "weekend" and last["crossing"] and not last["prev_days"]:
+    if P.period_charge_on and last and last["kind"] == "weekend" and last["crossing"] and not last["prev_days"]:
         L.append(f"- 月またぎの土日 {last['name']}: 主担当担当 {charge_label(P, last, charge[last['id']])}（翌月1日へ接続）")
     L.append(f"- 翌月初日の定期業務: {'翌月条件で要確認' }")
     return "\n".join(L) + "\n", V
