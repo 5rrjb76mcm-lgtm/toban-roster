@@ -420,8 +420,16 @@
   const renameTrial = (oldN, newN) => !!renameTrialOn(state.rules, state.month, oldN, newN);
   // 改名を記録する（起きた順にすべて。同期の後に足した人の氏名の変更も）。統合のときに、共通の元の名簿にいた人から始まる対応だけを使う（T.effectiveRenames）
   function noteRename(oldN, newN) { if (oldN !== newN) (state.renames ||= []).push([oldN, newN]); }
+  // 削除の印は操作ごとに一意にする。空いた氏名を別人が使っても、Undo が別人の削除を戻さない。
+  // 保存で改名の記録が消えても Undo の記録は残るため、取り消し履歴がある間は使用済みの印を再利用しない。
+  const usedRemovalNames = new Set();
+  function removalName(name) {
+    for (const pair of state.renames || []) for (const n of pair) if (String(n).startsWith(T.GONE)) usedRemovalNames.add(n);
+    const base = T.GONE + name; let n = base, i = 1; while (usedRemovalNames.has(n)) n = `${base}\u0000${i++}`;
+    usedRemovalNames.add(n); return n;
+  }
   // 名簿から外す: 月の入力と、設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す。外したことを改名の記録に残す（外した後にその氏名を別の人が使っても、相手の版の元の人の入力を別の人に付けない）
-  function removeDoctor(i) { const R = state.rules, nm = (R.doctors[i] || {}).name; if (nm === undefined) return; R.doctors.splice(i, 1); T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); noteRename(nm, T.GONE + nm); }
+  function removeDoctor(i) { const R = state.rules, nm = (R.doctors[i] || {}).name; if (nm === undefined) return; R.doctors.splice(i, 1); T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); noteRename(nm, removalName(nm)); }
   function renameDoctor(oldN, newN) {
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     T.renameMonthName(m2, oldN, newN);
@@ -529,7 +537,7 @@
       if (entry.auto && unchangedSince(entry)) { const i = undoStack.indexOf(entry); if (i >= 0) undoStack.splice(i, 1); renderUndo(); } });
     renderUndo();
   }
-  function clearUndo() { undoStack.length = 0; renderUndo(); }
+  function clearUndo() { undoStack.length = 0; usedRemovalNames.clear(); renderUndo(); }
   function renderUndo() {
     const b = $("#btnUndo"), note = $("#undoNote"); const last = undoStack[undoStack.length - 1];
     if (b) b.disabled = !last; if (!note) return; // 設定タブを描く前でも呼ばれる（切替時の履歴の破棄など）
@@ -559,8 +567,8 @@
       for (const [from, to] of renames.slice().reverse()) { noteRename(to, from); restored.delete(to); if (!String(from).startsWith(T.GONE)) restored.add(from); }
       const baseNames = (state.baseRules && state.baseRules.doctors || []).map(d => d.name);
       // 未保存のプロファイル置換を戻しただけなら、元からいた人を新しく足した別人と扱わない。
-      for (const n of old) if (!restored.has(n) && T.renameOrigin(state.renames, baseNames, n) === null) noteRename(T.GONE + n, n);
-      for (const n of restored) if (!old.includes(n)) noteRename(n, T.GONE + n);
+      for (const n of old) if (!restored.has(n) && T.renameOrigin(state.renames, baseNames, n) === null && !T.newPersons(state.renames, baseNames, [n]).includes(n)) noteRename(removalName(n), n);
+      for (const n of restored) if (!old.includes(n)) noteRename(n, removalName(n));
     }
     state.rules = o.rules;
     if (monthUntouched) { state.month = keepVersions(o.month); state.result = o.result; } // 月別条件をその後に触っていなければ月と結果も戻す
@@ -596,7 +604,10 @@
         (R.profile ||= {}).roles = roles;
         T.fillDefaultRules(R); A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); return;
       }
-      if (b.dataset.act === "add") R.doctors.push({ name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null });
+      if (b.dataset.act === "add") {
+        const d = { name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null };
+        R.doctors.push(d); noteRename(removalName(d.name), d.name); // 削除した人の空いた初期名でも、追加した人は別人。Undo と共有統合へその対応を残す。
+      }
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
         removeDoctor(i); } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す

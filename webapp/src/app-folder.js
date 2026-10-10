@@ -68,6 +68,16 @@
   // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=安全に統合できない（共通の元・氏名や役割の対応が不明など）
   async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
     if (noteRoleLoadConsent(f)) return null;
+    // 旧版は削除の印を再利用したり、復元した人を既存の別人と同名の連なりにした。
+    // 複数の本人が同じ印・氏名を持つ記録は後から判別できないため、自動統合しない。
+    const renameEnds = []; let ambiguousNames = false;
+    for (const [from, to] of state.renames || []) {
+      if (from === to) continue;
+      const i = renameEnds.indexOf(from);
+      if (renameEnds.includes(to)) { ambiguousNames = true; break; }
+      if (i < 0) renameEnds.push(to); else renameEnds[i] = to;
+    }
+    if (ambiguousNames) { f.mergeBlockedReason = T.t("以前の版の名簿の削除・取り消しの記録では、同じ氏名を使った別の人を区別できません。入力を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
     let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
     // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。

@@ -32,7 +32,10 @@ T.rules.register({
   },
   ui: {
     render(R, h) { const c = R.shift_run_max || { day: 3 }; return h.shifts.map(([id, lb]) => `<label>${h.esc(h.tx("{shift}は連続", { shift: lb }))} <input type="number" min="1" max="31" data-srm="${id}" value="${h.esc(c[id] ?? "")}" style="width:3.5em"> ${h.esc(h.tx("日まで（空欄＝制限なし）"))}</label>`).join("　"); },
-    read(R, el) { const out = {}; for (const id of ["day", "night"]) { const x = el(`[data-srm="${id}"]`); if (x && x.value !== "") out[id] = Math.max(1, +x.value || 1); } R.shift_run_max = out; },
+    read(R, el) { const out = Object.assign({}, R.shift_run_max || { day: 3 }); let shown = false;
+      for (const id of ["day", "night"]) { const x = el(`[data-srm="${id}"]`); if (!x) continue; shown = true;
+        if (x.value !== "") out[id] = Math.max(1, +x.value || 1); else delete out[id]; }
+      if (shown) R.shift_run_max = out; }, // Preserve hidden limits; clearing a visible cell still removes its limit.
   },
   summary(P, prm, tv) { return Object.entries(prm.max).map(([k, K]) => tv("{shift}は連続 {n} 日まで", { shift: P.shiftLabel(k), n: K })).join(T.listSep()); },
   messages: { SHIFT_RUN_TOO_LONG: { en: "{who}: more than {max} {shift} shifts in a row from {from}", ja: "{who}: {from}から{shift}が {max} 日を超えて続く" } },

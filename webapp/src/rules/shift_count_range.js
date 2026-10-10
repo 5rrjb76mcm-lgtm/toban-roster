@@ -46,8 +46,13 @@ T.rules.register({
   ui: {
     render(R, h) { const c = R.shift_counts || { night: { min: 3, max: 5 } };
       return h.shifts.map(([id, lb]) => `<label>${h.esc(lb)} <input type="number" min="0" max="31" data-scr="${id}:min" value="${h.esc((c[id] || {}).min ?? "")}" style="width:3.5em">〜<input type="number" min="0" max="31" data-scr="${id}:max" value="${h.esc((c[id] || {}).max ?? "")}" style="width:3.5em"> ${h.esc(h.tx("回（空欄＝制限なし）"))}</label>`).join("　"); },
-    read(R, el) { const out = {}; for (const id of ["day", "night"]) { const a = el(`[data-scr="${id}:min"]`), b = el(`[data-scr="${id}:max"]`); if (!a && !b) continue; const v = {};
-      if (a && a.value !== "") v.min = Math.max(0, +a.value); if (b && b.value !== "") v.max = Math.max(0, +b.value); if (Object.keys(v).length) out[id] = v; } R.shift_counts = out; },
+    read(R, el) { const out = Object.assign({}, R.shift_counts || { night: { min: 3, max: 5 } }); let shown = false;
+      for (const id of ["day", "night"]) { const a = el(`[data-scr="${id}:min"]`), b = el(`[data-scr="${id}:max"]`); if (!a && !b) continue; shown = true;
+        const v = Object.assign({}, out[id]);
+        if (a) { delete v.min; if (a.value !== "") v.min = Math.max(0, +a.value); }
+        if (b) { delete v.max; if (b.value !== "") v.max = Math.max(0, +b.value); }
+        if (Object.keys(v).length) out[id] = v; else delete out[id]; }
+      if (shown) R.shift_counts = out; }, // Hidden controls are not a request to clear saved bounds.
   },
   summary(P, prm, tv) { return Object.entries(prm.range).map(([k, r]) => tv("{shift}は月 {a}〜{b} 回", { shift: P.shiftLabel(k), a: r.min ?? "", b: r.max ?? "" })).join(T.listSep()); },
   report(ctx, prm) { const { P, t } = ctx; for (const k of Object.keys(prm.range)) { const hist = {}; for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue; const c = P.slots.filter(s => s[1] === k && ctx.worked(n, s)).length; hist[c] = (hist[c] || 0) + 1; }
