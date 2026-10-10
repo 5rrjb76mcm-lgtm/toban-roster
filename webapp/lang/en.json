@@ -14,6 +14,7 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "以前の版の名簿の削除・取り消しの記録では、同じ氏名を使った別の人を区別できません。入力を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "The roster deletion and Undo history from an earlier version cannot distinguish different people who reused the same name. Automatic merging was stopped so inputs cannot move to another person. Choose one version's settings and month data together.",
     "勤務表の作成": "Roster Maker",
     "確認版": "Draft",
     "確定版": "Final",

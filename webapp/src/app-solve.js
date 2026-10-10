@@ -47,7 +47,9 @@
     // 「最小変更」の重みは今回の計算にだけ使う（設定の重みには残さない）
     const rulesForRun = useBase ? Object.assign({}, state.rules, { weights: Object.assign({}, state.rules.weights, { base_change: +$("#baseWeight").value || 30 }) }) : state.rules;
     let P;
-    try { P = new T.Problem(rulesForRun, state.month); } catch (e) { log(T.t("入力の読み取りに失敗: {e}", { e })); return; }
+    // 参照解・本計算・診断は同じ入力の写しを使う。Problem の一部は rules/month を参照するため、
+    // 待機中の編集を直接見せると、元の値へ戻した場合に最後の署名チェックだけでは混在を検出できない。
+    try { P = new T.Problem(JSON.parse(JSON.stringify(rulesForRun)), JSON.parse(JSON.stringify(state.month))); } catch (e) { log(T.t("入力の読み取りに失敗: {e}", { e })); return; }
     // プラグインが欠けた・読めない状態では、規則が黙って落ちるので計算しない。この判定は規則ごとの入力チェックとは別口（プラグインの lint が例外を出しても判定できる）
     const BLOCKING = ["LINT_PLUGIN_MISSING", "LINT_PLUGIN_ERROR", "LINT_PLUGIN_STALE", "LINT_PLUGIN_HOOK", "LINT_NAME_DUP"];
     let blocking; try { blocking = T.lintPlugins(P); } catch (e) { log(T.t("入力チェックでエラー: {e}", { e })); log(T.t("入力チェックが完了しないため計算しません。設定タブの管理者向けでプラグインの読み込み状況を確かめ、直らなければ作成者に知らせてください")); return; }

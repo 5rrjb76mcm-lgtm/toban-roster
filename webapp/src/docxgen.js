@@ -106,8 +106,8 @@
           const d = dayAt(w, col); let text = "";
           if (d != null) {
             if (r === 0) text = d === 1 ? `${P.month}/${d}` : String(d);
-            else if (r === 1) text = P.slotExists(d, "day") ? A.workText([d, "day"]) : "";
-            else if (r === 2) text = A.workText([d, "night"]);
+            else if (r === 1) text = P.slotExists(d, "day") ? A.workers([d, "day"]).map(n => P.nameWithTag([d, "day"], n)).join("・") : ""; // 固定の印は月の表・説明資料と同じく名前の後ろに出す
+            else if (r === 2) text = A.workers([d, "night"]).map(n => P.nameWithTag([d, "night"], n)).join("・");
             else if (r === 3) text = P.slotExists(d, "day") ? `${A.oc([d, "day"]).join("・")}/${A.oc([d, "night"]).join("・")}` : A.oc([d, "night"]).join("・");
             else if (r === 4) { const una = /* 不可の日＝夜勤不可（日夜両方を含む） */ P.dutyNames.filter(n => (P.unavailNight[n] || new Set()).has(d) || (P.unavailOther[n] || []).some(([dd, pp]) => dd === d && pp === "allday")).map(n => c.abbr[n]); text = una.length <= 3 ? una.join("・") : una.join(""); }
           }

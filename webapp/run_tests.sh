@@ -41,6 +41,8 @@ run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
 run test_empty_roster_node.js
 run test_undo_roster_order_node.js
+run test_undo_reused_deleted_name_node.js
+run test_undo_deleted_name_occurrences_node.js
 run test_undo_profile_identity_node.js
 run test_undo_month_node.js
 run test_numeric_validation_node.js "$HP"
@@ -55,6 +57,7 @@ run test_import_previous_node.js
 run test_import_previous_role_identity_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
+run test_solve_input_snapshot_node.js "$HP"
 run test_absent_assignment_node.js
 run test_diagnose_node.js "$HP"
 run test_diagnose_ui_node.js
@@ -64,6 +67,7 @@ run test_docx_node.js /tmp/toban_test.docx
 run test_output_escape_node.js
 run test_input_escape_node.js
 run test_docx_abbrev_node.js
+run test_docx_fixed_tags_node.js
 run test_files_node.js
 run test_dutydays_node.js "$HP"
 run test_infer_node.js "$HP"
@@ -77,6 +81,7 @@ run test_charge_day_split_node.js "$HP"
 if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
+run test_rule_setting_preservation_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_friday_night_off_node.js "$HP" "$PY"
