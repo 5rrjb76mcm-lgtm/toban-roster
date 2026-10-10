@@ -29,12 +29,14 @@
     for (const n of A.iNames()) { nmn.history.weekend_charge[n] = +(prev.month.history?.weekend_charge?.[n] || 0); nmn.history.holiday_charge[n] = +(prev.month.history?.holiday_charge?.[n] || 0); }
     nmn.prev_month = { last_days: [], last_weekend_charge: null, prev_weekend_charge: null };
     if (consecutive) { // 前月の翌月1日欄の固定指定を、当月1日の固定として引き継ぐ
-      const pf = prev.month.fixed || {}, nk = String(A.daysIn(y, mo) + 1), got = []; nmn.fixed ||= {};
-      for (const [tbl, lbl] of [["day", T.t("日勤")], ["night", T.t("夜勤")], ["weekend_charge", T.t("期間責任者")]]) { const v = (pf[tbl] || {})[nk]; if (v) { (nmn.fixed[tbl] ||= {})[1] = v; got.push(`${lbl} ${v}`); } }
-      for (const [tbl, lbl] of [["day_oc", T.t("日勤OC")], ["night_oc", T.t("夜間OC")]]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${lbl} ${v.join("・")}`); } }
-      for (const tbl of ["day_oc_none", "night_oc_none"]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); got.push(`${T.t(tbl === "day_oc_none" ? "日勤OC" : "夜間OC")} ${T.t("なし")}（${v.join("・")}）`); } } // 「OC なし」の指定も固定の一部
+      const pf = prev.month.fixed || {}, nk = String(A.daysIn(y, mo) + 1), got = [], carried = new Set(); nmn.fixed ||= {};
+      for (const [tbl, lbl] of [["day", T.t("日勤")], ["night", T.t("夜勤")], ["weekend_charge", T.t("期間責任者")]]) { const v = (pf[tbl] || {})[nk]; if (v) { (nmn.fixed[tbl] ||= {})[1] = v; carried.add(tbl); got.push(`${lbl} ${v}`); } }
+      for (const [tbl, lbl] of [["day_oc", T.t("日勤OC")], ["night_oc", T.t("夜間OC")]]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); carried.add(tbl); got.push(`${lbl} ${v.join("・")}`); } }
+      for (const tbl of ["day_oc_none", "night_oc_none"]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); carried.add(tbl); got.push(`${T.t(tbl === "day_oc_none" ? "日勤OC" : "夜間OC")} ${T.t("なし")}（${v.join("・")}）`); } } // 「OC なし」の指定も固定の一部
+      // 置き換えた固定から外れた人の印だけを除く。同じ人の当月の印と、引き継がない枠の印は保持する。
+      for (const key of Object.keys(nmn.fixed_tags || {})) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (dd === "1" && carried.has(kk) && ![].concat((nmn.fixed[kk] || {})[1] || []).includes(who)) delete nmn.fixed_tags[key]; }
       for (const [key, tg] of Object.entries(prev.month.fixed_tags || {})) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (dd !== nk) continue; // 固定の印（日付を翌月 1 日から当月 1 日へ）。引き継いだ固定に付いている印だけ
-        if ([].concat((nmn.fixed[kk] || {})[1] || []).includes(who)) { (nmn.fixed_tags ||= {})[`1:${kk}|${who}`] = tg; got.push(`${who}(${tg})`); } }
+        if (carried.has(kk) && [].concat((pf[kk] || {})[nk] || []).includes(who)) { (nmn.fixed_tags ||= {})[`1:${kk}|${who}`] = tg; got.push(`${who}(${tg})`); } }
       if (got.length) notes.push(T.t("前月の翌月1日欄の固定指定を {m}/1 の固定に引き継ぎ: {list}", { m: nmn.month, list: got.join(T.listSep()) }));
     }
     if (prev.result && prev.result.asg) {
@@ -49,7 +51,12 @@
       if (consecutive) {
         nmn.prev_month.last_days = ld;
         if (wps.length) { const last = wps[wps.length - 1]; nmn.prev_month.last_weekend_charge = chg(last)[0] || null; if (wps.length > 1) nmn.prev_month.prev_weekend_charge = chg(wps[wps.length - 2])[0] || null;
-          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5 && chg(last).length) { (nmn.fixed.weekend_charge ||= {})[1] = chg(last)[0]; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: chg(last)[0], pm: mo, pd: N })); } }
+          if (last.crossing && !last.prevDays.length && PP.dow(N) === 5 && chg(last).length) {
+            const actual = chg(last)[0], explicit = (prev.month.fixed?.weekend_charge || {})[N + 1];
+            // 計算後に翌月1日の固定を編集した保存データでも、明示の入力を古い計算結果で上書きしない。履歴は実績のまま残し、不一致を検出できるようにする。
+            if (explicit && explicit !== actual) notes.push(T.t("月またぎの土日: 前月 {pm}/{pd} の計算結果（{actual}）と {m}/1 の期間責任者の固定（{fixed}）が異なります。固定指定を保持しました。前月の計算結果と当月の固定指定を確認してください", { pm: mo, pd: N, actual, m: nmn.month, fixed: explicit }));
+            else { (nmn.fixed.weekend_charge ||= {})[1] = actual; notes.push(T.t("月またぎの土日: {m}/1 の期間責任者を {who} に固定（前月 {pm}/{pd} から接続）", { m: nmn.month, who: actual, pm: mo, pd: N })); }
+          } }
       } else notes.push(T.t("{y}年{m}月 のデータから取り込んだため、前月末の接続は未入力です（月が連続していません）", { y, m: mo }));
       const fw = T.fullWeekendUnits(PP, charge);
       // 履歴は旧JSONでは数値文字列の場合もある。加算前に数値へ揃え、累計を文字列連結しない。
@@ -79,7 +86,8 @@
     // 前月の名簿や結果を読めない場合も、当月の履歴・接続・固定を途中まで書き換えない。
     // 変換は複製で完了させ、成功したときだけ当月へ反映する。
     let month2, notes;
-    try { month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
+    try { if (!A.confirmPreviousRoleImport(f.data, y, mo)) return A.toast(T.t("読み込みを取り消しました"));
+      month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
     if (typeof A.pushUndo === "function") A.pushUndo("前月の取り込み", { auto: true });

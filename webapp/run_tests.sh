@@ -45,12 +45,14 @@ run test_undo_profile_identity_node.js
 run test_undo_month_node.js
 run test_numeric_validation_node.js "$HP"
 run test_fractional_targets_node.js "$HP" "$PY"
+run test_previous_fixed_integrity_node.js
 run test_save_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
 run test_save_local_input_node.js
 run test_import_previous_node.js
+run test_import_previous_role_identity_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
 run test_absent_assignment_node.js

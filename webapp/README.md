@@ -169,3 +169,5 @@ Python 参照実装でも `rule_states.period_charge: off` は対応済みです
 勤務・OC の固定や不可日は引き続き適用します。翌月の `fixed.weekend_charge` は、JS と同様に独立した OC 連続減点の関与情報として使われる場合があります。期間責任者ルール自体の翌月接続は無効です。既定値／`hard` の動作と未対応設定の拒否は変更しません。
 
 - `tools/test_period_charge_off.py` と `test_python_period_charge_off_node.js` — 架空の22ケースで実 CP-SAT と HiGHS・検算・独立採点を照合。担当候補なし、依存条件、当月固定・前後月接続、通常固定、既定値、目的関数、無効時の変数／表示、未対応ガードも検査します。
+
+- `test_previous_fixed_integrity_node.js` — 架空データで、固定配置の変更→保存データ→翌月作成／前月取込を通し、明示の翌月固定を古い計算結果で上書きしないこと、固定に結び付かない印を持ち込まないことを確かめる。
