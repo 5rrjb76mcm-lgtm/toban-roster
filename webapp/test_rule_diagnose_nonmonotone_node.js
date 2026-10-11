@@ -133,7 +133,7 @@ async function test(label, fn) { await fn(); passed++; console.log('ok ' + label
   for (const mode of ['throws', 'missing evidence', 'invalid return', 'mixed invalid batch']) await test(`optional hook ${mode} preserves solver evidence and other valid hooks`, async () => {
     const broken = 'local.synthetic.explanation.broken', valid = 'local.synthetic.explanation.valid';
     const atTarget = ctx => ctx.name === B && ctx.slot[0] === 24 && ctx.slot[1] === 'day';
-    const proof = code => ({ code, slot: [24, 'day'], names: [B],
+    const proof = code => ({ code, args: { who: B }, slot: [24, 'day'], names: [B],
       evidence: { fixedNames: [A, 'Synthetic C'], capacity: 2 } });
     T.rules.register({ id: broken, api: 1, states: ['hard', 'off'], def: 'off', explainSlot(ctx) {
       if (!atTarget(ctx)) return [];

@@ -37,10 +37,10 @@ function registerOutpatient(api) {
     solve(ctx) { ctx.limit(OUTPATIENT, ctx.work([24, 'day'], D), '<=', 0, { slot: [24, 'day'], names: [D] }); },
     check(ctx) { if (ctx.worked(D, [24, 'day'])) ctx.viol('SYNTHETIC_OUTPATIENT', { who: D }, 24, D); },
     explainSlot(ctx) { return ctx.name === D && ctx.slot[0] === 24 && ctx.slot[1] === 'day' ? [{
-      code: 'SYNTHETIC_OUTPATIENT', slot: [24, 'day'], names: [D],
+      code: 'SYNTHETIC_OUTPATIENT', args: { who: D }, slot: [24, 'day'], names: [D],
       evidence: { source: 'fictional test fixture', commitment: 'Synthetic outpatient session on Nov 24' }
     }] : []; },
-    messages: { SYNTHETIC_OUTPATIENT: { en: '{who}: fictional outpatient session prevents this assignment' } }
+    messages: { SYNTHETIC_OUTPATIENT: { en: '{who}: fictional outpatient session prevents this assignment', ja: '{who}: 架空の外来があるため、この枠には入れません' } }
   });
 }
 function reproduction(api = T) {
@@ -146,6 +146,25 @@ async function test(label, fn) { await fn(); passed++; console.log('ok ' + label
     assert.strictEqual(feasible(P, [T.rules.relaxKey(OUTPATIENT, { slot: [24, 'day'] })]).outcome, 'feasible');
     assert.strictEqual(feasible(P, ['unavail:' + C]).outcome, 'feasible');
     assert.strictEqual(T.rules.explainSlot(P, [23, 'day'], D).filter(item => item.id === OUTPATIENT).length, 0);
+  });
+  await test('explanation records follow the args contract and render the person name in Japanese and English without placeholders', () => {
+    // rule-modules.md: every explainSlot record carries args (at least { who }). Built-in and plug-in records are both checked.
+    for (const name of [A, B, C, D]) for (const record of T.rules.explainSlot(P, [24, 'day'], name)) assert.strictEqual(record.args && record.args.who, name, `${record.id}: explainSlot record for ${name} must carry args.who`);
+    const slot = diagnosis.slotExplanations.find(item => item.slot[0] === 24 && item.slot[1] === 'day'); assert(slot, 'Nov 24 day slot is explained');
+    for (const file of fs.readdirSync(path.join(__dirname, 'lang')).filter(f => f.endsWith('.json')).sort()) T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, 'lang', file), 'utf8')));
+    const original = T.lang(), seen = {}, rendered = { ja: new Map(), en: new Map() };
+    try {
+      for (const lang of ['ja', 'en']) {
+        assert.strictEqual(T.setLang(lang), lang, lang + ' catalog is active');
+        for (const candidate of slot.candidates) for (const exclusion of candidate.exclusions) {
+          const text = T.msg(exclusion.code, exclusion.args || {}, P.rules), id = candidate.name + '|' + exclusion.id; (seen[candidate.name] ||= new Set()).add(exclusion.id); rendered[lang].set(id, text);
+          assert(!/[{}]/.test(text), `${lang} ${exclusion.id}: placeholder left in "${text}"`);
+          assert(text.includes(candidate.name), `${lang} ${exclusion.id}: person name ${candidate.name} missing in "${text}"`);
+        }
+      }
+    } finally { T.setLang(original); }
+    for (const [id, text] of rendered.ja) assert.notStrictEqual(text, rendered.en.get(id), `${id}: Japanese and English texts must differ`); // the language really switched (profile labels such as the shift name are not translated)
+    assert(seen[A].has('shift_run_max') && seen[B].has('shift_run_max') && seen[C].has('unavailable') && seen[D].has(OUTPATIENT), 'every candidate has its expected exclusion rendered');
   });
   await test('Nov 24 composition explanation records zero candidates and all four concrete exclusions', () => {
     assert.strictEqual(diagnosis.explanationsComplete, true);
@@ -256,6 +275,49 @@ async function test(label, fn) { await fn(); passed++; console.log('ok ' + label
       assert.deepStrictEqual(copy(line.individualUnknown.map(item => [item.key, item.reason])), [['fixed:day:26', 'budget'], ['fixed:day:27', 'budget']]);
       assert(limits.every(limit => limit > 0 && limit <= 1));
     } finally { Date.now = realNow; }
+  });
+  // Deterministic budget tests: Date.now is replaced by a fake clock that jumps past the budget immediately after a chosen real-HiGHS trial returns.
+  // No wall-clock timing is involved; the trials that completed before the jump are real, the rest are never run.
+  const withClockJump = async (isCutPoint, fn) => {
+    const realNow = Date.now; let clock = 1000, current; Date.now = () => clock;
+    try {
+      const adapter = { solve(text, opts) { const result = highs.solve(text, opts); if (current && isCutPoint(current)) clock += 1000000; return result; } };
+      return await fn(adapter, progress => { current = progress; });
+    } finally { Date.now = realNow; }
+  };
+  const SLOT_KEY = day => T.rules.relaxKey('shift_run_max', { slot: [day, 'day'] });
+  await test('budget ends right after one completed rule-row trial: it is kept, later candidates are untested, never reported as no-solution', async () => {
+    const result = await withClockJump(p => p.phase === 'individual' && p.currentKey === SLOT_KEY(24), (adapter, onProgress) => T.diagnose(P, adapter, 3, onProgress, { totalTimeLimit: 1 }));
+    const line = result.find(item => item.key === 'rule:shift_run_max'); assert(line);
+    assert.strictEqual(line.groupOutcome, 'feasible', 'whole-rule result completed before the cut is kept');
+    assert.deepStrictEqual(copy(line.alternatives.map(item => item.key)), [SLOT_KEY(24)], 'the completed Nov 24 trial is a verified alternative');
+    assert.strictEqual(feasible(P, [SLOT_KEY(24)]).outcome, 'feasible');
+    assert.strictEqual(line.individualsCount, 31); assert.strictEqual(line.individualsTested, 24); assert.strictEqual(line.individualsComplete, false);
+    assert.deepStrictEqual(copy(line.individualUnknown.map(item => item.key)), [25, 26, 27, 28, 29, 30, 31].map(SLOT_KEY));
+    assert(line.individualUnknown.every(item => item.reason === 'budget'), 'untested candidates are labeled budget, not infeasible');
+    for (const day of [25, 26, 27]) assert.strictEqual(feasible(P, [SLOT_KEY(day)]).outcome, 'feasible', 'untested Nov ' + day + ' really is sufficient, so dismissing it would be wrong');
+    for (const key of ['rule:composition', 'rule:' + OUTPATIENT, 'fixed', 'unavailable']) {
+      const other = result.find(item => item.key === key); assert(other, key);
+      assert.strictEqual(other.individualsTested, 0, key + ' was never tried'); assert.strictEqual(other.individualsComplete, false, key);
+      assert.deepStrictEqual(copy(other.alternatives), [], key + ' reports no alternatives, which is not a claim that none exist');
+      assert.strictEqual(other.individualUnknown.length, other.individualsCount, key); assert(other.individualUnknown.every(item => item.reason === 'budget'), key);
+    }
+    assert(result.every(item => item.combined === undefined && item.items.length === 0), 'no joint removal set is claimed');
+    assert.strictEqual(result.explanationsComplete, false); assert.strictEqual(result.explanationsBudgetExhausted, true);
+  });
+  await test('budget ends right after the first whole-rule trial: it is kept, untried rules are undecided (budget), none is reported as no-solution', async () => {
+    const result = await withClockJump(p => p.phase === 'group' && p.currentKey === 'rule:shift_run_max', (adapter, onProgress) => T.diagnose(P, adapter, 3, onProgress, { totalTimeLimit: 1 }));
+    const first = result.find(item => item.key === 'rule:shift_run_max');
+    assert.strictEqual(first.groupOutcome, 'feasible'); assert.deepStrictEqual(copy(first.alternatives), []);
+    assert.strictEqual(first.individualsTested, 0); assert.strictEqual(first.individualsCount, 31); assert.strictEqual(first.individualsComplete, false);
+    assert(first.individualUnknown.length === 31 && first.individualUnknown.every(item => item.reason === 'budget'));
+    for (const key of ['rule:composition', 'rule:' + OUTPATIENT, 'composition', 'unavailable']) {
+      const line = result.find(item => item.key === key); assert(line, key);
+      assert.strictEqual(line.undecided, true, key + ' is undecided'); assert.strictEqual(line.reason, 'budget', key); assert.deepStrictEqual(copy(line.alternatives || []), [], key);
+    }
+    const fixed = result.find(item => item.key === 'fixed'); assert.strictEqual(fixed.groupOutcome, 'undecided'); assert.strictEqual(fixed.groupEvidence.reason, 'budget');
+    assert(fixed.individualUnknown.length === 3 && fixed.individualUnknown.every(item => item.reason === 'budget') && fixed.alternatives.length === 0);
+    assert(!result.some(item => item.groupOutcome === 'infeasible'), 'nothing is reported as infeasible/no-solution because of the budget');
   });
   await test('cancellation propagates instead of becoming unknown evidence', async () => {
     let current;
