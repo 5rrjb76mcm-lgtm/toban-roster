@@ -9,7 +9,7 @@ T.rules.register({
     const { P, LP, lp } = ctx, S = ctx.names.filter(n => !P.isRole(n, "reserve") && !P.isFixedOnly(n)), ss = ctx.slots.filter(s => s[1] === prm.shift);
     for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) { const zs = [];
       for (const s of ss) { const z = lp.aux("pcz"); lp.add(LP.sub(LP.sum([ctx.work(s, S[i]), ctx.work(s, S[j])]), z), "<=", 1); zs.push(z); } // z ≥ a + b − 1
-      ctx.limit("pair_cap", LP.sum(zs), "<=", prm.max, { aux: "pco", ub: 31 }); }
+      ctx.limit("pair_cap", LP.sum(zs), "<=", prm.max, { aux: "pco", ub: 31, names: [S[i], S[j]] }); }
   },
   check() { },
   penalty(ctx, prm) {

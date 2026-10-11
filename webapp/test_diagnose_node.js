@@ -72,20 +72,20 @@ async function test(label, fn) { await fn(); console.log('ok ' + label); passed+
     assert.strictEqual(T.solveFeasibility(joint,highs,{relax:d[0].items.map(c=>c.key),timeLimit:3}).outcome,'feasible');
   });
   for (const status of ['Time limit reached','Unknown','Solve error','Primal infeasible or unbounded']) await test(`narrowing ${status} is not a confirmed conflict`, async () => {
-    let calls=0; const d=await T.diagnose(P,{solve:(s,o)=>++calls<=2?highs.solve(s,o):{Status:status}},3);
-    assert.strictEqual(calls,4); assert.strictEqual(d[0].combined,true); assert.strictEqual(d[0].incomplete,true); assert.strictEqual(d[0].items.length,2);
+    let calls=0; const d=await T.diagnose(P,{solve:(s,o)=>([1,4].includes(++calls))?highs.solve(s,o):{Status:status}},3);
+    assert.strictEqual(calls,6); assert.strictEqual(d[0].combined,true); assert.strictEqual(d[0].incomplete,true); assert.strictEqual(d[0].items.length,2);
     assert(d[0].items.every(c=>c.undecided && c.status===status));
   });
   await test('thrown narrowing errors remain unresolved with their error message', async () => {
-    let calls=0;const d=await T.diagnose(P,{solve:(s,o)=>{if(++calls<=2)return highs.solve(s,o);throw new Error('fixture detail error');}},3);
+    let calls=0;const d=await T.diagnose(P,{solve:(s,o)=>{if([1,4].includes(++calls))return highs.solve(s,o);throw new Error('fixture detail error');}},3);
     assert(d[0].items.every(c=>c.undecided && c.reason==='error' && c.error==='fixture detail error'));
   });
   await test('unknown candidate baseline does not inherit unrelated group witness', async () => {
     let calls=0;const d=await T.diagnose(P,{solve:(s,o)=>++calls===1?highs.solve(s,o):{Status:'Unknown'}},3);
-    assert.strictEqual(calls,2); assert.strictEqual(d[0].combined,undefined);assert.strictEqual(d[0].items.length,0);assert.strictEqual(d[0].narrowing.outcome,'undecided');
+    assert.strictEqual(calls,4); assert.strictEqual(d[0].combined,undefined);assert.strictEqual(d[0].items.length,0);assert.strictEqual(d[0].narrowing.outcome,'undecided');
   });
-  await test('feasible restoring trials can remove every candidate', async () => {
-    const d=await T.diagnose(P,{solve:async(s,o)=>highs.solve(s,o)},3);assert.strictEqual(d[0].combined,true);assert.deepStrictEqual(d[0].items,[]);assert.strictEqual(d[0].incomplete,false);
+  await test('independently feasible alternatives do not inherit joint-set semantics', async () => {
+    const d=await T.diagnose(P,{solve:async(s,o)=>highs.solve(s,o)},3);assert.strictEqual(d[0].combined,undefined);assert.deepStrictEqual(d[0].items,[]);assert.strictEqual(d[0].alternatives.length,2);assert.strictEqual(d[0].individualsComplete,true);
   });
   await test('plugin group relaxation need not implement person-specific relaxation', async () => {
     T.rules.register({id:'local.diagnose.group',api:1,states:['hard','off'],def:'off',relax:'duties',solve(ctx){ctx.lp.add(0,'=',1);},check(){}});
@@ -108,7 +108,7 @@ async function test(label, fn) { await fn(); console.log('ok ' + label); passed+
   await test('per-trial budget clamps to remaining and stops after exhaustion', async () => {
     const now=Date.now;let clock=1000;Date.now=()=>clock;
     try {const limits=[],progress=[];const d=await T.diagnose(P,{solve:(s,o)=>{limits.push(o.time_limit);const raw=highs.solve(s,o);clock+=1500;return raw;}},3,p=>progress.push(p),{totalTimeLimit:2});
-      assert.deepStrictEqual(limits,[2,0.5]);assert.strictEqual(d[0].combined,true);assert(d[0].items.every(c=>c.undecided && c.reason==='budget'));assert.strictEqual(d[0].incomplete,true);
+      assert.deepStrictEqual(limits,[2,0.5]);assert.strictEqual(d[0].combined,undefined);assert.strictEqual(d[0].alternatives.length,1);assert(d[0].individualUnknown.every(c=>c.reason==='budget'));assert.strictEqual(d[0].individualsComplete,false);
       assert(progress.every(p=>p.remainingSeconds>=0 && p.timeLimit<=p.remainingSeconds));
     } finally {Date.now=now;}
   });
@@ -126,7 +126,7 @@ async function test(label, fn) { await fn(); console.log('ok ' + label); passed+
   });
   await test('invalid budgets reject explicitly; progress callback errors do not alter diagnosis', async () => {
     await assert.rejects(()=>T.diagnose(P,highs,0),/budget/);await assert.rejects(()=>T.diagnose(P,highs,3,null,{totalTimeLimit:Infinity}),/budget/);
-    const d=await T.diagnose(P,highs,3,()=>{throw new Error('UI callback');});assert.strictEqual(d[0].combined,true);
+    const d=await T.diagnose(P,highs,3,()=>{throw new Error('UI callback');});assert.strictEqual(d[0].alternatives.length,2);
   });
   console.log(`ALL OK (${passed})`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

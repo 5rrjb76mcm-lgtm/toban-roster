@@ -14,7 +14,7 @@ T.rules.register({
     for (const n of ctx.names) for (let w = 0; w < 7; w++) {
       const cnt = ctx.LP.sum(ctx.slots.filter(s => ctx.P.dow(s[0]) === w).map(s => ctx.work(s, n)));
       const fixedExcess = Math.max(0, ctx.slots.filter(s => ctx.P.dow(s[0]) === w && ctx.fixedWorkAt(s, n)).length - prm.max);
-      ctx.limit("same_weekday_cap", cnt, "<=", prm.max, { aux: "dowex", ub: 10, fixed: fixedExcess > 0, fixedExcess });
+      ctx.limit("same_weekday_cap", cnt, "<=", prm.max, { aux: "dowex", ub: 10, fixed: fixedExcess > 0, fixedExcess, slots: ctx.slots.filter(s => ctx.P.dow(s[0]) === w), names: [n] });
     }
   },
   // 検算: 曜日ごとに勤務した枠を数え、上限を超えた分を違反にする

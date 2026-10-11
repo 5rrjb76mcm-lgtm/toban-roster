@@ -10,13 +10,13 @@ T.rules.register({
     for (const r of prm.rules) for (const n of ctx.names) for (let d = 1; d < P.N; d++) {
       if (!ctx.has([d, r.from])) continue;
       for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([d + 1, k]))) // 両方の実勤務枠が固定された組だけ減点付きで許す（他の必須条件と同じ。検算では「固定指定により許容」）
-        ctx.limit("shift_sequence", E(ctx.work([d, r.from], n), ctx.work([d + 1, k], n)), "<=", 1, { fixed: ctx.fixedWorkAt([d, r.from], n) && ctx.fixedWorkAt([d + 1, k], n), aux: "seq", ub: 1 }); }
+        ctx.limit("shift_sequence", E(ctx.work([d, r.from], n), ctx.work([d + 1, k], n)), "<=", 1, { fixed: ctx.fixedWorkAt([d, r.from], n) && ctx.fixedWorkAt([d + 1, k], n), aux: "seq", ub: 1, slots: [[d, r.from], [d + 1, k]], names: [n] }); }
     // 月またぎ: 前月最終日の勤務（定数）→ 当月 1 日、当月末 → 翌月 1 日の固定指定。固定した枠は減点付きで許す（他の規則と同じ）
     for (const r of prm.rules) for (const n of ctx.names) {
       if (P.prevWorked([0, r.from], n)) for (const k of (r.to === "any" ? ["day", "night"] : [r.to]).filter(k => ctx.has([1, k])))
-        ctx.limit("shift_sequence", ctx.work([1, k], n), "<=", 0, { fixed: ctx.fixedWorkAt([1, k], n), aux: "seq", ub: 1 });
+        ctx.limit("shift_sequence", ctx.work([1, k], n), "<=", 0, { fixed: ctx.fixedWorkAt([1, k], n), aux: "seq", ub: 1, slots: [[0, r.from], [1, k]], names: [n] });
       if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny() && ctx.has([P.N, r.from]) && nextFixedIn(ctx, n, r.to))
-        ctx.limit("shift_sequence", ctx.work([P.N, r.from], n), "<=", 0, { fixed: ctx.fixedWorkAt([P.N, r.from], n), aux: "seq", ub: 1 }); }
+        ctx.limit("shift_sequence", ctx.work([P.N, r.from], n), "<=", 0, { fixed: ctx.fixedWorkAt([P.N, r.from], n), aux: "seq", ub: 1, days: [P.N, P.N + 1], slots: [[P.N, r.from]], names: [n] }); }
   },
   check(ctx, prm) {
     const { P } = ctx;

@@ -56,7 +56,7 @@ T.rules.register({
   weight: "same_weekday_excess", w0: 15,   // 減点の重みのキーと既定値
   sub: [],                         // この規則の中で使うほかの重み
   w0sub: { young_oc_split: 4 },    // sub の重みの既定値（プラグインの規則は同梱の重みの表に無いので、ここで持つ）
-  relax: "same_weekday",           // 解なしの診断で外してみるときのキー（無ければ診断しない）
+  relax: "same_weekday",           // 旧来の診断グループのキー。ctx.limit の必須行は、これがなくても rule:<id> で診断できる
   needs: [],                       // 先に動いている必要がある部品（第 5.3 節の「提供する事実」）
   lookback(rules) { return 4; },   // 前月末から取り込む必要がある日数（連続の規則など。省略可。本体は有効な規則の最大を採る）
   overlaps: [],                    // 同じことを扱う規則の id。両方とも使われていると、設定画面と入力チェック（LINT_RULE_OVERLAP）で注意が出る
@@ -88,6 +88,7 @@ T.rules.register({
   report(ctx, prm) { },            // 説明資料の第 9 節（調整目標の達成状況）の行。ctx.line(文) で積む（第 5.6 節）
   reportAlways: false,             // true なら規則を「なし」にしていても report を呼ぶ（情報として出す行）
   lint(ctx, prm) { },              // 入力チェック（この規則に関わる矛盾。ctx.push で積む。第 5.7 節）
+  explainSlot(ctx, prm) { return []; }, // 任意の純粋な説明フック。候補の実勤務を妨げる、入力から証明できる事実だけを返す（第 5.1 節）
   diagnoseHint: "月の設定 → …",     // 解なしの診断でこの規則を外すと解けたときの直し方
   messages: {                      // 違反・入力チェックの文面（英語が原文）。登録時に T.MSG に足す
     SAME_WEEKDAY_OVER: { en: "…", ja: "…" },
@@ -158,6 +159,56 @@ ctx.limit(id, expr, "<=", rhs, { fixed: false, fixedExcess: 0, ub: 10 });
 - 解く側の当月の事実は、診断で解除した固定等式を含めない。前月の値はそれを式に含めたときの定数。翌月固定の解除時は翌月の固定事実も外し、境界接続を扱う規則は対応する行を省く。
 
 旧 `fixedInvolved` や「どちらかが固定」を使う施設部品は上の証明へ移行する。同じ `api: 1` で読み込めるが、旧式の無制限な固定緩和には戻らない。必須の複数単位の超過を許す部品には明示的な `fixedExcess` が必要。
+
+#### Diagnostic row contract (API 1, additive)
+
+`ctx.limit` accepts optional scope metadata in its existing options argument:
+
+```js
+ctx.limit("local:example:cap", expression, "<=", cap, {
+  days: [5, 6],                    // integer days, including previous/next boundary days when relevant
+  slot: [5, "day"],               // one exact slot, or omit
+  slots: [[5, "day"], [6, "day"]], // a multi-slot row, or omit
+  names: [name],                   // people affected by this row, or omit
+});
+```
+
+Use the narrowest accurate scope. A same-shift run window declares all its slots; a run across any shift declares its days; a monthly per-person bound may declare only its name. Scope means “rows involving this date, slot, or person,” not “remove just that assignment from an expression.” A slot present in several overlapping windows selects every declared window containing it. Scope is optional: an old plug-in using `ctx.limit` without metadata still supports a whole-rule test.
+
+`T.buildLP(P, { diagnosticRows: rows })` appends one record for each active hard `ctx.limit` call:
+
+```js
+{ id, key, days: [], slot: null, slots: [], names: [] }
+```
+
+`key` is the canonical whole-rule key. Arrays are copied, deduplicated, and normalized; `slots` includes `slot`, and `days` includes days from declared slots. Soft/off rows are not appended. Collection alone changes neither the ordinary LP text nor its objective. This is metadata for declared rule rows, not an IIS or a proof of irreducible conflict. A constant true row may be removed by the LP builder after it is declared. A hard row with an unavoidable fixed allowance is still included. Diagnostics cannot infer semantics or a complete explanation for constraints written directly with `lp.add`.
+
+Always construct relaxation keys with `T.rules.relaxKey(id, scope = {})`:
+
+- `relaxKey(id)` → `rule:<encoded-id>`
+- `relaxKey(id, {day: 5})` → `rule:<encoded-id>:day:5`
+- `relaxKey(id, {slot: [5, "day"]})` → `rule:<encoded-id>:slot:5:day`
+- `relaxKey(id, {name})` → `rule:<encoded-id>:name:<encoded-name>`
+
+IDs, names and shift identifiers use `encodeURIComponent`; do not split raw IDs or names on colons, and do not concatenate unencoded user values. For example, `local:example:cap` becomes `local%3Aexample%3Acap`. Supply at most one scope selector. Matching compares keys constructed from the known ID and declared metadata; encoded-looking names and IDs remain distinct from their decoded forms.
+
+Passing these keys through `opts.relax` skips matching **hard limit rows only**. Soft penalties remain unchanged. The solve hook always runs, so helper-variable definitions, structural constraints, and facts produced with `lp.add`/`provide` remain intact. Direct-only plug-ins need explicit migration to `ctx.limit` to participate in generic rule-row diagnostics; do not skip their whole solve hook or invent private criteria. Existing `def.relax` group keys retain their legacy behavior and are separate from this row contract. The diagnostic caller should distinguish tested rows, untested rows, and unsupported coverage rather than interpret missing coverage as feasibility.
+
+#### Optional pure candidate explanation
+
+`T.rules.explainSlot(P, [day, kind], name, opts = {})` calls `def.explainSlot(ctx, prm)` only for active hard rules. The hook receives `{P, slot, name, opts, firstPrev, relaxed, fixedWorkAt, fixedOcAt, fixedWorkDay, fixedEngAt}`; it receives no LP and must not mutate the problem, inputs, or assignment. Return an array of evidence records or `[]`:
+
+```js
+{ code: "LOCAL_EXPLANATION", args: {who: name}, days: [5],
+  slot: [5, "day"], names: [name], evidence: { /* rule-owned proof facts */ } }
+```
+
+Declare English and Japanese messages as usual. The public helper adds the rule `id`, canonical `key`, and normalized scope; it omits records for relaxed rows. This optional hook explains a proposed **work** assignment, not an on-call assignment. An empty result means no proof was supplied, not that the candidate is feasible. Plug-ins must own their criteria and evidence; the core must not guess facility-specific meanings.
+
+The built-in `shift_run_max` hook reports a window only when all other `K` shifts in a `K+1` window are actual fixed work or valid boundary constants. A nearby fixed shift or a tentative assignment alone is insufficient. A fully fixed window is already covered by the fixed-input allowance, so it is not reported as an exclusion. Missing shifts, fixed-only exemptions, and released next-month connections are respected. `fixed_only` explains a candidate lacking the explicit work fixation required by that rule. These hooks are partial static evidence, not an exhaustive list of exclusions and not a proof that any reported rule is the sole infeasibility cause.
+
+
+Optional explanation failures do not invalidate already verified diagnostic alternatives. The diagnostic passes an `errors` array to `T.rules.explainSlot`; each failed hook is recorded as `{ruleId,error}` while other hooks continue. A hook must return an array of records with a message `code` and a nonempty concrete `evidence` object. Invalid records are not treated as exclusions. Direct API calls without an error collector throw for developer visibility.
 
 
 ### 5.2 検算の道具 `CheckCtx`
@@ -352,7 +403,7 @@ webapp/src/rules-core.js       ← T.rules.register、SolveCtx / CheckCtx、limi
 
 - オンコールを部品にするか（待機の変数と構成の表が本体と一体。段階 3 で決める）。
 - 部品の設定値を `rules` のどこに置くか。いまは規則ごとにばらばらのキー（`max_same_weekday_shifts`、`run_length.max`、`days_off.basis` など）。部品化の後で `rules.params[<id>]` に寄せるかは、保存データの移行と合わせて別に決める（原則 4 のため、部品化の間は動かさない）。
-- 診断の細かさ（いまの「個人ごとに外して試す」絞り込み）を部品の側に持たせるか。
+- 診断の宣言的な行メタデータと候補説明フックは第 5.1 節を参照。追加の相互作用の説明は今後の課題。
 
 ## 10. 暦の部品（祝日の出どころ）
 

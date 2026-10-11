@@ -8,7 +8,7 @@ T.rules.register({
   solve(ctx, prm) {
     const { P, LP } = ctx;
     for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue; const busy = []; for (let d = 1; d <= P.N; d++) busy.push(ctx.busy(d, n));
-      ctx.limit("days_off_max", LP.sum(busy), ">=", P.N - (P.offTarget(n) + prm.extra), { aux: "dox", ub: 31 }); }
+      ctx.limit("days_off_max", LP.sum(busy), ">=", P.N - (P.offTarget(n) + prm.extra), { aux: "dox", ub: 31, names: [n] }); }
   },
   check() { },
   penalty(ctx, prm) {

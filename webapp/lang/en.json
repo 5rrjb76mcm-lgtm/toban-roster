@@ -14,6 +14,28 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "- 「{label}」の個別項目を確認（グループ全体を外した場合は解なし）": "- Checked individual items in \"{label}\" (removing the whole group gives no solution)",
+    "- 「{label}」の個別項目を確認（グループ全体の解除は未判定: {reason}）": "- Checked individual items in \"{label}\" (whole-group relaxation is undecided: {reason})",
+    "枠ごとの候補除外（静的な部分証拠）: 以下は対応する規則が示した除外理由です。原因全体の説明ではなく、残った候補も他の条件で配置できない場合があります。": "Static candidate exclusions (partial evidence): these are exclusions reported by supported rules, not a complete causal diagnosis. Remaining candidates may still be blocked by other conditions.",
+    "- {slot}: 必要 {required} 名、対象 {eligible} 名のうちこの確認で残る候補 {possible} 名 [{rule}]": "- {slot}: requires {required}; {possible} of {eligible} eligible candidates remain after these checks [{rule}]",
+    "枠ごとの候補除外の確認は、時間予算のため未完了です。表示されていない枠にも問題がある可能性があります。": "The static candidate scan is incomplete because of the time budget. Unlisted slots may also have problems.",
+    "規則全体の解除": "Whole-rule relaxation",
+    "単独の解除を試行": "Testing a single removal",
+    "組合せ全体を検証": "Verifying the joint baseline",
+    "組合せを絞り込み": "Reducing the joint set",
+    "{day} の固定入力を確認": "Review fixed inputs for {day}",
+    "診断後に入力またはプラグインが変わりました。もう一度計算してから確認してください。": "Inputs or plug-ins changed after this diagnosis. Solve again before following these results.",
+    "規則別の診断は limit() で登録された条件行を対象にします。直接追加された制約や条件行のない規則は、自動では解除しません。": "Rule-level diagnosis covers condition rows registered with limit(). Direct constraints and rules with no registered rows are not automatically relaxed.",
+    "自動解除の対象外（直接制約のみ、または条件行なし）: {rules}": "Outside automatic relaxation (direct constraints only, or no registered rows): {rules}",
+    "   単独で十分な解除候補（確認済み {n} 件）: 次の各行は別々の選択肢です。その行の条件だけを外して、それぞれ解を確認しました。": "   Individually sufficient alternatives ({n} verified): each row below is a separate option. Removing only that row's conditions gave a verified solution.",
+    "   1項目だけの解除で解が得られる候補は、まだ確認できていません。": "   No single-item removal has yet been confirmed to give a solution.",
+    "   このグループの全 {n} 候補について、単独の解除の判定が完了しました。": "   Single-item checks are complete for all {n} candidates in this group.",
+    "   単独の解除の確認は未完了です（{tested}/{total} 件を試行）。未試行または未判定の候補があるため、表示した選択肢がすべてとは限りません。": "   Single-item checks are incomplete ({tested}/{total} candidates tried). Untested or undecided candidates remain, so other sufficient alternatives may exist.",
+    "   単独の解除が未判定の候補:": "   Candidates whose single-item removal is undecided:",
+    "（未判定: {reason}）": " (undecided: {reason})",
+    "   この組合せから解除項目を1つ戻すと解なしになることを確認しました（包含極小）。項目数が最少の組合せであるとは限りません。": "   Restoring any one item in this verified removal set gives no solution (inclusion-minimal). This does not establish a minimum-cardinality removal set.",
+    "診断は条件を外した場合の実行可能性を確認したものです。原因の特定や、条件を変更してよいという判断ではありません。": "Diagnosis verifies feasibility after relaxing conditions. It does not establish a cause or authorize changing the conditions.",
+    "自動解除の対象は、この規則の ctx.limit に渡された必須の行だけです。直接追加された構造上の制約は残ります。": "Automatic relaxation covers only the hard rows passed to this rule's ctx.limit. Directly added structural constraints remain in place.",
     "以前の版の名簿の削除・取り消しの記録では、同じ氏名を使った別の人を区別できません。入力を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "The roster deletion and Undo history from an earlier version cannot distinguish different people who reused the same name. Automatic merging was stopped so inputs cannot move to another person. Choose one version's settings and month data together.",
     "勤務表の作成": "Roster Maker",
     "確認版": "Draft",
@@ -1172,7 +1194,10 @@
     "   個別項目への絞り込みは未完了: {reason}": "   Narrowing to individual items is incomplete: {reason}",
     "   個別項目の組合せは未確認です。": "   No individual-item combination has been verified.",
     "診断で確認できた条件や項目の組合せを参考に入力を見直し、再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。": "Review the inputs using the confirmed rule groups or item combinations, then solve again. Get the roster owner's approval before widening exceptions (such as tolerances).",
-    "前月と現在の設定では、固定「OCなし」の役割IDの対応が異なるか確認できません。\n前月 → 現在:\n{roles}\n履歴の取り込みでは設定は変更せず、IDをそのまま現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。": "The role IDs in the fixed “no OC” entries differ between the previous and current settings, or their correspondence cannot be verified.\nPrevious → current:\n{roles}\nImporting history keeps the current settings and interprets these IDs as current roles without changing them. Undefined IDs are retained, but may have no effect."
+    "前月と現在の設定では、固定「OCなし」の役割IDの対応が異なるか確認できません。\n前月 → 現在:\n{roles}\n履歴の取り込みでは設定は変更せず、IDをそのまま現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。": "The role IDs in the fixed “no OC” entries differ between the previous and current settings, or their correspondence cannot be verified.\nPrevious → current:\n{roles}\nImporting history keeps the current settings and interprets these IDs as current roles without changing them. Undefined IDs are retained, but may have no effect.",
+    "規則の候補説明でエラーがあり、一部の説明を省略しました。確認済みの解除候補は有効です: {errors}": "Some rule-owned candidate explanations failed and were omitted. Verified sufficient relaxations remain valid: {errors}",
+    "規則の日付・勤務帯の候補は、その日付・勤務帯に対応づけられた条件行をすべて解除します。複数日にまたがる行も含み、その日の勤務入力だけを消す意味ではありません。": "A rule date/slot candidate relaxes all declared rows associated with that date/slot, including rows spanning several days. It does not mean deleting only that day’s assignment.",
+    "   この規則には日付・勤務帯・氏名の絞り込み情報がないため、規則全体の条件行だけを試行しました。個別の解除候補は未確認です。": "   This rule provides no date, slot or name refinement metadata. Only the whole rule’s declared rows were tested; individual alternatives remain unexamined."
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",
@@ -1417,7 +1442,11 @@
     "SLOT_OC_DUP": "{slot}: the same person is listed twice as on-call ({who})",
     "SLOT_OC_UNKNOWN": "{slot}: on-call is not a duty candidate ({who})",
     "FIXED_OC_NONE": "{slot}: fixed as no {role} on-call, but {who} is on-call",
-    "RESERVE_OVER": "{who}: a reserve member is on duty {count} times (at most once a month)"
+    "RESERVE_OVER": "{who}: a reserve member is on duty {count} times (at most once a month)",
+    "DIAG_SLOT_UNAVAILABLE": "{who}: unavailable for {slot} (no applicable fixed-assignment exemption)",
+    "DIAG_SLOT_FIXED_FULL": "{who}: all work places in {slot} are occupied by other fixed assignees",
+    "FIXED_ONLY_CANDIDATE": "{who} can work only in explicitly fixed shifts, and this work slot is not fixed for them",
+    "SHIFT_RUN_FORCED_WINDOW": "Assigning {who} here would exceed the limit of {max} consecutive {shift} shifts in {from}–{to}; every other shift in that window is fixed work"
   },
   "help": {
     "about": {

@@ -11,7 +11,7 @@ T.rules.register({
       for (let d = ctx.firstPrev; d + K <= P.N + 1; d++) { if (d + K < 1) continue; // 前月の中だけの並びは対象外（前月の結果は変えられない）
         if (d + K > P.N && (ctx.relaxed("fixed") || ctx.relaxed("fixed:next"))) continue; // 診断で翌月の固定接続を外した窓
         const win = []; let forced = 0; for (let j = 0; j <= K; j++) { win.push(ctx.y(d + j, n)); if (ctx.fixedWorkDay(d + j, n)) forced++; }
-        ctx.limit("run_length_max", LP.sum(win), "<=", K, { fixed: forced > K, aux: "rlo", ub: K + 1 }); } } // 固定入力だけで上限を超える窓だけ減点付きで許す（前月末・翌月の定数も含む）
+        ctx.limit("run_length_max", LP.sum(win), "<=", K, { fixed: forced > K, aux: "rlo", ub: K + 1, days: Array.from({ length: K + 1 }, (_, j) => d + j), names: [n] }); } } // 固定入力だけで上限を超える窓だけ減点付きで許す（前月末・翌月の定数も含む）
   },
   check(ctx, prm) {
     // 解く側と同じく max+1 日の窓ごとに固定入力だけで超過するかを見る。許容の可否が同じ窓はまとめて 1 件にする（自動配置が超過を作る窓は違反 V に残る）
