@@ -704,12 +704,34 @@
     for (const byName of Object.values(m.person_days || {})) for (const n of Object.keys(byName || {})) if (bad.has(n)) { delete byName[n]; c++; }
     return c;
   }
-  // 設定（名簿の外）から、指定した氏名の人ごとの項目を除く: 氏名をキーにした項目・氏名そのものの配列要素・name が氏名の要素（名簿から外すときに使う。文の中の氏名は触らない）。戻り値は除いた件数
+  // 氏名との一致だけでは、勤務帯・役割・重みなどの構造キーと個人を区別できない。
+  // columns の空の begin/end が除く項目だけを個人欄として扱う（非表示・off の欄も含む）。
+  // 未登録の独自データは推測で壊さない。フック失敗は呼び出し元へ返し、削除を取り消す。
   function purgeRulesNames(R, names) {
     const bad = new Set(names); let c = 0; if (!bad.size || !R) return 0;
-    const walk = v => { if (Array.isArray(v)) { for (let i = v.length - 1; i >= 0; i--) { const x = v[i]; if ((typeof x === "string" && bad.has(x)) || (x && typeof x === "object" && !Array.isArray(x) && bad.has(x.name))) { v.splice(i, 1); c++; } else walk(x); } }
-      else if (v && typeof v === "object") for (const k of Object.keys(v)) { if (bad.has(k)) { delete v[k]; c++; } else walk(v[k]); } };
-    for (const k of Object.keys(R)) if (k !== "doctors") walk(R[k]);
+    const plain = v => v && typeof v === "object" && !Array.isArray(v), J = v => JSON.stringify(v);
+    const purge = (orig, cleared) => {
+      if (Array.isArray(orig)) {
+        const keepAll = Array.isArray(cleared) ? cleared.map(J) : [];
+        return orig.filter(x => { const who = typeof x === "string" ? x : plain(x) ? x.name : undefined;
+          if (bad.has(who) && !keepAll.includes(J(x))) { c++; return false; } return true; });
+      }
+      if (plain(orig)) { const cl = plain(cleared) ? cleared : {};
+        for (const k of Object.keys(orig)) {
+          if (!Object.prototype.hasOwnProperty.call(cl, k) && bad.has(k)) { delete orig[k]; c++; }
+          else orig[k] = purge(orig[k], cl[k]);
+        }
+      }
+      return orig;
+    };
+    for (const col of (T.rules && T.rules.columnsAll ? T.rules.columnsAll(R) : [])) {
+      if (typeof col.end !== "function") continue;
+      const cleared = JSON.parse(J(R)); col.end(cleared, col.begin ? col.begin(cleared) : {});
+      for (const k of Object.keys(R)) if (k !== "doctors" && J(R[k]) !== J(cleared[k])) R[k] = purge(R[k], cleared[k]);
+    }
+    // 既知の氏名配列（旧形式の個人指定も含む）。施設固有の規則の意味は解釈しない。
+    for (const key of ["name_order", "pm_clinic_arrhythmia_candidates", "arrhythmia_responsible_night"])
+      if (Array.isArray(R[key])) R[key] = R[key].filter(n => { if (!bad.has(n)) return true; c++; return false; });
     return c;
   }
   // 設定のうち名簿の欄（規則の columns の begin / end）が持つ人ごとの項目から、いまの名簿にいない人の分を除く（以前に名簿から外した人の条件が、隠れた欄に残っている保存データ向け）。

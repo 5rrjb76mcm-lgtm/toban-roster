@@ -14,6 +14,7 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "名簿から外せません: 施設のプラグインが欠けているか、人ごとの設定の削除に失敗しました。プラグインを確認してください": "Cannot remove this person: a facility plug-in is missing or personal-settings cleanup failed. Check the plug-ins.",
     "- 「{label}」の個別項目を確認（グループ全体を外した場合は解なし）": "- Checked individual items in \"{label}\" (removing the whole group gives no solution)",
     "- 「{label}」の個別項目を確認（グループ全体の解除は未判定: {reason}）": "- Checked individual items in \"{label}\" (whole-group relaxation is undecided: {reason})",
     "枠ごとの候補除外（静的な部分証拠）: 以下は対応する規則が示した除外理由です。原因全体の説明ではなく、残った候補も他の条件で配置できない場合があります。": "Static candidate exclusions (partial evidence): these are exclusions reported by supported rules, not a complete causal diagnosis. Remaining candidates may still be blocked by other conditions.",
