@@ -736,16 +736,17 @@
   }
   // 設定のうち名簿の欄（規則の columns の begin / end）が持つ人ごとの項目から、いまの名簿にいない人の分を除く（以前に名簿から外した人の条件が、隠れた欄に残っている保存データ向け）。
   // 欄を空で書いた結果と比べ、消えた項目＝人ごとの項目とみなす。戻り値は除いた件数
-  function pruneRosterRefs(R) {
+  // 共有用は strict で欄の失敗を呼び出し元へ返す。onClear は空の読取りとの差を通知し、氏名キーと構造キーの判別に使う。
+  function pruneRosterRefs(R, opts = {}) {
     const names = new Set((R.doctors || []).map(d => d.name)); let c = 0; const plain = v => v && typeof v === "object" && !Array.isArray(v), J = v => JSON.stringify(v);
     const prune = (orig, cleared) => {
       if (Array.isArray(orig)) { if (J(orig) === J(cleared)) return orig; const keepAll = Array.isArray(cleared) ? cleared.map(J) : [];
         return orig.filter(x => { const who = typeof x === "string" ? x : plain(x) ? x.name : undefined; const keep = who === undefined || names.has(who) || keepAll.includes(J(x)); if (!keep) c++; return keep; }); }
-      if (plain(orig)) { const cl = plain(cleared) ? cleared : {}; for (const k of Object.keys(orig)) { if (k in cl) orig[k] = prune(orig[k], cl[k]); else if (!names.has(k)) { delete orig[k]; c++; } } }
+      if (plain(orig)) { const cl = plain(cleared) ? cleared : {}; for (const k of Object.keys(orig)) { if (Object.prototype.hasOwnProperty.call(cl, k)) orig[k] = prune(orig[k], cl[k]); else if (!names.has(k)) { delete orig[k]; c++; } } }
       return orig; };
     for (const col of (T.rules && T.rules.columnsAll ? T.rules.columnsAll(R) : [])) { if (typeof col.end !== "function") continue;
-      let R2; try { R2 = JSON.parse(J(R)); col.end(R2, col.begin ? col.begin(R2) : {}); } catch (e) { continue; }
-      for (const k of Object.keys(R)) if (k !== "doctors" && J(R[k]) !== J(R2[k])) R[k] = prune(R[k], R2[k]); }
+      let R2; try { R2 = JSON.parse(J(R)); col.end(R2, col.begin ? col.begin(R2) : {}); } catch (e) { if (opts.strict) throw e; continue; }
+      for (const k of Object.keys(R)) if (k !== "doctors" && J(R[k]) !== J(R2[k])) { if (opts.onClear) opts.onClear(k, R[k], R2[k]); R[k] = prune(R[k], R2[k]); } }
     return c;
   }
   // 月データの中の氏名を置き換える（手元の月・統合のときの相手の月と共通の元に同じ変換を当てる）

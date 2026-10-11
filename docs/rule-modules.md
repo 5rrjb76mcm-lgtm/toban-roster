@@ -110,6 +110,16 @@ T.rules.register({
 - `id` の接頭辞: 本体の部品は無印（いまの id のまま）。施設固有の部品は `local.<施設 id>.<名前>`（第 8 節）。
 - `api` は部品と本体の約束の版。`ctx` の形や登録の引数を非互換に変えたときに上げる。
 
+### 4.1 Shared-profile privacy boundary
+
+`profileForExport(false)` works on a clone and removes roster attributes other than role and quota/share. Personal name-keyed entries are removed, exact name values are replaced with placeholders, and personal `{name, ...}` array records are removed. Registered roster columns are inspected even when their rule is off or the column is hidden; their empty `begin`/`end` contract identifies personal entries, including former staff. Column conversion failures, missing plug-ins, and failed `share` hooks block the export without changing the live rules.
+
+The exporter distinguishes known schema locations from personal data. Core profile/role/shift/position keys, role references, registered weights/rule states, and built-in setting fields retain their configuration meaning even when a staff name is `night`, `I`, `work`, or `target_deviation`. This is a bounded schema in `app-settings.js`, not an exemption for an entire object or for matching words elsewhere. Scalar/count shapes are checked again after `share`; the original structural string values are recorded before hooks run so a hook cannot hide a newly injected name behind an identifier field.
+
+Unknown children, including children of `profile`, remain opaque. Ordinary name keys/values and personal records still receive conservative cleanup. A name that also denotes a structural token is ambiguous in an opaque key or value (including an unknown array). The exporter leaves that occurrence for `share(R)` to remove, then refuses the export if it remains rather than silently corrupting unknown configuration. Known personal arrays and entries proven personal by a column's empty read can still be anonymized. A structural array row containing a personal `name` record is also refused unless `share` removes it; keeping the row and merely renaming its `name` would leak the associated private fields. Unchanged plug-in data is never inferred to be public from the column contract.
+
+Labels and free text are not structural exemptions: exact names are anonymized, and embedded names produce the existing confirmation warning. Arbitrary profile/calendar/template/plug-in identifiers are preserved but still scanned for names. A declared role ID is exempt only when the whole identifier equals the staff name; embedded names still warn. Other opaque personal formats require the plug-in's `share` hook, including records for former staff that are not owned by a roster column. Included-roster export remains the lossless, private handover path and does not perform these privacy transformations.
+
 ## 5. 共通の道具
 
 ### 5.1 解く側の道具 `SolveCtx`

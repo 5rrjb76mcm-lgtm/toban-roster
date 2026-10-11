@@ -466,30 +466,111 @@
   // ---------- 施設プロファイルの書き出し・読み込み ----------
   // 書き出し: 規則そのもの（施設の構成・規則の状態・重み・値）。月データは含めない。
   // withRoster でなければ共有用: 名簿は役割と目安（回数・比重）だけを残して氏名を「役割名＋番号」に置き換え、経験年数・資格・個人別の条件・プラグインが足した欄は落とす。
-  // 名簿の外にある氏名は、氏名をキーにした項目（個人別の条件）を落とし、氏名そのものの値（表示順など）は仮の名前に置き換える。
+  // 名簿の外にある氏名は、個人別のキーを落とし、氏名そのものの値（表示順など）は仮の名前へ。既知の構造キー・識別子は維持し、独自データで両者を判別できなければ断る。
   // それでも残る氏名（プロファイルの名前や規則の文に書いた氏名は文の一部なので置き換えない）は leftover で返し、呼ぶ側が書き出す前に知らせる
   const EXPORT_DOCTOR_KEYS = ["team", "quota", "share"]; // 共有用の名簿に残す欄（役割と目安）
+  // Only these schema edges are structural. In particular, recognizing a container never
+  // exempts its unknown children, labels, or free text. Plug-in payloads stay opaque.
+  function exportSchema(R, columnKeys) {
+    const opaque = {}, plain = x => x && typeof x === "object" && !Array.isArray(x);
+    const text = { accept: x => typeof x === "string" }, bool = { accept: x => typeof x === "boolean" };
+    const obj = fields => ({ fields: new Map(Object.entries(fields)), accept: plain }), arr = item => ({ item, accept: Array.isArray });
+    const oneOf = values => ({ safe: x => values.includes(x), accept: x => values.includes(x), tokens: values }), id = { safe: x => typeof x === "string" && !!x, accept: x => typeof x === "string", warn: "all" };
+    const number = { safe: x => typeof x === "string" && x.trim() !== "" && Number.isFinite(Number(x)), accept: x => x == null || x === "" || (typeof x === "number" || typeof x === "string") && Number.isFinite(Number(x)) };
+    const roleIds = T.normalizeRolesOf(R).map(x => x.id), role = Object.assign(oneOf(roleIds), { warn: "embedded" }), shift = oneOf(["day", "night"]);
+    const dict = (keys, value, keyWarn) => ({ fields: new Map(keys.map(k => [k, value])), keyWarn, accept: plain });
+    const ocRoles = [...new Set([...roleIds, ...(T.DEFAULT_ROLES || []).map(x => x.id)])];
+    const languages = [...new Set(["ja", "en", ...(T.LANGS ? T.LANGS().map(([code]) => code) : [])])];
+    const label = Object.assign(dict(languages, text), { accept: x => typeof x === "string" || plain(x) && Object.keys(x).every(k => languages.includes(k)) });
+    const count = obj({ weekday: number, off_days: number }); count.safe = number.safe; count.accept = x => number.accept(x) || plain(x) && Object.entries(x).every(([k, v]) => count.fields.has(k) && number.accept(v));
+    const counts = obj({ day: count, night: count, weekday: number, off_days: number }); counts.safe = number.safe; counts.accept = x => number.accept(x) || plain(x) && Object.entries(x).every(([k, v]) => counts.fields.has(k) && counts.fields.get(k).accept(v));
+    const bounds = obj({ min: number, max: number });
+    const profile = obj({ id, label, quota_mode: oneOf(["absolute", "share"]),
+      roles: arr(obj({ id: role, label, refs: arr(oneOf(["charge", "other", "junior", "reserve"])), standby: bool })),
+      shifts: arr(obj({ id: shift, label, on: oneOf(["off_days", "all", "weekdays", "none"]), oncall: bool })),
+      positions: obj({ work: Object.assign(obj({ count: counts, min: counts, ideal: counts, day: count, night: count, weekday: number, off_days: number }), { safe: number.safe, accept: x => number.accept(x) || plain(x) }) }),
+      calendar: obj({ holidays: id, closure: arr(obj({ month: number, days: arr(number) })) }),
+      day_flags: arr(Object.assign(obj({ id, label, short: label }), { accept: x => typeof x === "string" || plain(x) })), fixed_tags: arr(Object.assign(obj({ label, shifts: arr(shift) }), { accept: x => typeof x === "string" || plain(x) })) });
+    const defs = T.RULE_DEFS || [], weights = [...new Set([...Object.keys(WEIGHT_LABELS), ...defs.flatMap(d => [d.weight, ...(d.sub || []), ...Object.keys(d.w0sub || {})]).filter(Boolean)])];
+    const fields = {
+      profile, doctors: arr(obj({ name: text, team: role, quota: number, share: number })), name_order: arr(text),
+      oncall_requirement: dict(ocRoles, dict(ocRoles, number, "embedded"), "embedded"), weights: dict(weights, number),
+      rule_states: obj(Object.fromEntries(defs.map(d => [d.id, oneOf(d.states || ["hard", "soft", "off"])]))),
+      rules_version: { accept: x => typeof x === "string" || typeof x === "number" }, notes: text, plugins_off: arr(id),
+      friday_night_min: obj({}), friday_night_exact: obj({}), dayoff_work_max: opaque, weekend_dayshift_wish: arr(text),
+      pm_clinic_arrhythmia_candidates: arr(text), arrhythmia_responsible_night: arr(text),
+      quota_tolerance: number, max_same_weekday_shifts: number, dayoff_weekday_max: number, weekend_balance_max_diff: number,
+      rest_day_required: bool, pm_external_night: oneOf(["allow", "confirm", "forbid"]),
+      shift_run_max: dict(["day", "night"], number), shift_counts: dict(["day", "night"], bounds),
+      pair_cap: obj({ shift, max: number }), run_length: obj({ min: number, max: number, exempt_qual: text }),
+      days_off: obj({ min: { safe: x => x === "auto" || number.safe(x), accept: x => x === "auto" || number.accept(x) }, hours_per_week: number, hours_per_day: number, basis: oneOf(["hours", "holidays"]), mode: oneOf(["exact", "min"]), ake_is_off: bool, pair_min: number, pair_count: oneOf(["pairs", "runs"]), max_extra: number }),
+      wish_off: obj({ max: number, counts: oneOf(["unavailable", "avoid", "both"]) }),
+      forbid_sequence: arr(obj({ from: oneOf(["day", "night", "any"]), to: oneOf(["day", "night", "any"]) })),
+      composition: arr(obj({ shift: oneOf(["day", "night", "all"]), days: oneOf(["all", "weekdays", "off_days"]), label, qual: text, not_qual: text, years_min: number, years_max: number, min: number, max: number })),
+      docx: obj({ template: id, font: text, paper: obj({ size: oneOf(["A3", "A4", "Letter"]), orient: oneOf(["portrait", "landscape"]), margin: number }) }),
+    };
+    for (const d of defs) { for (const p of d.params || []) if (!(p.key in fields)) fields[p.key] = number; if (d.legacy && !(d.legacy in fields)) fields[d.legacy] = { accept: x => x == null || typeof x !== "object" }; }
+    // A column declares its container, not every unrelated datum stored beside it.
+    for (const k of columnKeys) if (!(k in fields)) fields[k] = opaque;
+    return obj(fields);
+  }
   function profileForExport(withRoster) {
     let R = JSON.parse(JSON.stringify(state.rules));
     delete R.toban_profile;
     const leftover = [];
     if (!withRoster) {
       if (pluginsIncomplete(state.rules, state.month)) throw new Error(T.t("施設のプラグインが欠けている・読めない間は共有用の書き出しができません（プラグインが共有から除くはずの個人の記録を除けないため）。プラグインを揃えてから書き出してください")); // 名簿込み（施設内の引き継ぎ用）は対象外
-      T.pruneRosterRefs(R); // 以前に名簿から外した人の条件が名簿の欄の項目に残っていれば除く（いまの氏名との一致では見つけられない）
-      const roles = T.normalizeRolesOf(R), cnt = {}, map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
-      const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); cnt[base] = (cnt[base] || 0) + 1; const nn = `${base}${cnt[base]}`; if (d.name) map.set(d.name, nn);
+      const plain = x => x && typeof x === "object" && !Array.isArray(x), pathKey = p => JSON.stringify(p);
+      const columnKeys = new Set(), personalKeys = new Set(), personalArrays = new Map();
+      const personal = (orig, cleared, p) => {
+        if (Array.isArray(orig)) { const keep = (Array.isArray(cleared) ? cleared : []).map(x => JSON.stringify(x)), removed = personalArrays.get(pathKey(p)) || new Set();
+          orig.forEach(x => { const item = JSON.stringify(x); if (!keep.includes(item)) removed.add(item); }); personalArrays.set(pathKey(p), removed); return; }
+        if (!plain(orig)) return; for (const [k, v] of Object.entries(orig)) {
+        const q = [...p, k]; if (!plain(cleared) || !Object.prototype.hasOwnProperty.call(cleared, k)) personalKeys.add(pathKey(q));
+        personal(v, plain(cleared) ? cleared[k] : undefined, q);
+      } };
+      try { T.pruneRosterRefs(R, { strict: true, onClear(k, orig, cleared) { columnKeys.add(k); personal(orig, cleared, [k]); } }); }
+      catch (e) { throw new Error(T.t("名簿の個人別の欄を安全に除けないため、共有用の書き出しを中止しました。プラグインの欄の変換を確認してください")); }
+      const schema = exportSchema(R, columnKeys), safeKeys = new Set(), safeValues = new Map(), valueWarnings = new Map(), structural = new Set();
+      const collect = s => { if (!s) return; for (const v of s.tokens || []) structural.add(v); for (const [k, child] of s.fields || []) { structural.add(k); collect(child); } collect(s.item); }; collect(schema);
+      const roles = T.normalizeRolesOf(R), cnt = new Map(), map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
+      const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); const n = (cnt.get(base) || 0) + 1; cnt.set(base, n); const nn = `${base}${n}`; if (d.name) map.set(d.name, nn);
         const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });
-      // 氏名をキーにした項目と、name が氏名の要素（配列の中の個人の記録）は落とす。氏名そのものの値は仮の名前へ
-      const isRecord = x => x && typeof x === "object" && !Array.isArray(x) && map.has(x.name);
-      const walk = v => Array.isArray(v) ? v.filter(x => !isRecord(x)).map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => !map.has(k)).map(([k, x]) => [k, walk(x)])) : typeof v === "string" && map.has(v) ? map.get(v) : v;
-      delete R.doctors; R = walk(R); R.doctors = doctors;
+      const childOf = (s, k) => s && s.fields && s.fields.get(k);
+      const fits = (s, v) => {
+        if (!s || s.accept && !s.accept(v)) return false;
+        if (Array.isArray(v) && s.item) return v.every(x => fits(s.item, x));
+        if (plain(v) && s.fields) return Object.entries(v).every(([k, x]) => !s.fields.has(k) || fits(s.fields.get(k), x));
+        return true;
+      };
+      // Snapshot the original structural edges/values before share hooks run. A hook
+      // cannot introduce a name into a structural-looking location to evade the scan.
+      const prove = (v, s, p = []) => { if (typeof v === "string" && s && s.safe && s.safe(v)) { safeValues.set(pathKey(p), v); if (s.warn) valueWarnings.set(pathKey(p), s.warn); structural.add(v); }
+        if (Array.isArray(v)) v.forEach((x, i) => prove(x, s && s.item, [...p, i]));
+        else if (plain(v)) for (const [k, x] of Object.entries(v)) { const q = [...p, k], child = childOf(s, k); if (fits(child, x) && !personalKeys.has(pathKey(q))) safeKeys.add(pathKey(q)); prove(x, child, q); }
+      }; prove(R, schema);
+      const ambiguous = (k, p) => map.has(k) && structural.has(k) && !personalKeys.has(pathKey(p)) && !(typeof p[p.length - 1] === "number" && (personalArrays.get(pathKey(p.slice(0, -1))) || new Set()).has(JSON.stringify(k)));
+      const ambiguousValue = (v, s, p) => typeof v === "string" && !s && ambiguous(v, p);
+      const isRecord = x => plain(x) && map.has(x.name);
+      const structuralRecord = s => s && s.item && s.item.fields && !s.item.fields.has("name");
+      const walk = (v, s, p = []) => {
+        if (Array.isArray(v)) return v.flatMap((x, i) => !structuralRecord(s) && isRecord(x) ? [] : [structuralRecord(s) && isRecord(x) ? x : walk(x, s && s.item, [...p, i])]);
+        if (plain(v)) return Object.fromEntries(Object.entries(v).filter(([k]) => { const q = [...p, k]; return safeKeys.has(pathKey(q)) || !map.has(k) || ambiguous(k, q); }).map(([k, x]) => [k, walk(x, childOf(s, k), [...p, k])]));
+        return typeof v === "string" && map.has(v) && safeValues.get(pathKey(p)) !== v && !ambiguousValue(v, s, p) ? map.get(v) : v;
+      };
+      delete R.doctors; R = walk(R, schema); R.doctors = doctors;
       R.name_order = (R.name_order || []).filter(n => doctors.some(d => d.name === n));
       const failed = []; for (const d of T.RULE_DEFS || []) if (typeof d.share === "function") { try { d.share(R); } catch (e) { failed.push(d.id); } } // プラグインが名簿の外に持つ個人の記録を、プラグイン自身が除く（docs/rule-modules.md §4）
       if (failed.length) throw new Error(T.t("プラグインの規則 {ids} の共有用の変換に失敗したため、書き出しを中止しました（除けなかった個人の記録を含めないため）", { ids: failed.join(T.listSep()) })); // 失敗の詳細は個人の記録を含みうるので出さない
-      // 文の一部として残った氏名（キーと文字列の値を部分一致で探す。1 文字の氏名も、引用符を含む氏名も見る。置き換えはしない）
-      const seen = new Set(), hit = str => { for (const n of origNames) if (!seen.has(n) && str.includes(n)) { seen.add(n); leftover.push(n); } };
-      const scan = v => { if (Array.isArray(v)) v.forEach(scan); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { hit(k); scan(x); } else if (typeof v === "string") hit(v); };
-      scan(R);
+      // Scan only proven structural occurrences without a warning. Unknown keys that
+      // also name schema terms are ambiguous: give share a chance to remove them,
+      // then refuse rather than silently deleting possibly essential configuration.
+      const seen = new Set(), hit = (str, exactIsStructural = false) => { for (const n of origNames) if (!seen.has(n) && str.includes(n) && !(exactIsStructural && str === n)) { seen.add(n); leftover.push(n); } };
+      const refuse = () => { throw new Error(T.t("独自データの項目が氏名か設定の識別子か判断できないため、共有用の書き出しを中止しました。プラグインの share で個人の記録を除いてください")); };
+      const scan = (v, s, p = []) => { if (Array.isArray(v)) v.forEach((x, i) => { if (structuralRecord(s) && isRecord(x)) refuse(); scan(x, s && s.item, [...p, i]); }); else if (plain(v)) for (const [k, x] of Object.entries(v)) {
+        const q = [...p, k], pk = pathKey(q), child = childOf(s, k); if (!fits(child, x) || personalKeys.has(pk)) { if (ambiguous(k, q)) refuse(); hit(k); } else if (s.keyWarn) hit(k, s.keyWarn === "embedded"); scan(x, child, q);
+      } else if (typeof v === "string") { const pk = pathKey(p); if (ambiguousValue(v, s, p)) refuse(); if (safeValues.get(pk) !== v || valueWarnings.has(pk)) hit(v, safeValues.get(pk) === v && valueWarnings.get(pk) === "embedded"); } };
+      scan(R, schema);
     }
     R.toban_profile = { version: 1, roster: withRoster ? "included" : "placeholder" };
     return { rules: R, leftover };
