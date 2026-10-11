@@ -92,11 +92,13 @@
         const ngO = applies && P.state("days_off_min") !== "off" && (P.offExact ? off.length !== need : off.length < need), ngP = applies && P.state("days_off_pair") !== "off" && pr < P.pairMin;
         return [esc(n), ngO ? `<b class="ng">${off.length}</b>` : off.length, ngP ? `<b class="ng">${pr}</b>` : pr];
       });
-      const note = T.t(P.offExact ? "暦 {N} 日。休みはちょうど {min} 日" : "暦 {N} 日。最低の休み {min} 日", { N: P.N, min: P.minDaysOff })
-        + (P.state("days_off_pair") !== "off" ? T.t("、2 連休は最低 {pair} 回", { pair: P.pairMin }) : "")
+      const minOn = P.state("days_off_min") !== "off", pairOn = P.state("days_off_pair") !== "off";
+      const note = minOn ? T.t(P.offExact ? "暦 {N} 日。休みはちょうど {min} 日" : "暦 {N} 日。最低の休み {min} 日", { N: P.N, min: P.minDaysOff }) : T.t("暦 {N} 日", { N: P.N });
+      const detail = note
+        + (pairOn ? T.t("、2 連休は最低 {pair} 回", { pair: P.pairMin }) : "")
         + T.t(P.akeIsOff ? "（勤務の枠に入らない日を休みとして数える。日中の業務は見ない）" : "（勤務の枠に入らず、夜勤の翌日でもない日を休みとして数える。日中の業務は見ない）")
-        + (P.pairRuns ? T.t("。2 連休は続いた休みを 1 回と数える") : "") + (Object.keys(P.paidDays || {}).length ? T.t("。有給の日数は必要な休みに足す") : "");
-      s6 += `<h4>${esc(tx("月の休みの日数と 2 連休"))}</h4><p class="note">${esc(note)}</p>` +
+        + (pairOn && P.pairRuns ? T.t("。2 連休は続いた休みを 1 回と数える") : "") + (minOn && Object.keys(P.paidDays || {}).length ? T.t("。有給の日数は必要な休みに足す") : "");
+      s6 += `<h4>${esc(tx("月の休みの日数と 2 連休"))}</h4><p class="note">${esc(detail)}</p>` +
         table(["{person}", "休みの日数", "2 連休の回数"].map(tx), rows, "num");
     }
     S.push({ id: "s6", title: tx("6 週休日（第8節: 休日の日勤＋休日前日の夜勤）"), html: s6 });
