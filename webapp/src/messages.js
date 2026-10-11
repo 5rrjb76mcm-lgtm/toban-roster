@@ -8,6 +8,8 @@
 // 差し込みは {name} の形。{charge} {other} {junior} {reserve} は施設の役割の表示名に置き換わる（model.js の term）。
 (function (T) {
   const MSG = {
+    DIAG_SLOT_UNAVAILABLE: { en: "{who}: unavailable for {slot} (no applicable fixed-assignment exemption)", ja: "{who}: {slot} は不可入力があり、適用される固定指定の例外がありません" },
+    DIAG_SLOT_FIXED_FULL: { en: "{who}: all work places in {slot} are occupied by other fixed assignees", ja: "{who}: {slot} の勤務枠はほかの人の固定指定で埋まっています" },
     // ---- 枠の充足と役割構成 ----
     SLOT_NOT_EXISTS: { en: "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster", ja: "{slot}: 当月の勤務帯の設定にない枠に割当があります（{who}）。再計算してください" },
     SLOT_WORKER_COUNT: { en: "{slot}: {got} on duty (needs {need}){who}", ja: "{slot}: 勤務者が {got} 名（必要 {need} 名）{who}" },

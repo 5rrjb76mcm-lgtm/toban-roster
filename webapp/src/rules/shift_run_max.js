@@ -14,7 +14,20 @@ T.rules.register({
         const xs = []; let konst = 0, forced = 0;
         for (let j = 0; j <= K; j++) { const e = d + j; if (e < 1) konst += P.prevWorked([e, k], n) ? 1 : 0; else if (e > P.N) konst += P.nextFixedWorked(n, k) ? 1 : 0; else if (ctx.has([e, k])) xs.push(ctx.work([e, k], n)); if (ctx.fixedWorkAt([e, k], n)) forced++; }
         if (!xs.length) continue;
-        ctx.limit("shift_run_max", LP.sum([LP.sum(xs), konst]), "<=", K, { fixed: forced > K, aux: "srm", ub: K + 1 }); } }
+        ctx.limit("shift_run_max", LP.sum([LP.sum(xs), konst]), "<=", K, { fixed: forced > K, aux: "srm", ub: K + 1, names: [n], slots: Array.from({ length: K + 1 }, (_, j) => [d + j, k]) }); } }
+  },
+  explainSlot(ctx, prm) {
+    const { P, slot: [day, k], name: n } = ctx, K = prm.max[k], out = [];
+    if (!K || !P.dutyNames.includes(n) || P.isFixedOnly(n) || !P.slotExists(day, k) || ctx.fixedWorkAt([day, k], n)) return out;
+    for (let d = Math.max(ctx.firstPrev, day - K); d <= day && d + K <= P.N + 1; d++) {
+      if (d + K > P.N && (ctx.relaxed("fixed") || ctx.relaxed("fixed:next"))) continue;
+      const slots = Array.from({ length: K + 1 }, (_, j) => [d + j, k]);
+      const fixedSlots = slots.filter(s => s[0] !== day && ctx.fixedWorkAt(s, n));
+      if (fixedSlots.length !== K) continue; // Every other shift must be proven, not just nearby or tentatively assigned.
+      out.push({ code: "SHIFT_RUN_FORCED_WINDOW", slots, names: [n],
+        args: { who: n, shift: P.shiftLabel(k), max: K, from: P.label(d), to: P.label(d + K) }, evidence: { fixedSlots } });
+    }
+    return out;
   },
   check(ctx, prm) {
     const { P } = ctx;
@@ -38,7 +51,8 @@ T.rules.register({
       if (shown) R.shift_run_max = out; }, // Preserve hidden limits; clearing a visible cell still removes its limit.
   },
   summary(P, prm, tv) { return Object.entries(prm.max).map(([k, K]) => tv("{shift}は連続 {n} 日まで", { shift: P.shiftLabel(k), n: K })).join(T.listSep()); },
-  messages: { SHIFT_RUN_TOO_LONG: { en: "{who}: more than {max} {shift} shifts in a row from {from}", ja: "{who}: {from}から{shift}が {max} 日を超えて続く" } },
+  messages: { SHIFT_RUN_TOO_LONG: { en: "{who}: more than {max} {shift} shifts in a row from {from}", ja: "{who}: {from}から{shift}が {max} 日を超えて続く" },
+    SHIFT_RUN_FORCED_WINDOW: { en: "Assigning {who} here would exceed the limit of {max} consecutive {shift} shifts in {from}–{to}; every other shift in that window is fixed work", ja: "ここに{who}を入れると、{from}〜{to}の{shift}が連続{max}日を超える（この並びのほかの枠はすべて勤務の固定）" } },
   fixtures: [{ label: "勤務帯ごとの連続を減点、重み 1", base: "ward-2shift", states: { shift_run_max: "soft" }, rules: { shift_run_max: { day: 1, night: 1 } }, unitWeights: true }],
   python: false,
 });

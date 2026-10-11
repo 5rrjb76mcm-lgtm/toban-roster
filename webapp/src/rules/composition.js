@@ -17,7 +17,7 @@ T.rules.register({
       const who = ctx.names.filter(n => P.compMatch(c, n));
       for (const s of ctx.slots) { if (!P.compOn(c, s)) continue;
         const cnt = LP.sum(who.map(n => ctx.work(s, n)));
-        if (st === "hard") { if (c.min != null) lp.add(cnt, ">=", c.min); if (c.max != null) lp.add(cnt, "<=", Math.max(c.max, who.filter(n => ctx.fixedWorkAt(s, n)).length)); continue; } // 上限は、固定した人の分だけは許す（固定しない限り入らない、の意味になる）
+        if (st === "hard") { if (c.min != null) ctx.limit("composition", cnt, ">=", c.min, { slot: s, names: who }); if (c.max != null) ctx.limit("composition", cnt, "<=", Math.max(c.max, who.filter(n => ctx.fixedWorkAt(s, n)).length), { slot: s, names: who }); continue; } // 上限は、固定した人の分だけは許す（固定しない限り入らない、の意味になる）
         if (c.min != null) { const v = lp.auxInt("cmpl", 0, 50); lp.add(LP.sum([cnt, v]), ">=", c.min); lp.objAdd(P.softW("composition"), v); } // 減点: 足りない人数
         if (c.max != null) { const v = lp.auxInt("cmpu", 0, 50); lp.add(LP.sub(cnt, v), "<=", c.max); lp.objAdd(P.softW("composition"), v); } // 減点: 多すぎる人数
       } }

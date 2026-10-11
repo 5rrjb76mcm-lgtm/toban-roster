@@ -12,7 +12,7 @@
 (function (T) {
   const API = 1; // プラグインと本体の約束の版。ctx の形や登録の引数を非互換に変えたら上げる
   const defs = [], byId = {};
-  const HOOKS = ["solve", "check", "penalty", "lint", "report"];
+  const HOOKS = ["solve", "check", "penalty", "lint", "report", "explainSlot"];
 
   // 登録。同じ id が既にあればその場所に上書き（model.js の一覧にプラグインの実装を重ねる）、無ければ order の位置に挿す
   function register(def) {
@@ -86,9 +86,59 @@
     return x;
   }
 
+  // Construct keys from known rule IDs, never by splitting IDs or names on ':'.
+  // Each scope selects a group of declared limit rows, not individual assignments.
+  function relaxKey(id, scope = {}) {
+    const base = "rule:" + encodeURIComponent(id);
+    if (scope.slot != null) return `${base}:slot:${scope.slot[0]}:${encodeURIComponent(scope.slot[1])}`;
+    if (scope.day != null) return `${base}:day:${scope.day}`;
+    if (scope.name != null) return `${base}:name:${encodeURIComponent(scope.name)}`;
+    return base;
+  }
+  function rowScope(id, opts) {
+    const slots = [], seen = new Set();
+    for (const s of [...(opts.slot ? [opts.slot] : []), ...(opts.slots || [])]) {
+      if (!Array.isArray(s) || s.length !== 2 || !Number.isInteger(s[0]) || typeof s[1] !== "string") continue;
+      const k = JSON.stringify(s); if (!seen.has(k)) { slots.push(s.slice()); seen.add(k); }
+    }
+    const days = [...new Set([].concat(opts.days ?? [], slots.map(s => s[0])))].filter(Number.isInteger);
+    const names = [...new Set([].concat(opts.names ?? []))].filter(n => typeof n === "string");
+    return { id, key: relaxKey(id), days, slot: opts.slot && slots.length ? slots[0].slice() : null, slots, names };
+  }
+  const rowRelaxed = (relax, row) => relax.has(row.key) || row.days.some(day => relax.has(relaxKey(row.id, { day }))) ||
+    row.slots.some(slot => relax.has(relaxKey(row.id, { slot }))) || row.names.some(name => relax.has(relaxKey(row.id, { name })));
+
+  // Pure optional evidence hook. No LP, mutation, or guessed criteria for other rules.
+  function explainSlot(P, slot, name, opts = {}) {
+    const relax = new Set(opts.relax || []), facts = fixedFacts(P, k => relax.has(k));
+    const ctx = { P, slot: slot.slice(), name, opts, ...facts, relaxed: k => relax.has(k),
+      firstPrev: P.prevSlots.length ? Math.min(...P.prevSlots.map(s => s[0])) : 1 };
+    const out = [];
+    for (const d of defs) {
+      if (P.state(d.id) !== "hard" || !isOn(P, d) || typeof d.explainSlot !== "function" || (d.relax && relax.has(d.relax))) continue;
+      try {
+        const items = d.explainSlot(ctx, P.prm[d.id]) || [];
+        if (!Array.isArray(items)) throw new Error("explainSlot must return an array");
+        const verified = [];
+        for (const item of items) {
+          if (!item || typeof item.code !== "string" || !item.evidence || typeof item.evidence !== "object" || !Object.keys(item.evidence).length) throw new Error("explainSlot needs a message code and concrete evidence");
+          const row = rowScope(d.id, item);
+          if (!rowRelaxed(relax, row)) verified.push({ ...item, ...row });
+        }
+        out.push(...verified);
+      } catch (error) {
+        if (!Array.isArray(opts.errors)) throw error;
+        opts.errors.push({ ruleId: d.id, error: String(error && error.message || error) });
+      }
+    }
+    return out;
+  }
+
   // ---- 解く側の道具（SolveCtx）。buildLP の局所変数を名前付きで渡す。docs/rule-modules.md §5.1 ----
   function solveCtx(b) {
     const { P, lp, LP, names, slots, key, has, work, oc, Wv, Ov, Ev, total, workday, yOf, busyOf, fxW, firstPrev, relax, ni, opts } = b;
+    const diagnosticRows = Array.isArray(opts && opts.diagnosticRows) ? opts.diagnosticRows : null;
+    const diagnosticRelax = [...relax].some(k => typeof k === "string" && k.startsWith("rule:"));
     const ctx = {
       ...fixedFacts(P, k => relax.has(k)),
       P, lp, LP, E: LP.E, W: P.weights, names, slots, key, has, firstPrev, ni, opts: opts || {},
@@ -123,6 +173,11 @@
       //   減点の式の形は v ≥ expr − rhs（sense "<="）／ v ≥ rhs − expr（sense ">="）
       limit(id, expr, sense, rhs, opts = {}) {
         const st = P.state(id); if (st === "off") return;
+        if (st === "hard" && (diagnosticRows || diagnosticRelax)) {
+          const row = rowScope(id, opts);
+          if (diagnosticRows) diagnosticRows.push(row);
+          if (diagnosticRelax && rowRelaxed(relax, row)) return;
+        }
         const over = sense === "<=" ? LP.sub(expr, rhs) : LP.sub(rhs, expr);
         const allowance = st === "hard" ? fixedAllowance(opts) : 0;
         if (st === "hard" && !allowance) { lp.add(expr, sense, rhs); return; }
@@ -200,7 +255,7 @@
   // 参照解方式（solver.js の solveWithAvoidRef）の対象者: 動いている規則の refDeclarers(P, prm) が返す人。
   // 本人の申告（土日の実勤務の上限など）を無視した計算での回数を基準回数にして、申告で負担が減らないようにする規則が使う（docs/rule-modules.md §4）
   const refDeclarers = P => { const out = new Set(); for (const d of defs) if (typeof d.refDeclarers === "function" && isOn(P, d)) for (const n of d.refDeclarers(P, P.prm[d.id]) || []) out.add(n); return [...out]; };
-  T.rules = { API, defs, byId, register, unregister, run, solveCtx, checkCtx, columns, columnsAll, refDeclarers,
+  T.rules = { API, defs, byId, register, unregister, run, solveCtx, checkCtx, columns, columnsAll, refDeclarers, relaxKey, explainSlot,
     // 規則同士で処理を譲るときは、状態だけでなく needs の先まで実際に動くかを確かめる。
     isOn: (P, id) => !!byId[id] && isOn(P, byId[id]),
     runSolve: (ctx, upto) => run("solve", ctx, upto), runCheck: (ctx, upto) => run("check", ctx, upto),

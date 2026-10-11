@@ -13,7 +13,7 @@ T.rules.register({
         const nite = d >= 1 ? ctx.work([d, "night"], n) : (P.prevWorked([d, "night"], n) ? 1 : 0); if (d < 1 && !nite) continue;
         const after = e > P.N ? (ctx.fixedWorkDay(e, n) ? 1 : 0) : ctx.y(e, n); if (e > P.N && !after) continue;
         const fixed = ctx.fixedWorkAt([d, "night"], n) && ctx.fixedWorkDay(e, n); // 夜勤そのものと後日の実勤務の両方が固定・定数であること
-        ctx.limit("rest_after_ake", LP.sum([nite, after]), "<=", 1, { fixed, aux: "rak", ub: 2 }); } }
+        ctx.limit("rest_after_ake", LP.sum([nite, after]), "<=", 1, { fixed, aux: "rak", ub: 2, days: [d, e], names: [n] }); } }
   },
   check(ctx) {
     const { P } = ctx;

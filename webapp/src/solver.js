@@ -290,16 +290,35 @@
     if (!Number.isFinite(timeLimit) || timeLimit <= 0 || !Number.isFinite(totalTimeLimit) || totalTimeLimit < 0) throw new Error("Invalid diagnostic time budget");
     const started = Date.now(), deadline = started + totalTimeLimit * 1000;
     const remaining = () => Math.max(0, (deadline - Date.now()) / 1000);
-    const lines = []; let step = 0; const total = T.RELAXATIONS.length;
-    const tell = (label, sub) => { try { onProgress && onProgress({ label, step, total, sub, elapsedSeconds: (Date.now() - started) / 1000,
-      remainingSeconds: remaining(), timeLimit: Math.min(timeLimit, remaining()), totalTimeLimit }); } catch (e) { } };
+    const lines = [], diagnosticRows = [];
+    const active = T.rules.defs.filter(d => typeof d.solve === "function" && P.state(d.id) === "hard" && T.rules.isOn(P, d.id));
+    // One ordinary model build inventories the actual limit rows, without changing it.
+    // Raw builder rows are deliberately not bypassed by automatic rule relaxation.
+    if (remaining() > 0) buildLP(P, { diagnosticRows });
+    const rowsByRule = new Map(active.map(d => [d.id, diagnosticRows.filter(row => row.id === d.id)]));
+    lines.coverage = active.map(d => ({ ruleId: d.id, label: d.label || d.id, rows: rowsByRule.get(d.id).length,
+      status: rowsByRule.get(d.id).length ? "limit-rows" : remaining() > 0 ? "direct-only-or-no-rows" : "not-inventoried" }));
+    const groups = active.filter(d => rowsByRule.get(d.id).length || !(remaining() > 0)).map(d => ({ key: T.rules.relaxKey(d.id), label: d.label || d.id, ruleId: d.id }));
+    for (const [key, label] of T.RELAXATIONS) {
+      const owners = (T.RULE_DEFS || []).filter(d => d.relax === key);
+      if (owners.length && owners.every(d => !T.rules.isOn(P, d.id))) continue;
+      groups.push({ key, label });
+    }
+    let step = 0; const total = groups.length;
+    const tell = (label, sub, phase = "group", currentKey = "", currentLabel = label) => { try { onProgress && onProgress({ label, step, total, sub, phase, currentKey, currentLabel,
+      elapsedSeconds: (Date.now() - started) / 1000, remainingSeconds: remaining(), timeLimit: Math.min(timeLimit, remaining()), totalTimeLimit }); } catch (e) { } };
     const trial = keys => solveFeasibility(P, highs, { relax: keys, timeLimit, deadline });
     const evidence = r => ({ status: r.status, reason: r.reason, error: r.error, detail: r.detail });
-    for (const [k, label] of T.RELAXATIONS) {
-      step++; { const owners = (T.RULE_DEFS || []).filter(d => d.relax === k); if (owners.length && owners.every(d => P.state(d.id) === "off")) continue; }
-      tell(label, "");
+    const successes = [];
+    // Test every active rule before spending the remaining budget refining fixed input.
+    for (const group of groups) {
+      const { key: k, label } = group; step++; tell(label, "", "group", k);
       const r = await trial([k]);
-      if (r.outcome !== "feasible") { if (r.outcome !== "infeasible") lines.push(Object.assign({ key: k, label, undecided: true, note: "", items: [] }, evidence(r))); continue; }
+      if (r.outcome !== "feasible" && k !== "fixed") { if (r.outcome !== "infeasible") lines.push(Object.assign({}, group, { undecided: true, note: "", items: [] }, evidence(r))); continue; }
+      successes.push({ group, r, step });
+    }
+    for (const success of successes) {
+      const { group, r } = success, { key: k, label, ruleId } = group; step = success.step;
       let note = "", items = [];
       if (k === "weekend_balance") { const { charge } = T.check(P, r.asg); const fw = T.fullWeekendUnits(P, charge); const vals = Object.values(fw); note = T.t("（この条件を外した解の完全な土日の担当（組）: {fw}、差 {diff}）", { fw: T.fmtHalf(fw), diff: (Math.max(...vals) - Math.min(...vals)) / 2 }); }
       // 1件・1人単位に絞り込む。解ありを確かめた外し方だけを採用し、判定不能は解なしと区別する
@@ -316,28 +335,121 @@
       } else if (k === "duties") {
         for (const n of P.names) cands.push({ key: "duties:" + n, label: T.t("{who} の定期業務（外勤・午後業務の翌日制約）", { who: n }), hint: T.t("{person}別カレンダー → {who} の業務を見直す", { who: n }) });
       }
-      const line = { key: k, label, note, items };
-      if (cands.length) {
-        const kept = new Set(cands.map(c => c.key)), decisions = new Map();
-        tell(label, `0/${cands.length}`);
-        // プラグインのグループ単位の relax が個別キーにも対応するとは限らない。まず正確にこの集合を検証する。
-        const initial = await trial([...kept]);
-        if (initial.outcome !== "feasible") line.narrowing = Object.assign({ outcome: initial.outcome }, evidence(initial));
-        else {
-          let ci = 0;
-          for (const c of cands) {
-            tell(label, `${++ci}/${cands.length}`);
-            const r2 = await trial([...kept].filter(k2 => k2 !== c.key));
-            if (r2.outcome === "feasible") kept.delete(c.key);
-            else decisions.set(c.key, Object.assign({}, c, evidence(r2), { undecided: r2.outcome !== "infeasible" }));
-          }
-          line.items = cands.filter(c => kept.has(c.key)).map(c => decisions.get(c.key));
-          line.combined = true; // この集合をまとめて外した解の存在だけを保証する（各項目を単独で外す意味ではない）
-          line.incomplete = line.items.some(c => c.undecided);
+      if (ruleId) {
+        const byKey = new Map(), add = (scope, metadata, detail) => {
+          const key = T.rules.relaxKey(ruleId, scope);
+          if (!byKey.has(key)) byKey.set(key, { key, ruleId, label: `${T.t(label)} [${ruleId}] ${detail}`, ...metadata });
+        };
+        for (const row of rowsByRule.get(ruleId) || []) {
+          const slots = row.slots && row.slots.length ? row.slots : row.slot ? [row.slot] : [];
+          if (slots.length) for (const slot of slots) {
+            if (slot[0] >= 1 && slot[0] <= P.N + 1) add({ slot }, { days: [slot[0]], slot, names: [] }, `${P.label(slot[0])} ${P.shiftLabel(slot[1])}`);
+          } else if (row.days && row.days.length) for (const day of row.days) {
+            if (day >= 1 && day <= P.N + 1) add({ day }, { days: [day], names: [] }, P.label(day));
+          } else for (const name of row.names || []) add({ name }, { days: [], names: [name] }, name);
         }
+        cands = [...byKey.values()];
+      }
+      for (const c of cands) if (!c.days) {
+        const fixed = /^fixed:(day|night|dayoc|nightoc|charge):(\d+)$/.exec(c.key);
+        if (fixed) { c.days = [+fixed[2]]; c.slot = [+fixed[2], fixed[1]]; }
+        else c.days = c.key === "fixed:next" ? [P.N + 1] : [];
+      }
+      const chronological = (a, b) => (Math.min(...a.days) - Math.min(...b.days) || String(a.slot && a.slot[1] || "").localeCompare(String(b.slot && b.slot[1] || "")) || a.key.localeCompare(b.key));
+      cands.sort(chronological);
+      const line = { ...group, groupOutcome: r.outcome, groupEvidence: evidence(r), note, items, alternatives: [], individualUnknown: [], individualsCount: cands.length, individualsTested: 0, individualsComplete: true };
+      if (ruleId && !cands.length) line.refinementUnavailable = true;
+      if (ruleId) line.coverage = "自動解除の対象は、この規則の ctx.limit に渡された必須の行だけです。直接追加された構造上の制約は残ります。";
+      if (cands.length) {
+        // An alternative is called individually sufficient ONLY after its own solve.
+        // Deletion filtering of one joint set cannot enumerate these alternatives.
+        for (let ci = 0; ci < cands.length; ci++) {
+          const c = cands[ci]; tell(label, `${ci + 1}/${cands.length}`, "individual", c.key, c.label);
+          const one = await trial([c.key]);
+          if (one.reason !== "budget") line.individualsTested++;
+          if (one.outcome === "feasible") line.alternatives.push({ ...c, ...evidence(one) });
+          else if (one.outcome !== "infeasible") line.individualUnknown.push({ ...c, ...evidence(one) });
+        }
+        line.individualsComplete = line.individualUnknown.length === 0;
+        // Independently validated singleton alternatives are already minimal sets.
+        // Keep the joint search only when no individual sufficient relaxation was found.
+        if (!line.alternatives.length) {
+          const kept = new Set(cands.map(c => c.key)), decisions = new Map();
+          tell(label, `0/${cands.length}`, "joint-baseline", cands.map(c => c.key).join(", "));
+          const initial = await trial([...kept]);
+          if (initial.outcome !== "feasible") line.narrowing = Object.assign({ outcome: initial.outcome }, evidence(initial));
+          else {
+            let ci = 0;
+            for (const c of cands) {
+              tell(label, `${++ci}/${cands.length}`, "joint-reduction", c.key, c.label);
+              const r2 = await trial([...kept].filter(k2 => k2 !== c.key));
+              if (r2.outcome === "feasible") kept.delete(c.key);
+              else decisions.set(c.key, Object.assign({}, c, evidence(r2), { undecided: r2.outcome !== "infeasible" }));
+            }
+            line.items = cands.filter(c => kept.has(c.key)).map(c => decisions.get(c.key));
+            line.combined = true;
+            line.incomplete = line.items.some(c => c.undecided);
+            // Relaxation is monotone for limit rows. Legacy hooks/fixed exceptions
+            // can change more than rows: verify final proper single deletions again.
+            line.inclusionMinimal = false;
+            if (!line.incomplete && line.items.length) {
+              line.inclusionMinimal = !!ruleId;
+              for (const c of line.items) {
+                tell(label, "", "joint-reduction", c.key, c.label);
+                const final = await trial(line.items.filter(x => x.key !== c.key).map(x => x.key));
+                if (final.outcome !== "infeasible") { line.inclusionMinimal = false; line.incomplete = true; c.undecided = true; Object.assign(c, evidence(final)); }
+              }
+            }
+          }
+        }
+      }
+      if (r.outcome !== "feasible" && !cands.length) {
+        if (r.outcome === "infeasible") continue;
+        Object.assign(line, evidence(r), { undecided: true });
       }
       lines.push(line);
     }
+    // Static candidate evidence is separate from solve-based sufficiency. A rule
+    // supplies its own exclusions; absence of a hook is not evidence of eligibility.
+    lines.slotExplanations = []; lines.explanationsComplete = true; lines.explanationErrors = []; lines.explanationsBudgetExhausted = false;
+    if (T.rules.isOn(P, "composition") && P.state("composition") === "hard") {
+      outer: for (const c of P.comp || []) {
+        if (!(c.min > 0)) continue;
+        const names = P.dutyNames.filter(n => P.compMatch(c, n));
+        for (const slot of P.slots) {
+          if (!P.compOn(c, slot)) continue;
+          if (!(remaining() > 0)) { lines.explanationsComplete = false; lines.explanationsBudgetExhausted = true; break outer; }
+          const candidates = names.map(name => {
+            let exclusions = [];
+            try {
+              const errors = []; exclusions = T.rules.explainSlot(P, slot, name, { errors });
+              if (errors.length) { lines.explanationsComplete = false; lines.explanationErrors.push(...errors.map(error => ({ ...error, slot: slot.slice(), name }))); }
+            }
+            catch (error) { lines.explanationsComplete = false; lines.explanationErrors.push({ slot: slot.slice(), name, error: String(error && error.message || error) }); }
+            const [day, kind] = slot;
+            const fixedWork = P.isFixedWork(slot, name), fixedOc = ((kind === "day" ? P.fixedDayOc : P.fixedNightOc)[day] || []).includes(name);
+            // The same fixed-engagement exemption as the input rows in buildLP.
+            const fixedCharge = P.on("period_charge") && P.I.includes(name) && P.fixedCharge[day] === name && P.periods.some(p => {
+              const first = p.slots.filter(x => x[0] === day).sort((a, b) => (a[1] === "day" ? 0 : 1) - (b[1] === "day" ? 0 : 1))[0];
+              return first && first[1] === kind;
+            });
+            const part = (P.unavailOther[name] || []).find(x => x[0] === day);
+            if (!fixedWork && !fixedOc && !fixedCharge && ((kind === "night" && (P.unavailNight[name] || new Set()).has(day)) || (part && (kind === "day" || part[1] === "allday")))) {
+              exclusions.push({ id: "unavailable", code: "DIAG_SLOT_UNAVAILABLE", args: { who: name, slot: P.label(day) + " " + P.shiftLabel(kind) },
+                days: [day], slots: [slot.slice()], names: [name], evidence: { input: part ? "unavailable_other" : "unavailable_night" } });
+            }
+            const fixedNames = [...new Set((kind === "day" ? P.fixedDay : P.fixedNight)[day] || [])].filter(n => P.dutyNames.includes(n));
+            if (!fixedWork && fixedNames.length > 0 && fixedNames.length >= P.countOf(slot)) exclusions.push({ id: "fixed", code: "DIAG_SLOT_FIXED_FULL", args: { who: name, slot: P.label(day) + " " + P.shiftLabel(kind) },
+              days: [day], slots: [slot.slice()], names: [name], evidence: { fixedNames: fixedNames.slice(), capacity: P.countOf(slot) } });
+            return { name, exclusions };
+          });
+          const possibleCount = candidates.filter(x => !x.exclusions.length).length;
+          if (possibleCount < c.min) lines.slotExplanations.push({ ruleId: "composition", label: P.compLabel(c), slot: slot.slice(), required: c.min,
+            eligibleCount: names.length, possibleCount, candidates });
+        }
+      }
+    }
+    lines.sort((a, b) => groups.findIndex(g => g.key === a.key) - groups.findIndex(g => g.key === b.key));
     return lines;
   }
 

@@ -8,10 +8,10 @@ T.rules.register({
   solve(ctx) {
     const { P, E } = ctx;
     for (const n of ctx.names) for (let d = ctx.firstPrev; d < P.N; d++) { if (d + 1 < 1) continue; // 前月どうしの組は対象外（定数の式で解なしにしない）
-      ctx.limit("consecutive_days", E(ctx.y(d, n), ctx.y(d + 1, n)), "<=", 1, { fixed: ctx.fixedWorkDay(d, n) && ctx.fixedWorkDay(d + 1, n), aux: "cw", ub: 1 }); } // 日ごとの 0/1（同じ日の 2 勤務を 2 日分と数えない）
+      ctx.limit("consecutive_days", E(ctx.y(d, n), ctx.y(d + 1, n)), "<=", 1, { fixed: ctx.fixedWorkDay(d, n) && ctx.fixedWorkDay(d + 1, n), aux: "cw", ub: 1, days: [d, d + 1], names: [n] }); } // 日ごとの 0/1（同じ日の 2 勤務を 2 日分と数えない）
     // 翌月 1 日の固定指定（カレンダーの翌月 1 日欄）との連日。月末の枠もその人で固定されているときは減点付きで許す
     if (!ctx.relaxed("fixed") && !ctx.relaxed("fixed:next") && P.nextFixedAny()) { const N = P.N;
-      for (const n of ctx.names) if (P.nextFixedWorks(n)) ctx.limit("consecutive_days", ctx.y(N, n), "<=", 0, { fixed: ctx.fixedWorkDay(N, n), aux: "fxc", ub: 1 }); }
+      for (const n of ctx.names) if (P.nextFixedWorks(n)) ctx.limit("consecutive_days", ctx.y(N, n), "<=", 0, { fixed: ctx.fixedWorkDay(N, n), aux: "fxc", ub: 1, days: [N, N + 1], names: [n] }); }
   },
   check(ctx) {
     const { P } = ctx;

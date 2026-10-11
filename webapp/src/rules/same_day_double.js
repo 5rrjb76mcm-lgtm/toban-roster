@@ -7,7 +7,7 @@ T.rules.register({
   solve(ctx) {
     const { P, E } = ctx;
     for (const n of ctx.names) for (let d = 1; d <= P.N; d++) if (ctx.has([d, "day"]) && ctx.has([d, "night"]))
-      ctx.limit("same_day_double", E(ctx.work([d, "day"], n), ctx.work([d, "night"], n)), "<=", 1, { fixed: ctx.fixedWorkAt([d, "day"], n) && ctx.fixedWorkAt([d, "night"], n), aux: "cw", ub: 3 });
+      ctx.limit("same_day_double", E(ctx.work([d, "day"], n), ctx.work([d, "night"], n)), "<=", 1, { fixed: ctx.fixedWorkAt([d, "day"], n) && ctx.fixedWorkAt([d, "night"], n), aux: "cw", ub: 3, days: [d], names: [n] });
   },
   check(ctx) {
     for (const n of ctx.names) for (let d = 1; d <= ctx.N; d++)

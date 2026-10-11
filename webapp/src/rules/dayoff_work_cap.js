@@ -34,7 +34,7 @@ T.rules.register({
     const { P, lp, LP, W, opts } = ctx; if (opts.ignoreAvoid) return;
     const ds = weekendDays(P);
     for (const n of ctx.names) { const max = prm.max[n]; if (max == null || P.isExempt(n)) continue;
-      if (ds.length > max) ctx.limit("dayoff_work_cap", LP.sum(ds.map(d => ctx.y(d, n))), "<=", max, { aux: "dwcx", ub: ds.length }); // 土日の日数が上限以下なら超えようがない
+      if (ds.length > max) ctx.limit("dayoff_work_cap", LP.sum(ds.map(d => ctx.y(d, n))), "<=", max, { aux: "dwcx", ub: ds.length, days: ds, names: [n] }); // 土日の日数が上限以下なら超えようがない
       if (guardedByAvoid(P, n)) continue;
       const floor = floorOf(P, opts, n); if (floor === null) continue;
       if (!Number.isInteger(floor)) { lp.objAdd(W.dayoff_work_no_reduction ?? 1000, ctx.fractionalCountDeviation(n, floor, "dwdn", true)); continue; }

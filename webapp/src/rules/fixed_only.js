@@ -6,8 +6,13 @@ T.rules.register({
   solve(ctx) {
     const { P } = ctx;
     for (const n of ctx.names) if (P.isFixedOnly(n)) for (const s of ctx.slots) {
-      if (!P.isFixedWork(s, n)) ctx.limit("fixed_only", ctx.work(s, n), "<=", 0);
-      if (!P.isFixedEng(s, n)) ctx.limit("fixed_only", ctx.oc(s, n), "<=", 0); }
+      if (!P.isFixedWork(s, n)) ctx.limit("fixed_only", ctx.work(s, n), "<=", 0, { slot: s, names: [n] });
+      if (!P.isFixedEng(s, n)) ctx.limit("fixed_only", ctx.oc(s, n), "<=", 0, { slot: s, names: [n] }); }
+  },
+  explainSlot(ctx) {
+    const { P, slot: s, name: n } = ctx;
+    if (!P.dutyNames.includes(n) || !P.slotExists(s[0], s[1]) || !P.isFixedOnly(n) || P.isFixedWork(s, n)) return [];
+    return [{ code: "FIXED_ONLY_CANDIDATE", slot: s, names: [n], args: { who: n }, evidence: { fixedOnly: true, fixedWork: false } }];
   },
   check(ctx) {
     const { P } = ctx;
@@ -26,6 +31,7 @@ T.rules.register({
       if (afterNight && P.state("shift_sequence") !== "off") ctx.push("LINT_FIXED_ONLY_AKE", { who: n, n: afterNight }); }
   },
   messages: {
+    FIXED_ONLY_CANDIDATE: { en: "{who} can work only in explicitly fixed shifts, and this work slot is not fixed for them", ja: "{who}は「固定したときだけ」の人で、この枠に勤務の固定がない" },
     FIXED_ONLY_ASSIGNED: { en: "{who} (fixed shifts only) is placed in {slot} without a fixed assignment", ja: "{who}（固定したときだけ）が固定していない {slot} に入っている" },
     LINT_FIXED_ONLY_EMPTY: { en: "{who} is set to \"fixed shifts only\" but has no fixed work assignment in an active slot this month", ja: "{who} は「固定したときだけ」ですが、この月の実在する勤務枠への実勤務の固定がありません" },
     LINT_FIXED_ONLY_EMPTY_HINT: { en: "Enter the shifts in the fixed assignments (or change the duty column of the roster)", ja: "固定配置に勤務を入れる（または名簿の当番の欄を変える）" },

@@ -25,7 +25,7 @@ T.rules.register({
     for (const n of ctx.names) { if (exempt(P, n)) continue;
       for (const ds of Object.values(byDow)) { if (ds.length <= prm.max) continue; // その曜日の休日が上限以下なら超えようがない
         const es = ds.map(d => { const ev = slotsOf(P, d).map(s => ctx.Ev(s, n)); if (ev.length === 1) return ev[0]; const e = lp.aux("dwe"); for (const x of ev) lp.add(e, ">=", x); return e; });
-        ctx.limit("dayoff_weekday_cap", LP.sum(es), "<=", prm.max, { aux: "dwex", ub: 6, fixed: fixedCount(ctx, ds, n) > prm.max, fixedExcess: Math.max(0, fixedCount(ctx, ds, n) - prm.max) }); } }
+        ctx.limit("dayoff_weekday_cap", LP.sum(es), "<=", prm.max, { aux: "dwex", ub: 6, fixed: fixedCount(ctx, ds, n) > prm.max, fixedExcess: Math.max(0, fixedCount(ctx, ds, n) - prm.max), days: ds, names: [n] }); } }
   },
   // 検算: 人 × 曜日ごとに、休日に関わった日を数える
   check(ctx, prm) {

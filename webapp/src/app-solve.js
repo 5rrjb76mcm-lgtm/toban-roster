@@ -5,6 +5,58 @@
   const esc = T.esc;
   const state = A.state;
 
+  // 診断の項目は、キーの文字列順ではなく日付・勤務帯の順で表示する。元の証拠は並べ替えない。
+  const diagnosticDays = it => [...new Set([...(it.days || []), ...(Array.isArray(it.slot) ? [it.slot[0]] : [])].map(Number).filter(Number.isFinite))].sort((a, b) => a - b);
+  const diagnosticSort = items => (items || []).slice().sort((a, b) => {
+    const ad = diagnosticDays(a)[0] ?? Infinity, bd = diagnosticDays(b)[0] ?? Infinity;
+    const ak = a.slot && a.slot[1] || "", bk = b.slot && b.slot[1] || "";
+    return (ad === bd ? 0 : ad < bd ? -1 : 1) || ak.localeCompare(bk) || String(a.key || "").localeCompare(String(b.key || ""));
+  });
+  function diagnosticItemLabel(P, it) {
+    const days = diagnosticDays(it), parts = [];
+    if (days.length) parts.push(days.map(d => P.label(d)).join(T.listSep()));
+    if (it.slot && it.slot[1]) {
+      const kind = it.slot[1];
+      parts.push(kind === "dayoc" || kind === "day_oc" ? T.t("日勤OC") : kind === "nightoc" || kind === "night_oc" ? T.t("夜間OC") : kind === "charge" || kind === "weekend_charge" ? T.term(T.t("{charge}担当"), state.rules) : (P.shifts || []).some(s => s.id === kind) ? P.shiftLabel(kind) : kind);
+    }
+    if ((it.names || []).length) parts.push(it.names.join(T.nameSep()));
+    const label = it.label || it.key || ""; return parts.join(" / ") + (parts.length && label ? " — " : "") + label;
+  }
+  function diagnosticProgress(pr) {
+    const base = T.t("「{label}」を確認中（グループ {step}/{total}）", { label: T.t(pr.label), step: pr.step, total: pr.total });
+    if (!pr.phase) return base + (pr.sub ? T.t("　絞り込み {sub}", { sub: pr.sub }) : ""); // 旧プラグインの進捗も表示できる
+    const phase = { group: T.t("規則全体の解除"), individual: T.t("単独の解除を試行"), "joint-baseline": T.t("組合せ全体を検証"), "joint-reduction": T.t("組合せを絞り込み") };
+    return base + " / " + (phase[pr.phase] || pr.phase) + (pr.sub ? " " + pr.sub : "") + (pr.currentLabel ? " / " + T.t(pr.currentLabel) : "") + (pr.currentKey ? " [" + pr.currentKey + "]" : "");
+  }
+  // 確認用の移動だけ。条件を自動解除せず、診断後に入力が変わった場合は古い項目へ案内しない。
+  function diagnosticFixedJump(P, item, runSig, runGen) {
+    const log = $("#calcLog"), days = diagnosticDays(item);
+    if (!String(item.key || "").startsWith("fixed:") || !days.length || !document.createElement || !document.createTextNode || !log.appendChild) return;
+    for (const day of days.filter(d => Number.isInteger(d) && d >= 1 && d <= P.N + 1)) {
+      const button = document.createElement("button"); button.type = "button";
+      button.textContent = T.t("{day} の固定入力を確認", { day: P.label(day) });
+      button.onclick = () => {
+        if (A.solving) return A.toast(T.t("計算中です"));
+        if (A.switching) return A.toast(T.t("切り替えの処理中です。終わってからもう一度押してください"));
+        const active = document.activeElement;
+        if (active && active.matches("input, textarea, select")) active.blur();
+        A.readAll();
+        if (A.inputSig() !== runSig || T.plugins.generation() !== runGen) return A.toast(T.t("診断後に入力またはプラグインが変わりました。もう一度計算してから確認してください。"));
+        A.showTab("input");
+        const tab = $('.subnav .sub[data-sub="fixedPane"]'); if (tab) tab.click();
+        const kind = item.slot && item.slot[1];
+        const field = kind === "day" || kind === "night" ? kind : kind === "charge" || kind === "weekend_charge" ? "charge" : null;
+        const target = (field && $(`#fixedPane [data-fx="${field}"][data-d="${day}"]`)) || $(`#fixedPane [data-fx][data-d="${day}"]`);
+        if (!target) return;
+        document.querySelectorAll("[data-diagnostic-highlight]").forEach(el => { el.style.removeProperty("outline"); el.style.removeProperty("outline-offset"); el.removeAttribute("data-diagnostic-highlight"); });
+        const row = target.closest("tr") || target;
+        row.setAttribute("data-diagnostic-highlight", ""); row.style.outline = "3px solid currentColor"; row.style.outlineOffset = "2px";
+        row.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true });
+      };
+      log.appendChild(document.createTextNode("      ")); log.appendChild(button); log.appendChild(document.createTextNode("\n"));
+    }
+  }
+
   // ---------- 計算 ----------
   // HiGHS を Web Worker（別スレッド）で動かす。計算中に画面が固まらず、ブラウザの「応答なし」警告も出ない。
   // Worker を作れない環境では従来どおり画面内（同期）で計算する
@@ -41,7 +93,7 @@
     finally { A.solving = false; try { await A.loadPendingPlugins(); } catch (e) { A.toast(T.t("フォルダのプラグインを読めませんでした: {err}", { err: e && e.message || e })); } runSolve.busy = false; $("#btnSolve").disabled = false; } }
   async function runSolveCore() {
     A.readAll();
-    const log = s => { $("#calcLog").textContent += s + "\n"; };
+    const log = s => { const el = $("#calcLog"); if (document.createTextNode && el.appendChild) el.appendChild(document.createTextNode(s + "\n")); else el.textContent += s + "\n"; };
     $("#calcLog").textContent = "";
     const useBase = !!($("#useBase").checked && state.result && state.result.asg);
     // 「最小変更」の重みは今回の計算にだけ使う（設定の重みには残さない）
@@ -104,7 +156,7 @@
       const dprog = setInterval(dshow, 500); dshow();
       const ddone = () => { clearInterval(dprog); $("#calcStatus").textContent = ""; $("#btnSolve").disabled = false; $("#btnCancel").hidden = true; };
       let diag;
-      try { diag = await T.diagnose(P, A.highs, perTrial, pr => { dpr = pr; dat = Date.now(); dcur = T.t("「{label}」を確認中（グループ {step}/{total}）", { label: T.t(pr.label), step: pr.step, total: pr.total }) + (pr.sub ? T.t("　絞り込み {sub}", { sub: pr.sub }) : ""); dshow(); }, { totalTimeLimit }); }
+      try { diag = await T.diagnose(P, A.highs, perTrial, pr => { dpr = pr; dat = Date.now(); dcur = diagnosticProgress(pr); dshow(); }, { totalTimeLimit }); }
       catch (e) { ddone(); const err = String(e && e.message || e); log((e && e.cancelled) || /中止/.test(err) ? T.t("診断を中止しました") : T.t("診断を続けられませんでした: {e}。条件を変えずに再計算するか、作成者に知らせてください", { e: err })); A.highs = null; return; }
       ddone();
       if (!inputsStillCurrent()) return;
@@ -118,17 +170,52 @@
         else text = T.t("解が得られず、解の有無は未確認です");
         return text + (r.status ? T.t("（状態 {st}）", { st: r.status }) : "");
       };
+      const coverage = Array.isArray(diag.coverage) ? diag.coverage : [];
+      if (coverage.length) {
+        log(T.t("規則の日付・勤務帯の候補は、その日付・勤務帯に対応づけられた条件行をすべて解除します。複数日にまたがる行も含み、その日の勤務入力だけを消す意味ではありません。"));
+        log(T.t("規則別の診断は limit() で登録された条件行を対象にします。直接追加された制約や条件行のない規則は、自動では解除しません。"));
+        const uncovered = coverage.filter(c => c.status === "direct-only-or-no-rows");
+        if (uncovered.length) log(T.t("自動解除の対象外（直接制約のみ、または条件行なし）: {rules}", { rules: uncovered.map(c => T.t(c.label || c.ruleId) + " [" + c.ruleId + "]").join(T.listSep()) }));
+      }
+      if ((diag.slotExplanations || []).length) {
+        log(T.t("枠ごとの候補除外（静的な部分証拠）: 以下は対応する規則が示した除外理由です。原因全体の説明ではなく、残った候補も他の条件で配置できない場合があります。"));
+        for (const ex of diagnosticSort(diag.slotExplanations)) {
+          log(T.t("- {slot}: 必要 {required} 名、対象 {eligible} 名のうちこの確認で残る候補 {possible} 名 [{rule}]", { slot: diagnosticItemLabel(P, { slot: ex.slot, label: ex.label }), required: ex.required, eligible: ex.eligibleCount, possible: ex.possibleCount, rule: ex.ruleId }));
+          for (const candidate of ex.candidates || []) {
+            for (const exclusion of candidate.exclusions || []) log("   ● " + candidate.name + " [" + exclusion.id + "]: " + T.msg(exclusion.code, exclusion.args || {}, state.rules));
+          }
+        }
+      }
+      if ((diag.explanationErrors || []).length) log(T.t("規則の候補説明でエラーがあり、一部の説明を省略しました。確認済みの解除候補は有効です: {errors}", { errors: [...new Set(diag.explanationErrors.map(e => (e.ruleId || "explainSlot") + ": " + e.error))].join(T.listSep()) }));
+      if (diag.explanationsComplete === false && (diag.explanationsBudgetExhausted || !(diag.explanationErrors || []).length)) log(T.t("枠ごとの候補除外の確認は、時間予算のため未完了です。表示されていない枠にも問題がある可能性があります。"));
       for (const d of diag) {
-        if (d.undecided) { log(T.t("- 「{label}」は判定できませんでした: {reason}", { label: T.t(d.label), reason: reason(d) })); continue; }
-        log(T.t("- 「{label}」を外すと解あり", { label: T.t(d.label) }) + (d.note || ""));
+        if (d.undecided && !d.groupOutcome && !Array.isArray(d.alternatives)) { log(T.t("- 「{label}」は判定できませんでした: {reason}", { label: T.t(d.label) + (d.ruleId ? " [" + d.ruleId + "]" : ""), reason: reason(d) })); if (d.coverage) log("   " + T.t(typeof d.coverage === "string" ? d.coverage : d.coverage.label || d.coverage.description || "")); continue; }
+        const label = T.t(d.label) + (d.ruleId ? " [" + d.ruleId + "]" : "");
+        if (d.groupOutcome === "infeasible") log(T.t("- 「{label}」の個別項目を確認（グループ全体を外した場合は解なし）", { label }));
+        else if (d.undecided || (d.groupOutcome && d.groupOutcome !== "feasible")) log(T.t("- 「{label}」の個別項目を確認（グループ全体の解除は未判定: {reason}）", { label, reason: reason(d.groupEvidence || d) }));
+        else log(T.t("- 「{label}」を外すと解あり", { label: T.t(d.label) }) + (d.ruleId ? " [" + d.ruleId + "]" : "") + (d.note || ""));
+        if (d.coverage) log("   " + T.t(typeof d.coverage === "string" ? d.coverage : d.coverage.label || d.coverage.description || ""));
+        const showItem = (it, suffix = "") => { log("   ● " + diagnosticItemLabel(P, it) + suffix); if (it.hint) log("      → " + T.term(it.hint, state.rules)); diagnosticFixedJump(P, it, runSig, runGen); };
+        if (d.refinementUnavailable) log(T.t("   この規則には日付・勤務帯・氏名の絞り込み情報がないため、規則全体の条件行だけを試行しました。個別の解除候補は未確認です。"));
+        else if (Array.isArray(d.alternatives)) {
+          const alternatives = diagnosticSort(d.alternatives);
+          if (alternatives.length) {
+            log(T.t("   単独で十分な解除候補（確認済み {n} 件）: 次の各行は別々の選択肢です。その行の条件だけを外して、それぞれ解を確認しました。", { n: alternatives.length }));
+            for (const it of alternatives) showItem(it);
+          } else log(T.t("   1項目だけの解除で解が得られる候補は、まだ確認できていません。"));
+          if (d.individualsComplete === true) log(T.t("   このグループの全 {n} 候補について、単独の解除の判定が完了しました。", { n: d.individualsCount ?? alternatives.length }));
+          else log(T.t("   単独の解除の確認は未完了です（{tested}/{total} 件を試行）。未試行または未判定の候補があるため、表示した選択肢がすべてとは限りません。", { tested: d.individualsTested ?? "?", total: d.individualsCount ?? "?" }));
+          if ((d.individualUnknown || []).length) {
+            log(T.t("   単独の解除が未判定の候補:"));
+            for (const it of diagnosticSort(d.individualUnknown)) showItem(it, T.t("（未判定: {reason}）", { reason: reason(it) }));
+          }
+        }
         if (d.combined) {
           if (d.items && d.items.length) {
             log(T.t("   以下の {n} 項目をまとめて外した条件で解を確認しました:", { n: d.items.length }));
             if (d.items.length > 1) log(T.t("   個々の項目を1つだけ外しても解が得られるとは限りません。"));
-            for (const it of d.items) {
-              log("   ● " + it.label + (it.undecided ? T.t("（必要性は未確認: {reason}）", { reason: reason(it) }) : ""));
-              if (it.hint) log("      → " + T.term(it.hint, state.rules));
-            }
+            for (const it of diagnosticSort(d.items)) showItem(it, it.undecided ? T.t("（必要性は未確認: {reason}）", { reason: reason(it) }) : "");
+            if (d.inclusionMinimal === true) log(T.t("   この組合せから解除項目を1つ戻すと解なしになることを確認しました（包含極小）。項目数が最少の組合せであるとは限りません。"));
             if (d.incomplete) log(T.t("   絞り込みは未完了です。未判定の項目を含むため、さらに小さい解除の組合せがある可能性があります。"));
           } else log(T.t("   個別項目を外さない条件でも解を確認しました。元の条件で再計算してください。"));
         } else if (d.narrowing) {
@@ -136,6 +223,7 @@
         } else if (d.items && d.items.length) log(T.t("   個別項目の組合せは未確認です。"));
         if (!d.combined && (T.RULE_DEFS.find(r => r.relax === d.key) || {}).diagnoseHint) log("      → " + T.t(T.RULE_DEFS.find(r => r.relax === d.key).diagnoseHint)); // プラグインが持つ直し方
       }
+      log(T.t("診断は条件を外した場合の実行可能性を確認したものです。原因の特定や、条件を変更してよいという判断ではありません。"));
       log(T.t("診断で確認できた条件や項目の組合せを参考に入力を見直し、再計算してください。例外（許容差など）を広げる場合は作成責任者の承認を得てください。"));
       return;
     }
