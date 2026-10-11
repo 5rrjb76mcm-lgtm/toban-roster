@@ -429,7 +429,24 @@
     usedRemovalNames.add(n); return n;
   }
   // 名簿から外す: 月の入力と、設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す。外したことを改名の記録に残す（外した後にその氏名を別の人が使っても、相手の版の元の人の入力を別の人に付けない）
-  function removeDoctor(i) { const R = state.rules, nm = (R.doctors[i] || {}).name; if (nm === undefined) return; R.doctors.splice(i, 1); T.purgeMonthNames(state.month, [nm]); T.purgeRulesNames(R, [nm]); noteRename(nm, removalName(nm)); }
+  function removalTrial(i) {
+    const R = state.rules, nm = (R.doctors[i] || {}).name; if (nm === undefined) return null;
+    const R2 = JSON.parse(JSON.stringify(R)), m2 = JSON.parse(JSON.stringify(state.month));
+    try {
+      // 名簿を直している途中の設定でも削除できるよう、Problem の成立ではなくプラグインの契約だけを確認する。
+      if ((T.plugins && (T.plugins.errors().length || T.plugins.stale().length)) ||
+          Object.entries(R.rule_states || {}).some(([id, st]) => !T.RULE_BY_ID[id] && (st !== "off" || /^local\./.test(id))) ||
+          (state.month.plugins_used || []).some(id => !T.RULE_BY_ID[id]) || T.hookCheck(R2, m2).length) throw new Error("incomplete plugins");
+      T.purgeRulesNames(R2, [nm]); T.purgeMonthNames(m2, [nm]); R2.doctors.splice(i, 1);
+    } catch (e) {
+      A.toast(T.t("名簿から外せません: 施設のプラグインが欠けているか、人ごとの設定の削除に失敗しました。プラグインを確認してください")); return null;
+    }
+    return { R2, m2, nm };
+  }
+  function removeDoctor(i) {
+    const trial = removalTrial(i); if (!trial) return false;
+    replaceInto(state.rules, trial.R2); replaceInto(state.month, trial.m2); noteRename(trial.nm, removalName(trial.nm)); return true;
+  }
   function renameDoctor(oldN, newN) {
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     T.renameMonthName(m2, oldN, newN);
@@ -590,6 +607,7 @@
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）
+      if (!mod && act === "del" && !removalTrial(+(b.closest("tr") || { dataset: {} }).dataset.i)) return; // 読み戻し・Undo 記録の前に失敗を検出
       if (readSettings(mod ? mod.ui.acts[act] : { add: "名簿に追加", del: "名簿から削除", up: "名簿の並べ替え", down: "名簿の並べ替え", roleAdd: "役割を追加", roleDel: "役割を削除" }[act] || "設定の変更") === false) return;
       const R = state.rules, tr = b.closest("tr"), i = tr ? +tr.dataset.i : -1;
       if (mod) { mod.ui.act(R, act, b); A.save(); renderSettings(); return; }
@@ -610,7 +628,7 @@
       }
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
-        removeDoctor(i); } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す
+        if (!removeDoctor(i)) return; } // 設定の側の人ごとの条件（隠れている規則の欄・表示順・プラグインの項目）も外す
       else if (b.dataset.act === "up" && i > 0) { [R.doctors[i - 1], R.doctors[i]] = [R.doctors[i], R.doctors[i - 1]]; }
       else if (b.dataset.act === "down" && i < R.doctors.length - 1) { [R.doctors[i + 1], R.doctors[i]] = [R.doctors[i], R.doctors[i + 1]]; }
       A.refreshNameOrder(R);

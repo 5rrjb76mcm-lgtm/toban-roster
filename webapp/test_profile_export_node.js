@@ -188,7 +188,9 @@ assert.ok(!("toban_profile" in A.state.rules));
   // 名簿から外した人: 設定の側の人ごとの項目（氏名のキー・氏名の配列要素・name が氏名の要素。プラグインの項目も）を外す。文の中の氏名は触らない
   { const r = JSON.parse(before); T.fillDefaultRules(r); const gone = "Fictional Removed Person";
     r.friday_night_min = { [A_]: 1, [gone]: 2 }; r.weekend_dayshift_wish = ["Fictional Staff B", gone]; r.name_order = r.name_order.concat([gone]); r.local_example = { by_name: { [gone]: { max: 1 } }, members: [{ name: gone, note: "x" }, { name: A_ }], memo: gone + " の件" };
-    const c = T.purgeRulesNames(r, [gone]); assert.strictEqual(c, 5, "5 件"); assert.deepStrictEqual(r.friday_night_min, { [A_]: 1 }); assert.deepStrictEqual(r.weekend_dayshift_wish, ["Fictional Staff B"]); assert.ok(!r.name_order.includes(gone)); assert.deepStrictEqual(r.local_example.by_name, {}); assert.deepStrictEqual(r.local_example.members, [{ name: A_ }]);
+    // Plugin-owned personal maps/records declare their schema through the existing column contract.
+    T.rules.register({ id: "local.cleanup.fixture", api: 1, columns: [{ key: "fixture", begin() { return {}; }, end(R) { R.local_example.by_name = {}; R.local_example.members = []; } }] });
+    let c; try { c = T.purgeRulesNames(r, [gone]); } finally { T.rules.unregister("local.cleanup.fixture"); } assert.strictEqual(c, 5, "5 件"); assert.deepStrictEqual(r.friday_night_min, { [A_]: 1 }); assert.deepStrictEqual(r.weekend_dayshift_wish, ["Fictional Staff B"]); assert.ok(!r.name_order.includes(gone)); assert.deepStrictEqual(r.local_example.by_name, {}); assert.deepStrictEqual(r.local_example.members, [{ name: A_ }]);
     assert.strictEqual(r.local_example.memo, gone + " の件", "文の中の氏名は触らない"); assert.strictEqual(r.doctors.length, 3, "名簿は触らない"); }
   // 共有用の書き出し: 以前に名簿から外した人の条件が、隠れた規則（「なし」）の名簿の欄の項目に残っている保存データでも、氏名と条件を出さない（いまの名簿の氏名との一致に頼らない）。元の設定は変えない
   { const r = JSON.parse(before); T.fillDefaultRules(r); const gone = "Fictional Removed Person"; r.rule_states.friday_night_min = "off"; r.rule_states.wish_weekend_dayshift = "off";
