@@ -64,6 +64,7 @@ run test_diagnose_node.js "$HP"
 run test_diagnose_ui_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
+run test_report_rule_state_node.js "$HP"
 run test_docx_node.js /tmp/toban_test.docx
 run test_output_escape_node.js
 run test_input_escape_node.js

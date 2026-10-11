@@ -672,6 +672,7 @@
     "{charge} 除外": "{charge} excluded",
     "専門外来 候補（{other} / {junior}）": "Specialty clinic ({other} / {junior})",
     "候補＝資格者から外来・病棟番・外勤・不在・不可を除いた人。夜勤明けは午前だけ候補に含める（夜勤明けを数えて初めて足りる時間帯は減点）。午後は除外。* は前夜の夜間OC。実際の配置は当月条件で確定させる。": "Available = qualified people minus clinic, ward, outside work, absence and unavailability. Someone off a night shift counts only in the morning (a half-day that only adds up with them is penalised); afternoons exclude them. * marks night on-call the evening before. The actual assignment is settled against this month's conditions.",
+    "暦 {N} 日": "{N} days in the month",
     "暦 {N} 日。最低の休み {min} 日": "{N} days in the month; at least {min} days off",
     "、2 連休は最低 {pair} 回": ", at least {pair} two-day breaks",
     "（勤務の枠に入らない日を休みとして数える。日中の業務は見ない）": " (a day with no shift counts as a day off; daytime duties are not considered)",
