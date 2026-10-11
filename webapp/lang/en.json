@@ -14,6 +14,8 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "名簿の個人別の欄を安全に除けないため、共有用の書き出しを中止しました。プラグインの欄の変換を確認してください": "Cannot export a shared profile because personal roster columns could not be cleared safely. Check the plug-in's column conversion.",
+    "独自データの項目が氏名か設定の識別子か判断できないため、共有用の書き出しを中止しました。プラグインの share で個人の記録を除いてください": "Cannot export a shared profile because custom data could be a staff name or a configuration identifier. Remove personal records with the plug-in's share hook.",
     "名簿から外せません: 施設のプラグインが欠けているか、人ごとの設定の削除に失敗しました。プラグインを確認してください": "Cannot remove this person: a facility plug-in is missing or personal-settings cleanup failed. Check the plug-ins.",
     "- 「{label}」の個別項目を確認（グループ全体を外した場合は解なし）": "- Checked individual items in \"{label}\" (removing the whole group gives no solution)",
     "- 「{label}」の個別項目を確認（グループ全体の解除は未判定: {reason}）": "- Checked individual items in \"{label}\" (whole-group relaxation is undecided: {reason})",

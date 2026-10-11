@@ -31,6 +31,7 @@ run test_merge_node.js
 run test_merge_scalar_clear_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
+run test_profile_export_collision_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_settings_import_node.js
 run test_role_edit_preservation_node.js
