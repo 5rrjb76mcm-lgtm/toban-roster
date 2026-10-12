@@ -54,8 +54,8 @@ try {
     assert.equal(toast.hidden,false); assert.equal(toast.getAttribute('role'),'status');
     assert.equal(toast.getAttribute('aria-live'),'polite'); assert.equal(toast.getAttribute('aria-atomic'),'true');
     assert.equal(w.document.activeElement,q('#monthSel'),'toast must not steal focus');
-    // The status lives in its own row directly after the header (outside the header's stacking
-    // context, so the wide-screen overlay keeps its place above dialogs) and before the content.
+    // The status lives in its own row directly after the header (outside it, so the row is not
+    // pinned with the header on large viewports) and before the content.
     const row=q('#toastRow');
     // It shares the row with the kept save-failure record, which shows only while no toast is visible.
     const kept=q('#saveFail');
@@ -71,26 +71,21 @@ try {
       const header=declared('header',width,height), status=declared('#toast',width,height), statusRow=declared('#toastRow',width,height);
       const small=width<=800 || height<=640;
       assert.equal(header.position,small ? 'static' : 'sticky');
-      if (small) {
-        // Reserved row: the same height with or without a message, whatever its length.
-        assert.equal(statusRow.height,width<=480 ? 'calc(4.5em + 10px)' : 'calc(3em + 10px)','reserved status row height');
-        assert.equal(statusRow['box-sizing'],'content-box'); assert(!statusRow.display,'reserved row must stay rendered');
-        assert.equal(status.position,'static'); assert.equal(status.transform,'none'); assert.equal(status.height,'100%');
-        assert.equal(status['overflow-y'],'auto','long text is read by scrolling inside the row, not cut off');
-        assert.equal(status['pointer-events'],'auto'); assert.equal(status['max-width'],'none'); assert.equal(status['overflow-wrap'],'anywhere');
-        // The kept record fills the same row: same height, its text scrolls inside, the button stays beside it.
-        const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
-        assert.equal(record.position,'static'); assert.equal(record.transform,'none'); assert.equal(record.height,'100%'); assert.equal(record.display,'flex');
-        assert.equal(recordText.height,'100%'); assert.equal(recordText['max-height'],'none'); assert.equal(recordText['overflow-y'],'auto');
-      } else {
-        // Overlay near the bottom of the viewport: takes no space and lets clicks through.
-        assert(!statusRow.height && !statusRow['padding-top'] && !statusRow['padding-bottom'],'no reserved row on large viewports');
-        assert.equal(status.position,'fixed'); assert.equal(status.bottom,'70px'); assert.equal(status['z-index'],'50');
-        assert.equal(status['pointer-events'],'none'); assert.equal(status['max-width'],'80%'); assert(!status.height && !status['overflow-y']);
-        const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
-        assert.equal(record.position,'fixed'); assert.equal(record.bottom,'70px'); assert.equal(record['z-index'],'50'); assert(!record.height);
-        assert.equal(recordText['max-height'],'6em'); assert.equal(recordText['overflow-y'],'auto');
+      // Reserved row on every viewport: the same height with or without a message, whatever its
+      // length; never an overlay on top of the content, and not pinned like the header.
+      assert.equal(statusRow.height,width<=480 ? 'calc(4.5em + 10px)' : 'calc(3em + 10px)','reserved status row height');
+      assert.equal(statusRow['box-sizing'],'content-box'); assert(!statusRow.display,'reserved row must stay rendered');
+      assert(!statusRow.position && !statusRow.top,'the row scrolls with the content');
+      for (const box of [status, declared('#saveFail',width,height)]) {
+        assert(!box.position && !box.transform && !box.bottom && !box['z-index'],'no overlay');
+        assert(!box['pointer-events'] && !box['max-width']); assert.equal(box.height,'100%'); assert.equal(box['overflow-wrap'],'anywhere');
       }
+      assert.equal(status['overflow-y'],'auto','long text is read by scrolling inside the row, not cut off');
+      assert(!status['overscroll-behavior'],'the wheel over a short status still scrolls the page');
+      // The kept record fills the same row: its text scrolls inside, the button stays beside it.
+      const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
+      assert.equal(record.display,'flex'); assert.equal(recordText.height,'100%'); assert(!recordText['max-height']);
+      assert.equal(recordText['overflow-y'],'auto'); assert(!recordText['overscroll-behavior']);
       const select=declared('#monthTitle select',width,height);
       assert.equal(select['font-size'],width<=1080 ? '16px' : width<=1200 ? '17px' : '18px');
       const editing=declared('#monthTitle .editing-month',width,height);
@@ -149,5 +144,5 @@ try {
       assert.equal(el.hidden,false); hideToast(); assert.equal(el.hidden,true);
     } finally { el.matches=matches; }
   } finally { w.setTimeout=setTimer; }
-  console.log(`PASS header/status DOM and responsive CSS contracts (${cases} JP/EN viewport policies; overlay on large viewports, reserved fixed-height row otherwise; visible/hidden notification preserves calendar focus/input/person; no browser geometry measured)`);
+  console.log(`PASS header/status DOM and responsive CSS contracts (${cases} JP/EN viewport policies; reserved fixed-height status row on every viewport, no overlay; visible/hidden notification preserves calendar focus/input/person; no browser geometry measured)`);
 } finally { dom.window.close(); }

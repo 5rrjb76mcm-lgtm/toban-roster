@@ -141,7 +141,7 @@
     });
     const p = chooseChain.then(run, run); chooseChain = p.catch(() => { }); return p;
   }
-  // 狭い・低い画面では通知欄の高さが固定で、長い文は欄の中でスクロールして読む。読んでいる間（ポインタが乗っている・フォーカスがある）は消さない
+  // 通知欄の高さは固定で、長い文は欄の中でスクロールして読む。読んでいる間（ポインタが乗っている・フォーカスがある）は消さない
   const toastHide = () => { const el = $("#toast"); if (el.matches && el.matches(":hover,:focus")) { toast.t = setTimeout(toastHide, 1000); return; } el.hidden = true; };
   const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; el.scrollTop = 0; clearTimeout(toast.t); toast.t = setTimeout(toastHide, 4000); };
 
