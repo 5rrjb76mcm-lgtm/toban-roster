@@ -532,6 +532,10 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       assert.ok((await page.locator('#doctorPane').textContent()).includes("名簿が空"));
       await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); await page.click('#settings [data-act="add"]');
       assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 1);
+      // 再追加した人も、職員別カレンダーでは明示的に選んでから編集する（追加しただけでは入力欄を出さない）
+      await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+      assert.strictEqual(await page.locator('#doctorPane [data-cal]').count(), 0, "選ぶ前は入力欄が無い"); assert.strictEqual(await page.locator("#docSel").inputValue(), "");
+      await page.selectOption("#docSel", await page.evaluate(() => T.app.state.rules.doctors[0].name));
       assert.ok(await page.locator('#doctorPane [data-cal="duty"]').count() > 0);
       assert.strictEqual(await page.evaluate(() => document.querySelector('#doctorPane').dataset.doctor), await page.evaluate(() => T.app.state.rules.doctors[0].name));
     } finally { await ctx.close(); }

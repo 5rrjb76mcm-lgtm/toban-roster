@@ -101,8 +101,45 @@ async function makeApp(saved) {
  await test('rename clears the selected identity without writing stale controls under either name',()=>{
    reset();select(N[0]);assert(A.renameDoctor(N[0],'Synthetic Renamed'));A.state.rules.doctors[0].name='Synthetic Renamed';const before=model();A.readAll();assert.equal(model(),before);A.renderDoctor();placeholder();
  });
- await test('real Undo restores the edit and safely requests a new choice after data replacement',async()=>{
-   reset();select(N[1]);change(un(17),'night');await tick();assert(!q('#btnUndo').disabled);click('#btnUndo');assert(!A.state.month.unavailable_night[N[1]].includes(17));placeholder();select(N[1]);selected(N[1]);
+ // Undo of a monthly input replaces only the month; the settings object and its roster entries stay the same objects.
+ // The selection is kept only when that same person object is still in the same roster for the same month/facility/folder. A matching name alone never restores it.
+ await test('real Undo of a calendar edit keeps the selected person and shows the reverted value',async()=>{
+   reset();select(N[1]);const person=A.state.rules.doctors.find(d=>d.name===N[1]),rules=A.state.rules;
+   change(un(17),'night');await tick();assert(A.state.month.unavailable_night[N[1]].includes(17));assert(!q('#btnUndo').disabled);
+   click('#btnUndo');assert(!A.state.month.unavailable_night[N[1]].includes(17));selected(N[1]);assert.equal(q(un(17)).value,'');
+   assert.equal(A.state.rules,rules);assert.equal(A.state.rules.doctors.find(d=>d.name===N[1]),person);
+   change(un(19),'night');assert(A.state.month.unavailable_night[N[1]].includes(19));assert(!(A.state.month.unavailable_night[N[0]]||[]).includes(19));selected(N[1]);
+ });
+ await test('two calendar edits are undone one by one while the same person stays selected',async()=>{
+   reset();select(N[1]);change(un(17),'night');await tick();change(un(18),'night');await tick();
+   click('#btnUndo');selected(N[1]);assert.equal(q(un(18)).value,'');assert.equal(q(un(17)).value,'night');
+   click('#btnUndo');selected(N[1]);assert.equal(q(un(17)).value,'');assert(q('#btnUndo').disabled);
+ });
+ await test('Undo of another person\'s calendar edit keeps the person chosen afterwards',async()=>{
+   reset();select(N[1]);change(un(17),'night');await tick();select(N[0]);await tick();selected(N[0]); // the switch itself records nothing once its microtask has run
+   click('#btnUndo');assert(!A.state.month.unavailable_night[N[1]].includes(17));selected(N[0]);
+   change(un(20),'night');assert(A.state.month.unavailable_night[N[0]].includes(20));assert(!A.state.month.unavailable_night[N[1]].includes(20));
+ });
+ await test('Undo that changes the roster clears the selection, and a re-used name does not restore it',async()=>{
+   reset();select(N[0]);const original=A.state.rules.doctors.find(d=>d.name===N[0]);
+   A.pushUndo('Synthetic roster removal');assert(A.removeDoctor(0));await tick();A.renderDoctor();placeholder();
+   A.pushUndo('Synthetic roster addition');A.state.rules.doctors.push({name:N[0],team:'S'});await tick();A.renderDoctor();placeholder();
+   select(N[0]);selected(N[0]);const replacement=A.state.rules.doctors.find(d=>d.name===N[0]);assert.notEqual(replacement,original);
+   click('#btnUndo');assert(!A.names().includes(N[0]));placeholder();                                   // the added same-name person is removed
+   click('#btnUndo');assert(A.names().includes(N[0]));placeholder();                                    // the original returns under the same name: still no automatic selection
+   assert.equal(q('#doctorPane [data-cal]'),null);select(N[0]);selected(N[0]);
+ });
+ await test('Undo that replaces the settings object asks again even when the roster names are unchanged',async()=>{
+   reset();A.pushUndo('Synthetic settings change');A.state.rules.weights.target_deviation=(+A.state.rules.weights.target_deviation||0)+1;await tick();
+   A.renderDoctor();select(N[1]);selected(N[1]);const rules=A.state.rules;click('#btnUndo');assert.notEqual(A.state.rules,rules);assert(A.names().includes(N[1]));placeholder();
+ });
+ await test('Undo after the selected person was removed and re-added neither rewrites data nor selects the new same-name person',async()=>{
+   reset();select(N[1]);change(un(17),'night');await tick();const i=A.names().indexOf(N[1]);
+   assert(A.removeDoctor(i));A.state.rules.doctors.push({name:N[1],team:'S'});const before=model();
+   click('#btnUndo');assert.equal(model(),before);            // the application refuses this Undo (the month was changed by the removal); nothing is rewritten
+   const stale=q(un(18));if(stale)change(stale,'night');assert.equal(model(),before);                   // a stale control of the removed person cannot write to the new person
+   A.renderDoctor();placeholder();assert.equal(q('#doctorPane [data-cal]'),null);
+   reset();select(N[1]);selected(N[1]);                                                                // restore the state expected by the following tests
  });
  await test('real JSON applyLoaded clears selection and preserves selected-person edits on roundtrip',()=>{
    change(un(18),'night');const payload=A.payloadJson('synthetic-saved');A.applyLoaded(JSON.parse(payload),'Synthetic reload',{fromFolder:false});placeholder();select(N[1]);assert.equal(q(un(18)).value,'night');

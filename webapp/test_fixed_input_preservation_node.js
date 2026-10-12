@@ -31,6 +31,7 @@ function test(name, fn) { try { fn(); passed++; console.log("ok " + name); } cat
       const hasOver = () => T.lint(new T.Problem(A.state.rules, A.state.month)).some(x => x.code === "LINT_FIXED_OVER_COUNT");
       const sameFixed = (m, before) => { const flat = x => Object.fromEntries(Object.entries(x).map(([k, tbl]) => [k, Object.fromEntries(Object.entries(tbl).map(([d, ns]) => [d, [].concat(ns).sort()]))])); return JSON.stringify(flat(m.fixed)) === JSON.stringify(flat(before.fixed)) && JSON.stringify(m.fixed_tags) === JSON.stringify(before.fixed_tags); };
       const render = () => { A.renderDoctor(); A.renderFixed(); };
+      const choose = () => { const s = q("#docSel"); s.value = A.names()[0]; s.dispatchEvent(new Event("change", { bubbles: true })); }; // 職員別カレンダーは人物を明示的に選んでから使う（従来は先頭の人を自動で表示していた）
       const setup = (kind, opts = {}) => {
         notices.length = 0;
         const R = { profile: { id: "synthetic-fixed-preservation", roles: [{ id: "S", label: "Staff" }], shifts: [{ id: "day", on: "all" }, { id: "night", on: "all" }], positions: { work: { count: 2 } }, fixed_tags: ["Synthetic tag"] }, doctors: names.map(name => ({ name, team: "S", quota: 20 })), weights: {}, rule_states: {} };
@@ -38,7 +39,7 @@ function test(name, fn) { try { fn(); passed++; console.log("ok " + name); } cat
         const m = T.normalizeMonth({ year: 2026, month: 11, fixed: { [kind]: { 5: names.slice(0, 2) } }, fixed_tags: { [`5:${kind}|${names[0]}`]: "Synthetic tag", [`5:${kind}|${names[1]}`]: "Synthetic tag" } }, R);
         if (opts.invalid) { R.rule_states.quota_target = "soft"; R.weights.target_deviation = -1; }
         else R.profile.positions.work.count = opts.byDay ? { weekday: 1, off_days: 2 } : 1;
-        Object.assign(A.state, { rules: R, month: m, ui: { doctor: 0 }, result: null }); render(); return m;
+        Object.assign(A.state, { rules: R, month: m, ui: { doctor: 0 }, result: null }); render(); choose(); return m;
       };
       const test = (name, fn) => { try { fn(); results.push({ name, pass: true }); } catch (e) { results.push({ name, pass: false, error: e.message }); } };
       for (const kind of ["day", "night"]) test(`calendar preserves existing ${kind} workers and tags after capacity reduction`, () => {
@@ -134,11 +135,12 @@ function test(name, fn) { try { fn(); passed++; console.log("ok " + name); } cat
       document.body.insertAdjacentHTML("beforeend", '<button id="btnUndo"></button><span id="undoNote"></span>');
       const q = s => document.querySelector(s), clone = x => JSON.parse(JSON.stringify(x)), check = (ok, msg) => { if (!ok) throw new Error(msg); };
       A.renderAll = () => { A.renderDoctor(); A.renderFixed(); };
+      const choose = () => { const s = q("#docSel"); s.value = A.names()[0]; s.dispatchEvent(new Event("change", { bubbles: true })); }; // 職員別カレンダーは人物を明示的に選んでから使う（従来は先頭の人を自動で表示していた）
       const setup = () => {
         const R = { profile: { id: "synthetic-fixed-undo", roles: [{ id: "S", label: "Staff" }], shifts: [{ id: "day", on: "all" }, { id: "night", on: "all" }], positions: { work: { count: 1 } } }, doctors: ns.map(name => ({ name, team: "S", quota: 20 })), weights: {}, rule_states: {} };
         T.fillDefaultRules(R); for (const d of T.RULE_DEFS) if (d.states.includes("off")) R.rule_states[d.id] = "off";
         const M = T.normalizeMonth({ year: 2026, month: 11, fixed: { night: { 5: ns.slice(0, 2) } }, fixed_tags: { [`5:night|${ns[0]}`]: "Synthetic tag, secondary" }, doc_versions: [{ ver: 1 }] }, R);
-        Object.assign(A.state, { rules: R, month: M, ui: { doctor: 0 }, result: { at: "synthetic-old" } }); A.clearUndo(); A.renderAll(); return clone(M);
+        Object.assign(A.state, { rules: R, month: M, ui: { doctor: 0 }, result: { at: "synthetic-old" } }); A.clearUndo(); A.renderAll(); choose(); return clone(M);
       };
       const change = async (selector, val) => { const el = q(selector); if (el.type === "checkbox") el.checked = val; else el.value = val; el.dispatchEvent(new Event("change", { bubbles: true })); await Promise.resolve(); };
       // Fixed-worker arrays are sets; a calendar read can legitimately move the edited person to the end.

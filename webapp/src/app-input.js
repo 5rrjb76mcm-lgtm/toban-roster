@@ -195,6 +195,19 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       if (rendered) doctorRendered.people = after.slice();
     };
   }
+  // 月別条件の入力だけを戻す「元に戻す」は、月を差し替えるが設定（名簿）は同じオブジェクトのまま。
+  // 選んでいた本人のオブジェクトがその名簿に残り、月・施設・保存先も同じと確かめられたときだけ、選択を戻した月へ結び直す。
+  // 氏名の一致では復元しない。設定を差し替える取り消し（名簿の追加・削除・改名など）はこの窓口を通らず、選び直しになる。
+  function doctorUndoCheckpoint() {
+    const n = curDoctor(), selection = doctorSelection; if (!n || !doctorVisible()) return null;
+    const rules = state.rules, gen = A.dirGen, m = state.month, person = selection.person, key = [m.year, m.month, m.profile_id];
+    return () => {
+      const now = state.month, docs = (state.rules || {}).doctors || [];
+      if (selection !== doctorSelection || state.rules !== rules || A.dirGen !== gen || !now || now.year !== key[0] || now.month !== key[1] || now.profile_id !== key[2]
+        || !docs.includes(person) || person.name !== n || docs.filter(d => d.name === n).length !== 1) { resetDoctorSelection(); return; }
+      doctorSelection.context = doctorContext();
+    };
+  }
   function selectDoctor(name) {
     const docs = ((state.rules || {}).doctors || []).filter(d => d.name === name);
     resetDoctorSelection(); if (!name || docs.length !== 1 || !doctorVisible()) return;
@@ -489,5 +502,5 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; undoPoint("固定配置の変更"); if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
   }
 
-  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, resetDoctorSelection, doctorNormalizationCheckpoint, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, resetDoctorSelection, doctorNormalizationCheckpoint, doctorUndoCheckpoint, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});
