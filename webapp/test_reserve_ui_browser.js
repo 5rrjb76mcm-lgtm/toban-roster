@@ -46,7 +46,7 @@ const HTML = process.argv[2] && path.resolve(process.argv[2]);
         if (multi) for (const id of ["oncall", "period_charge", "same_day_team"]) R.rule_states[id] = "off";
         const m = T.normalizeMonth({ year: 2026, month: 11, allow_chief_duty: allow, next_first_day_in_calendar: true,
           targets: { [n]: 7 }, history: { work_balance: { [n]: 5 } }, wishes: { night_on: { [n]: [8] } } }, R);
-        Object.assign(A.state, { rules: R, month: m, result: null, ui: { doctor: 0 } }); render(); return m;
+        Object.assign(A.state, { rules: R, month: m, result: null, ui: { doctor: 0 } }); if (q("#input")) q("#input").hidden = false; q("#doctorPane").hidden = false; render(); change("#docSel", n); return m;
       };
       const test = (name, fn) => { try { fn(); out.push({ name, pass: true }); } catch (e) { out.push({ name, pass: false, error: e.message }); } };
       test("reserve role ID / duty blank or yes / monthly gate: current work, OC and next-month choices", () => {

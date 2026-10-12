@@ -45,7 +45,7 @@ function setup({ numeric = false, dayOn = "all", dayRule = "soft" } = {}) {
       const el = { dataset: datasetOf(c.attrs), id: c.attrs.id || "", type: c.attrs.type || (opts ? "select-one" : "text"), value, checked: !!c.checked };
       if (el.id) elements.set("#" + el.id, el); return el;
     }); }, get innerHTML() { return this.html; } };
-  elements.set("#doctorPane", root); A.bindDoctor(); A.renderDoctor();
+  elements.set("#doctorPane", root); A.bindDoctor(); A.renderDoctor(); root.handlers.change({ target: { id: "docSel", value: names[0] } });
   const control = (kind, d) => { const el = root.controls.find(c => c.dataset.cal === kind && +c.dataset.d === d); assert.ok(el, `missing ${kind} control on ${d}`); return el; };
   const change = (kind, d, value) => { const el = control(kind, d); if (el.type === "checkbox") el.checked = value; else el.value = value; root.handlers.change({ target: el }); };
   return { R, M, root, control, change };
@@ -68,9 +68,9 @@ test("unchanged readback and doctor navigation preserve all accepted days", () =
   const { R, M, root } = setup(), before = effective(M, R);
   for (let i = 0; i < 3; i++) {
     A.readAll(); assert.deepStrictEqual(effective(M, R), before);
-    root.handlers.change({ target: { id: "docSel", value: "1" } });
+    root.handlers.change({ target: { id: "docSel", value: names[1] } });
     assert.deepStrictEqual(effective(M, R), before);
-    root.handlers.change({ target: { id: "docSel", value: "0" } });
+    root.handlers.change({ target: { id: "docSel", value: names[0] } });
     assert.deepStrictEqual(effective(M, R), before);
   }
 });
@@ -138,9 +138,9 @@ test("pattern holiday setting persists across unrelated edits, navigation and JS
   A.pushUndo = () => undo.push(M.duties_on_holidays);
   cb.checked = true; root.handlers.change({ target: cb });
   assert.strictEqual(M.duties_on_holidays, true); assert.strictEqual(undo[0], undefined);
-  change("wish", 6, true); root.handlers.change({ target: { id: "docSel", value: "1" } });
+  change("wish", 6, true); root.handlers.change({ target: { id: "docSel", value: names[1] } });
   assert.strictEqual(elements.get("#patHol").checked, true);
-  root.handlers.change({ target: { id: "docSel", value: "0" } });
+  root.handlers.change({ target: { id: "docSel", value: names[0] } });
   assert.strictEqual(JSON.parse(A.payloadJson()).month.duties_on_holidays, true);
   const off = elements.get("#patHol"); off.checked = false; root.handlers.change({ target: off }); A.renderDoctor();
   assert.strictEqual(M.duties_on_holidays, false); assert.strictEqual(elements.get("#patHol").checked, false);

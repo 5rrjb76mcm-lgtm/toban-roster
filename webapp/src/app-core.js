@@ -95,7 +95,11 @@
   }
 
   // 設定と月データの形を整える（欠損の補完・旧形式の移行）。中身は model.js の fillDefaultRules / normalizeMonth
-  function ensureMonth(m) { T.fillDefaultRules(state.rules); T.normalizeMonth(m, state.rules); }
+  function ensureMonth(m) {
+    const normalized = typeof A.doctorNormalizationCheckpoint === "function" ? A.doctorNormalizationCheckpoint() : null;
+    T.fillDefaultRules(state.rules); T.normalizeMonth(m, state.rules);
+    if (normalized) normalized(); // 正規化が複製した名簿だけ、明示選択中の本人との対応を保つ。
+  }
 
   function download(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
   const tag = (m = state.month) => `${m.year}${String(m.month).padStart(2, "0")}`;

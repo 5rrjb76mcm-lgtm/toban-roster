@@ -650,7 +650,8 @@
     const keepVersions = m => { const v = state.month.doc_versions; if (v !== undefined) m.doc_versions = v; else delete m.doc_versions; return m; }; // 版の記録は保存の履歴なので巻き戻さない
     if (last.auto) { // 月別条件の入力: 記録の直後の内容のままなら、月と結果を入力の前に戻す
       if (!monthUntouched || (last.afterRules && last.afterRules !== A.rulesSig(state.rules))) { renderUndo(); return A.toast(T.t("この変更は取り消せません: その後に別の経路（別のPCの変更の統合・データの取り込みなど）で内容が変わっています（{what}）", { what: T.term(tx(last.label), state.rules) })); }
-      state.month = keepVersions(o.month); state.result = o.result;
+      const keepDoctor = typeof A.doctorUndoCheckpoint === "function" ? A.doctorUndoCheckpoint() : null; // 設定（名簿）は差し替えない。選んでいた本人を確かめられれば、職員別カレンダーの選択を保って戻した値を見せる
+      state.month = keepVersions(o.month); state.result = o.result; if (keepDoctor) keepDoctor();
       A.ensureMonth(state.month); A.save(); A.renderAll();
       return A.toast(T.t("元に戻しました（{what}）", { what: T.term(tx(last.label), state.rules) }));
     }

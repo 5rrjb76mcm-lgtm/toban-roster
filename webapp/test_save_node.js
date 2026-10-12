@@ -3,7 +3,7 @@
 //  版: 出力に関わる変更（メモ・表題・重み・表示言語）のたびに版が増え、変更が無ければ増えない。説明資料は保存した内容で作られる
 //  署名: 名簿・表示順の並べ替えは「未保存」になり、集合（祝日・不可の日）の並べ替えはならない
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
-const elems = new Map(); const el = s => { if (!elems.has(s)) elems.set(s, { value: "確認版", innerHTML: "", textContent: "", className: "", hidden: false, addEventListener() { } }); return elems.get(s); };
+const elems = new Map(); const el = s => { if (!elems.has(s)) elems.set(s, { dataset: {}, value: "確認版", innerHTML: "", textContent: "", className: "", hidden: false, addEventListener() { } }); return elems.get(s); };
 globalThis.document = { querySelector: el, querySelectorAll: () => [], addEventListener: () => { } }; globalThis.window = globalThis;
 globalThis.location = { pathname: "/x/toban.html", protocol: "file:", href: "file:///x/toban.html" }; globalThis.localStorage = { getItem: () => null, setItem() { }, removeItem() { } };
 globalThis.T = {};

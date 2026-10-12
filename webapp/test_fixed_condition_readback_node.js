@@ -49,7 +49,7 @@ function setup(fixed, { team = 'I', next = false, tags = {} } = {}) {
   const M = T.normalizeMonth({ year: 2026, month: 11, next_first_day_in_calendar: next, fixed, fixed_tags: tags }, R);
   Object.assign(A.state, { rules: R, month: M, ui: { doctor: 0 }, result: null });
   const doctor = pane(), grid = pane(); grid.hidden = true; elements.set('#doctorPane', doctor); elements.set('#fixedPane', grid);
-  A.bindDoctor(); A.bindFixed(); A.renderDoctor(); A.renderFixed();
+  A.bindDoctor(); A.bindFixed(); A.renderDoctor(); doctor.handlers.change({ target: { id: "docSel", value: names[0] } }); A.renderFixed();
   const change = (root, sel, value) => { const el = root.querySelector(sel); assert.ok(el, sel); el.value = value; root.handlers.change({ target: el }); while(pending.length) pending.shift()(); };
   return { R, M, doctor, grid, change };
 }

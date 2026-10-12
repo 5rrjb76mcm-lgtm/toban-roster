@@ -164,8 +164,8 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("医師別カレンダー: 規則を「なし」にしていて選択肢に無い値（有給）は「（現在は使わない値）」として残り、他の欄の変更で消えない。空欄を選んだときだけ消える", async () => {
     const { ctx } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
-    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; A.state.rules.rule_states.days_off_min = "off"; A.state.month.unavailable_other = [{ name: n, day: 5, part: "allday", paid: true }]; A.state.ui.doctor = 0; A.renderDoctor(); return n; });
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; A.state.rules.rule_states.days_off_min = "off"; A.state.month.unavailable_other = [{ name: n, day: 5, part: "allday", paid: true }]; A.state.ui.doctor = 0; A.renderDoctor(); { const chooser = document.querySelector("#docSel"); chooser.value = n; chooser.dispatchEvent(new Event("change", { bubbles: true })); } return n; });
     const sel = page.locator('#doctorPane [data-cal="unavail"][data-d="5"]'); assert.strictEqual(await sel.inputValue(), "paid", "選択肢に無い値でも表示される"); assert.ok(/現在は使わない値/.test(await sel.locator("option:checked").textContent()), "使わない値と分かる");
     await page.check('#doctorPane [data-cal="wish"][data-d="6"]'); // 別の欄を変えると読み戻しが走る
     assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.unavailable_other), [{ name: who, day: 5, part: "allday", paid: true }], "有給が残る"); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.wishes.night_on[T.app.names()[0]]), [6]);
@@ -174,9 +174,9 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("医師別カレンダー: 日勤と期間責任者の両方を固定した日は、他の欄を変えても期間責任者の固定が消えない。欄で期間責任者を外したときだけ消える", async () => {
     const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
     const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, charge = (T.normalizeRolesOf(R).find(r => (r.refs || []).includes("charge")) || {}).id; const n = A.names().find(x => (R.doctors.find(d => d.name === x) || {}).team === charge); A.state.ui.doctor = A.names().indexOf(n);
-      const fx = A.state.month.fixed; fx.day ||= {}; fx.weekend_charge ||= {}; fx.day[7] = n; fx.weekend_charge[7] = n; fx.weekend_charge[8] = n; A.renderDoctor(); return n; }); // 2026-11-07（土）: 日勤と期間責任者の両方、8 日（日）: 期間責任者だけ
+      const fx = A.state.month.fixed; fx.day ||= {}; fx.weekend_charge ||= {}; fx.day[7] = n; fx.weekend_charge[7] = n; fx.weekend_charge[8] = n; A.renderDoctor(); { const chooser = document.querySelector("#docSel"); chooser.value = n; chooser.dispatchEvent(new Event("change", { bubbles: true })); } return n; }); // 2026-11-07（土）: 日勤と期間責任者の両方、8 日（日）: 期間責任者だけ
     assert.ok(who, "期間責任者の役割の人がいる"); const sel7 = page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-shown][data-d="7"]'), sel8 = page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-shown][data-d="8"]');
     assert.strictEqual(await sel7.inputValue(), "day", "両方固定の日は日勤を出す"); assert.strictEqual(await sel8.inputValue(), "charge");
     await page.check('#doctorPane [data-cal="wish"][data-d="10"]'); // 別の欄を変えると読み戻しが走る
@@ -252,15 +252,15 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("医師別カレンダー: 同じ日の日勤帯の不可と夜勤の「避」は、別の欄の編集で片方が消えない。欄を空にすると出していた不可だけが消え、残った「避」が欄に出る", async () => {
     let { ctx, fs } = await newCtx(); let page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
-    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0], m = A.state.month; m.unavailable_other = [{ name: n, day: 7, part: "day" }]; m.avoid = [{ name: n, day: 7, part: "night" }]; m.unavailable_night[n] = [12]; A.state.ui.doctor = 0; A.renderDoctor(); return n; }); // 11/7（土）
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0], m = A.state.month; m.unavailable_other = [{ name: n, day: 7, part: "day" }]; m.avoid = [{ name: n, day: 7, part: "night" }]; m.unavailable_night[n] = [12]; A.state.ui.doctor = 0; A.renderDoctor(); { const chooser = document.querySelector("#docSel"); chooser.value = n; chooser.dispatchEvent(new Event("change", { bubbles: true })); } return n; }); // 11/7（土）
     const sel = page.locator('#doctorPane [data-cal="unavail"][data-d="7"]'); assert.strictEqual(await sel.inputValue(), "day", "不可を出す");
     await page.check('#doctorPane [data-cal="wish"][data-d="9"]');
     const both = m => ({ other: (m.unavailable_other || []).filter(u => +u.day === 7).map(u => u.part), avoid: (m.avoid || []).filter(u => +u.day === 7).map(u => u.part), night: (m.unavailable_night || {})[who] || [] });
     assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: ["day"], avoid: ["night"], night: [12] }, "別の日の希望を変えても両方残る");
     await waitSaved(page); assert.deepStrictEqual(both(JSON.parse(fs.text("A/202611/202611_data.json")).month), { other: ["day"], avoid: ["night"], night: [12] }, "保存した JSON にも両方");
     ({ ctx, page } = await reopen(ctx, fs)); await start(page); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: ["day"], avoid: ["night"], night: [12] }, "開き直しても両方");
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.evaluate(() => { T.app.state.ui.doctor = 0; T.app.renderDoctor(); });
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0])); await page.evaluate(() => { T.app.state.ui.doctor = 0; T.app.renderDoctor(); });
     await page.selectOption('#doctorPane [data-cal="unavail"][data-d="7"]', ""); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: [], avoid: ["night"], night: [12] }, "欄を空にすると、出していた不可だけが消える");
     await page.waitForFunction(() => { const e = document.querySelector('#doctorPane [data-cal="unavail"][data-d="7"]'); return e && e.value === "avoid_night"; }, null, { timeout: 5000 }); // 残った条件が欄に出る
     await page.selectOption('#doctorPane [data-cal="unavail"][data-d="7"]', "night"); assert.deepStrictEqual(both(await page.evaluate(() => T.app.state.month)), { other: [], avoid: [], night: [7, 12] }, "出していた「避」を不可：夜勤に置き換える");
@@ -268,8 +268,8 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("医師別カレンダー: 施設のプラグインが足した日ごとの欄で、いまの選択肢に無い値は「（現在は使わない値）」として残り、別の欄の編集で消えない。空欄を選んだときだけ消える", async () => {
     const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
-    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; T.calendarExt.register({ id: "local.e2e.cal", fields: [{ id: "review_kind", label: "区分", options: [["active", "有効"]] }] }); A.state.month.person_days = { review_kind: { [n]: { 7: "retired", 8: "active" } } }; A.state.ui.doctor = 0; A.renderDoctor(); return n; });
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
+    const who = await page.evaluate(() => { const A = T.app, n = A.names()[0]; T.calendarExt.register({ id: "local.e2e.cal", fields: [{ id: "review_kind", label: "区分", options: [["active", "有効"]] }] }); A.state.month.person_days = { review_kind: { [n]: { 7: "retired", 8: "active" } } }; A.state.ui.doctor = 0; A.renderDoctor(); { const chooser = document.querySelector("#docSel"); chooser.value = n; chooser.dispatchEvent(new Event("change", { bubbles: true })); } return n; });
     const sel = page.locator('#doctorPane [data-cal="pfield"][data-id="review_kind"][data-d="7"]'); assert.strictEqual(await sel.inputValue(), "retired"); assert.ok(/現在は使わない値/.test(await sel.locator("option:checked").textContent()));
     await page.check('#doctorPane [data-cal="wish"][data-d="9"]'); assert.deepStrictEqual(await page.evaluate(() => T.app.state.month.person_days.review_kind), { [who]: { 7: "retired", 8: "active" } }, "別の欄を変えても残る");
     await waitSaved(page); assert.deepStrictEqual(JSON.parse(fs.text("A/202611/202611_data.json")).month.person_days.review_kind, { [who]: { 7: "retired", 8: "active" } }, "保存した JSON にも残る");
@@ -398,9 +398,9 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("職員別カレンダー: 日勤を行う日の設定を「休日だけ」に変えても、画面に出ない平日の日勤の固定と日勤希望は別の日の編集で消えない。設定を戻せば見える。欄を出している日を空にしたときだけ消える", async () => {
     const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
     const who = await page.evaluate(() => { const A = T.app, R = A.state.rules, n = A.dutyNames()[0]; A.state.ui.doctor = A.names().indexOf(n); R.rule_states.wish_day = "soft"; (R.profile ||= {}).shifts = [{ id: "day", label: "日勤", on: "all" }, { id: "night", label: "夜勤", on: "all" }]; T.fillDefaultRules(R);
-      const m = A.state.month; (m.fixed.day ||= {})[2] = n; ((m.wishes ||= {}).day_on ||= {})[n] = [2]; (m.wishes.night_on ||= {})[n] = [3]; A.renderDoctor(); return n; }); // 2026-11-02（月）: 日勤の固定と日勤希望
+      const m = A.state.month; (m.fixed.day ||= {})[2] = n; ((m.wishes ||= {}).day_on ||= {})[n] = [2]; (m.wishes.night_on ||= {})[n] = [3]; A.renderDoctor(); { const chooser = document.querySelector("#docSel"); chooser.value = n; chooser.dispatchEvent(new Event("change", { bubbles: true })); } return n; }); // 2026-11-02（月）: 日勤の固定と日勤希望
     assert.strictEqual(await page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]').inputValue(), "day", "毎日日勤のときは平日にも日勤の欄"); assert.ok(await page.locator('#doctorPane [data-cal="wishday"][data-d="2"]').isChecked());
     await page.evaluate(() => { const A = T.app; A.state.rules.profile.shifts[0].on = "off_days"; T.fillDefaultRules(A.state.rules); A.renderDoctor(); }); assert.strictEqual(await page.locator('#doctorPane [data-cal="fixed"][data-k="day"][data-d="2"]').count(), 0, "休日だけなら平日の日勤の欄は出ない"); assert.strictEqual(await page.locator('#doctorPane [data-cal="wishday"][data-d="2"]').count(), 0);
     await page.check('#doctorPane [data-cal="wish"][data-d="10"]'); // 別の日の夜勤希望を変える（読み戻しが走る）
@@ -442,9 +442,9 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
   });
   await test("ヘッダーの「元に戻す」: 職員別カレンダーの不可日・希望の入力を新しい順に戻せる（職員を切り替えただけでは記録が増えない）。設定の変更も同じボタンで、月別条件のタブから戻せる。保存した JSON まで", async () => {
     const { ctx, fs } = await newCtx(); const page = await newPage(ctx); await start(page); await waitSaved(page);
-    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+    await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]'); await page.selectOption("#docSel", await page.evaluate(() => T.app.names()[0]));
     assert.ok(await page.locator("header #btnUndo").isVisible(), "ヘッダーにある"); assert.ok(await page.locator("#btnUndo").isDisabled(), "最初は押せない");
-    const who = await page.evaluate(() => T.app.names()[T.app.state.ui.doctor]), un0 = await page.evaluate(n => JSON.stringify(T.app.state.month.unavailable_night[n] || []), who), wish0 = await page.evaluate(n => JSON.stringify((T.app.state.month.wishes.night_on || {})[n] || []), who);
+    const who = await page.evaluate(() => document.querySelector("#docSel").value), un0 = await page.evaluate(n => JSON.stringify(T.app.state.month.unavailable_night[n] || []), who), wish0 = await page.evaluate(n => JSON.stringify((T.app.state.month.wishes.night_on || {})[n] || []), who);
     const d1 = await page.evaluate(n => { const m = T.app.state.month; for (let d = 9; d <= 20; d++) if ((T.app.dowOf(m.year, m.month, d) < 5) && !(m.holidays || []).includes(d) && !(m.unavailable_night[n] || []).includes(d) && !(m.unavailable_other || []).some(u => u.name === n && +u.day === d) && !(m.avoid || []).some(u => u.name === n && +(u.day ?? u.date) === d)) return d; }, who);
     await page.selectOption(`#doctorPane [data-cal="unavail"][data-d="${d1}"]`, "night"); assert.ok((await page.evaluate(n => T.app.state.month.unavailable_night[n], who)).includes(d1)); assert.ok(await page.locator("#btnUndo").isEnabled());
     assert.ok(/カレンダーの変更/.test(await page.locator("#undoNote").textContent()), "何を戻すかを出す");
@@ -532,6 +532,10 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       assert.ok((await page.locator('#doctorPane').textContent()).includes("名簿が空"));
       await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); await page.click('#settings [data-act="add"]');
       assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 1);
+      // 再追加した人も、職員別カレンダーでは明示的に選んでから編集する（追加しただけでは入力欄を出さない）
+      await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
+      assert.strictEqual(await page.locator('#doctorPane [data-cal]').count(), 0, "選ぶ前は入力欄が無い"); assert.strictEqual(await page.locator("#docSel").inputValue(), "");
+      await page.selectOption("#docSel", await page.evaluate(() => T.app.state.rules.doctors[0].name));
       assert.ok(await page.locator('#doctorPane [data-cal="duty"]').count() > 0);
       assert.strictEqual(await page.evaluate(() => document.querySelector('#doctorPane').dataset.doctor), await page.evaluate(() => T.app.state.rules.doctors[0].name));
     } finally { await ctx.close(); }

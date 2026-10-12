@@ -44,7 +44,7 @@ function setup(month = {}) {
   elements.clear(); return A.state.month;
 }
 function pane(id, controls = {}, dataset = {}) {
-  const el = { children: [{}], dataset, querySelectorAll: s => controls[s] || [], querySelector(s) { return this.querySelectorAll(s)[0] || null; } };
+  const el = { children: [{}], dataset, handlers: {}, addEventListener(k, fn) { this.handlers[k] = fn; }, querySelectorAll: s => controls[s] || [], querySelector(s) { return this.querySelectorAll(s)[0] || null; } };
   elements.set("#" + id, el); return el;
 }
 
@@ -117,7 +117,9 @@ test("unrelated fixed-table reads retain pipe-name tags; explicit removal delete
 test("calendar fixed removal deletes its pipe-name tag without touching another person", () => {
   const m = setup({ fixed: { night: { 5: N.slice(0, 2) } }, fixed_tags: { [`5:night|${N[0]}`]: "First", [`5:night|${N[1]}`]: "Second" } });
   const el = { dataset: { cal: "fixed", d: "5", k: "night", shown: "night" }, value: "" };
-  pane("doctorPane", { '[data-cal="fixed"]': [el] }, { doctor: N[0] });
+  const calendar = pane("doctorPane", { '[data-cal="fixed"]': [el] });
+  // Person identity comes from the production chooser handler, never injected data-doctor.
+  A.bindDoctor(); A.renderDoctor(); calendar.handlers.change({ target: { id: "docSel", value: N[0] } });
   A.readAll(); assert.strictEqual(m.fixed.night[5], N[1]); assert.deepStrictEqual(m.fixed_tags, { [`5:night|${N[1]}`]: "Second" });
 });
 test("explicit fixed-only proof keeps a pipe-containing staff name; day/name contact alone stays strict", () => {

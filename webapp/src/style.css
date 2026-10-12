@@ -53,7 +53,13 @@ details.box summary{cursor:pointer;font-weight:bold}
 
 #toolbar{justify-content:flex-end}
 
-#monthTitle{display:flex;align-items:center;gap:6px} #monthTitle select{font-size:18px;font-weight:bold;color:#1f3a5f;border:1px solid #1f3a5f;border-radius:4px;padding:2px 6px;background:#fff;width:9.5em}
+#monthTitle{display:flex;align-items:center;gap:6px}
+/* 編集中の年月: 以前の年月の選択欄と同じ外形（幅 9.5em・同じ高さ）の中に「編集中」の札と選択欄を収める（ヘッダーを高くも広くもしない） */
+#monthTitle .editing-month{display:inline-flex;align-items:stretch;flex:none;box-sizing:border-box;width:9.5em;margin:0;font-size:18px;border:1px solid #9a6700;border-radius:4px;background:#fff1b8;color:#533800;overflow:hidden}
+#monthTitle .editing-month>span{display:flex;align-items:center;flex:none;padding:0 3px;font-size:.6em;font-weight:bold;line-height:1;white-space:nowrap;background:#ffd666;border-right:1px solid #9a6700}
+#monthTitle .editing-month select{flex:1 1 auto;min-width:0;width:auto;border:0;border-radius:0;padding:2px 2px 2px 4px;background:#fff1b8;color:#533800}
+#monthTitle .editing-month:focus-within{outline:3px solid #1f3a5f;outline-offset:2px} #monthTitle .editing-month select:focus-visible{outline:none}
+ #monthTitle select{font-size:18px;font-weight:bold;color:#1f3a5f;border:1px solid #1f3a5f;border-radius:4px;padding:2px 6px;background:#fff;width:9.5em}
 
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:flex;align-items:center;justify-content:center}
 #modalBox{background:#fff;border-radius:8px;padding:18px 22px;max-width:560px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,.35)}
@@ -75,8 +81,8 @@ details.box summary{cursor:pointer;font-weight:bold}
 
 .fixedgrid th{white-space:nowrap} .fixedgrid tr.sun th{color:#c00;background:#fbeeee} .fixedgrid tr.sat th{color:#1a55c0;background:#eaf0fb} .fixedgrid td.empty{background:#f3f3f3} .fixedgrid select{max-width:10.5em}
 /* 4:3 の画面で見出しの1行目が折り返さないように詰める（幅 1200px 以下は少し、1080px 以下はさらに） */
-@media (max-width:1200px){header .hrow{gap:12px} header h1{font-size:17px} header small{margin-left:6px;font-size:12px} #monthTitle{font-size:18px;padding:4px 10px} #monthTitle select{font-size:17px}}
-@media (max-width:1080px){header{padding:6px 10px} header .hrow{gap:8px} header h1{font-size:16px} header small{margin-left:4px} #monthTitle{font-size:16px;padding:4px 8px} #monthTitle select{font-size:16px} #outputs{padding:4px 6px;gap:4px}}
+@media (max-width:1200px){header .hrow{gap:12px} header h1{font-size:17px} header small{margin-left:6px;font-size:12px} #monthTitle{font-size:18px;padding:4px 10px} #monthTitle select,#monthTitle .editing-month{font-size:17px}}
+@media (max-width:1080px){header{padding:6px 10px} header .hrow{gap:8px} header h1{font-size:16px} header small{margin-left:4px} #monthTitle{font-size:16px;padding:4px 8px} #monthTitle select,#monthTitle .editing-month{font-size:16px} #outputs{padding:4px 6px;gap:4px}}
 /* 結果タブ: 医師別の当番カレンダー */
 #docCal h4{margin:6px 0 4px;font-size:15px} #docCal h4 small{font-weight:normal;color:#555}
 table.dccal td{height:auto} .dc-slots{display:flex;flex-direction:column;gap:2px;margin-top:2px} .dc-r{height:18px;display:flex;gap:2px} .dc-r2{height:38px} .dc-r>div{flex:1;margin:0;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden} table.dccal td.on{box-shadow:inset 0 0 0 2px #8a8a8a}

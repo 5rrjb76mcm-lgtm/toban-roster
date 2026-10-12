@@ -9,7 +9,7 @@
   const whereLabel = w => { const v = String(w || ""); if (v.startsWith("フォルダ ")) return T.t("フォルダ") + " " + v.slice(5); return T.t(v); };
   function renderHeader() {
     const m = state.month; if (!m) return;
-    $("#monthTitle").innerHTML = `${monthSelectHtml()} <span>${esc(T.t("の勤務表を作成中"))}</span> <span class="note">${esc(T.t("施設: {name}", { name: T.pickLabel((state.rules.profile || {}).label, (state.rules.profile || {}).id || "") }))}</span>`;
+    $("#monthTitle").innerHTML = `<label class="editing-month"><span>${esc(T.t("編集中"))}</span>${monthSelectHtml()}</label> <span>${esc(T.t("の勤務表を作成中"))}</span> <span class="note">${esc(T.t("施設: {name}", { name: T.pickLabel((state.rules.profile || {}).label, (state.rules.profile || {}).id || "") }))}</span>`;
     const dl = $("#docLabel"); if (dl && dl.value !== (m.doc_label || "確認版")) dl.value = m.doc_label || "確認版";
     bindMonthSelect();
     const el = $("#saveState"); let cls, html;
@@ -275,7 +275,7 @@
   }
   // 画面からのフォルダの変更・再接続は共通の窓口（A.transition: 計算中は断り、進行中の保存を待つ）を通す。
   // 保存処理の中からの接続（ensureFolder）は窓口を通さない版（openFolder / reconnectFolder）を使う（自分の保存を待つと止まる）
-  const setDir = h => { A.dirHandle = h; A.dirGen++; };
+  const setDir = h => { A.dirHandle = h; A.dirGen++; if (A.resetDoctorSelection) A.resetDoctorSelection(); if (state.month && typeof A.renderDoctor === "function") A.renderDoctor(); };
   const openFolderUI = () => A.transition("folder", openFolder);
   const reconnectFolderUI = () => A.transition("folder", reconnectFolder);
   async function reconnectFolder() { // 再接続を断られたら別のフォルダを選ぶ。その読込（プラグインの読取りまで）が終わるまで待つ（窓口の保護が途中で切れないように return する）
@@ -389,7 +389,7 @@
     const opts = tags.map(x => [x, ym(x.slice(0, 4), +x.slice(4, 6))]).concat(tags.includes(cur) ? [] : [[cur, ym(cur.slice(0, 4), +cur.slice(4)) + (A.dirHandle ? T.t("（未保存）") : "")]]);
     if (!tags.includes(nextTag) && nextTag !== cur) opts.push([nextTag, T.t("＋ 翌月（{ym}）を作成", { ym: ym(ny, nm) })]);
     opts.push(["__other__", T.t("別の年月を指定…")]);
-    return A.sel(opts, cur, `id="monthSel" title="${esc(T.t("月の切替"))}"`);
+    return A.sel(opts, cur, `id="monthSel" aria-label="${esc(T.t("編集中の年月（選択すると月を切り替えます）"))}" title="${esc(T.t("月の切替"))}"`);
   }
   function bindMonthSelect() {
     $("#monthSel").addEventListener("change", async ev => {

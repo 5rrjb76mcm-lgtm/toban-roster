@@ -2,7 +2,7 @@
 // Synthetic payload only; this tests generated markup without launching a browser.
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert"), { execFileSync } = require("child_process");
 const elements = new Map(), element = selector => {
-  if (!elements.has(selector)) elements.set(selector, { innerHTML: "", value: "", textContent: "", dataset: {}, children: [], addEventListener() {}, querySelector: () => null, querySelectorAll: () => [] });
+  if (!elements.has(selector)) elements.set(selector, { innerHTML: "", value: "", textContent: "", dataset: {}, children: [], handlers: {}, addEventListener(k, fn) { this.handlers[k] = fn; }, querySelector: () => null, querySelectorAll: () => [] });
   return elements.get(selector);
 };
 globalThis.document = { querySelector: element, querySelectorAll: () => [] };
@@ -54,7 +54,7 @@ month("monthly weekend difference", (R, M) => { M.exceptions.weekend_balance_max
 for (const key of ["work_balance", "weekend_charge", "holiday_charge"]) month("monthly history " + key, (R, M, n) => { M.history[key] = { [n]: payload }; });
 for (const key of ["targets", "count_min", "count_max"]) month("monthly " + key, (R, M, n) => { M[key] = { [n]: payload }; });
 month("previous date", (R, M) => { M.prev_month.last_days = [{ date: payload }]; });
-cases.push(["pattern nth", (R, M, n) => { M.regular_duties[n] = [{ kind: "external", dow: "Mon", nth: [payload] }]; }, () => A.renderDoctor()]);
+cases.push(["pattern nth", (R, M, n) => { M.regular_duties[n] = [{ kind: "external", dow: "Mon", nth: [payload] }]; }, () => { A.bindDoctor(); A.renderDoctor(); element("#doctorPane").handlers.change({ target: { id: "docSel", value: A.names()[0] } }); }]);
 let passed = 0, failed = 0;
 for (const [name, change, render] of cases) {
   try {

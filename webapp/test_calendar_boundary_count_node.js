@@ -46,7 +46,7 @@ function setup({ numeric = false, dayOn = "all", dayRule = "soft" } = {}) {
       const el = { dataset: datasetOf(c.attrs), id: c.attrs.id || "", type: c.attrs.type || (opts ? "select-one" : "text"), value, checked: !!c.checked };
       if (el.id) elements.set("#" + el.id, el); return el;
     }); }, get innerHTML() { return this.html; } };
-  elements.set("#doctorPane", root); A.bindDoctor(); A.renderDoctor();
+  elements.set("#doctorPane", root); A.bindDoctor(); A.renderDoctor(); root.handlers.change({ target: { id: "docSel", value: names[0] } });
   const control = (kind, d) => { const el = root.controls.find(c => c.dataset.cal === kind && +c.dataset.d === d); assert.ok(el, `missing ${kind} control on ${d}`); return el; };
   const change = (kind, d, value) => { const el = control(kind, d); if (el.type === "checkbox") el.checked = value; else el.value = value; root.handlers.change({ target: el }); };
   return { R, M, root, control, change };
@@ -71,7 +71,7 @@ for (const [year, month] of [[2026, 11], [2026, 12], [2027, 2], [2028, 2]]) {
    const { R, M, root } = setup(); Object.assign(M, { year, month, holidays: [], next_month_first_day_is_holiday: holiday });
    R.profile.positions = { work: { count: { weekday: 1, off_days: 2 }, min: { weekday: 0, off_days: 1 }, ideal: { weekday: 1, off_days: 2 } } };
    const N = new Date(year, month, 0).getDate(), next = N + 1;
-   M.fixed = { day: {}, night: {} }; M.fixed[kind][next] = names[1]; A.renderDoctor();
+   M.fixed = { day: {}, night: {} }; M.fixed[kind][next] = names[1]; A.renderDoctor(); root.handlers.change({ target: { id: "docSel", value: names[0] } });
    let p = new T.Problem(R, M); assert.equal(p.nextDayIsHoliday(), holiday, "fixture next first day is a weekday");
    assert.equal(p.countOf([next, kind]), holiday ? 2 : 1);
    assert.equal(p.countMinOf([next, kind]), holiday ? 1 : 0);

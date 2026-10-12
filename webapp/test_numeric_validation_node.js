@@ -179,6 +179,8 @@ async function test(label, fn) { try { await fn(); console.log("ok " + label); p
     T.applyI18n = () => { };
     const { R } = fixture(); T.DEFAULT_RULES = clone(R); A.load = () => null;
     for (const k of ["renderSettingsMonth", "renderDoctor", "renderFixed", "renderResult", "renderSettings", "renderFolderBar", "renderHeader", "bindSettingsMonth", "bindDoctor", "bindFixed", "bindSettings", "restoreFolder", "clearUndo"]) A[k] = () => { };
+    // This model/date fixture substitutes app-input's APIs; honor its reset contract too.
+    A.resetDoctorSelection = () => { (A.state.ui ||= {}).doctor = null; };
     A.saveBeforeSwitch = async () => true;
     const alerts = [], toasts = [];
     A.toast = s => toasts.push(s); globalThis.alert = s => alerts.push(s); globalThis.confirm = () => true;

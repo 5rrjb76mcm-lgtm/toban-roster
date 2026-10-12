@@ -65,6 +65,7 @@ function setup(on = "weekdays", month = {}) {
         const check = (ok, message) => { if (!ok) throw new Error(message); };
         const change = (s, value) => { q(s).value = value; q(s).dispatchEvent(new Event("change", { bubbles: true })); };
         const render = () => { A.renderDoctor(); A.renderFixed(); };
+        const choose = () => { const s = q("#docSel"); s.value = A.names()[0]; s.dispatchEvent(new Event("change", { bubbles: true })); }; // 職員別カレンダーは人物を明示的に選んでから使う（従来は先頭の人を自動で表示していた）
         const reset = (on = "weekdays", opts = {}) => {
           const R = { profile: { id: "synthetic-fixed-slot-ui", calendar: { holidays: "none", closure: [] },
             roles: [{ id: "I", label: "Staff", refs: ["charge"], standby: true }, { id: "Y", label: "Junior", refs: ["junior"], standby: true }],
@@ -72,7 +73,7 @@ function setup(on = "weekdays", month = {}) {
             doctors: [{ name: who, team: "I" }, { name: other, team: "I" }], weights: { fixed_conflict: 1000 }, rule_states: {} };
           T.fillDefaultRules(R); for (const d of T.RULE_DEFS) if (d.states.includes("off")) R.rule_states[d.id] = "off";
           const m = T.normalizeMonth({ year: 2026, month: 11, holidays: [3], next_first_day_in_calendar: true, next_month_first_day_is_holiday: !!opts.nextHoliday }, R);
-          Object.assign(A.state, { rules: R, month: m, result: null, ui: { doctor: 0 } }); render(); return m;
+          Object.assign(A.state, { rules: R, month: m, result: null, ui: { doctor: 0 } }); render(); choose(); return m;
         };
         const test = (name, fn) => { try { fn(); out.push({ name, pass: true }); } catch (e) { out.push({ name, pass: false, error: e.message }); } };
         test("UI: 夜勤枠の有無に合わせて勤務・OCの新規固定を提示", () => {

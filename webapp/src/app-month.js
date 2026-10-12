@@ -17,8 +17,47 @@
   }
 
   // ---------- 前月からの接続・履歴の取り込み ----------
+  // OC の氏名と「なし」は勤務帯・役割ごとに一つの固定指定として扱う。
+  // 前月が指定していない役割には触れない。名簿にない氏名は、別の役割だと推測せず氏名単位で保持する。
+  function previousOcChanges(prev, nmn) {
+    const y = +prev.month.year, mo = +prev.month.month;
+    if (+nmn.year * 12 + +nmn.month !== y * 12 + mo + 1) return [];
+    const day = A.daysIn(y, mo) + 1, changes = [], labels = T.roleLabels(state.rules);
+    const teams = rules => new Map((rules.doctors || []).map(d => [d.name, d.team]));
+    const currentTeams = teams(state.rules), sourceTeams = teams(prev.rules || state.rules);
+    const groups = (fixed, date, kind, byName) => {
+      const out = new Map(), get = (role, name) => {
+        const key = JSON.stringify(role === undefined ? ["name", name] : ["role", role]);
+        if (!out.has(key)) out.set(key, { key, role, names: [], none: false }); return out.get(key); };
+      for (const n of new Set([].concat(fixed[kind + "_oc"]?.[date] || []))) get(byName.get(n), n).names.push(n);
+      for (const r of new Set([].concat(fixed[kind + "_oc_none"]?.[date] || []))) get(r).none = true;
+      return out;
+    };
+    for (const kind of ["day", "night"]) {
+      const shift = T.t(kind === "day" ? "日勤OC" : "夜間OC"), pf = prev.month.fixed || {};
+      const incoming = groups(pf, day, kind, currentTeams), current = groups(nmn.fixed || {}, 1, kind, currentTeams);
+      // 元の設定でも採用先の設定でも、氏名と「なし」を同時に取り込まない。
+      for (const choice of [...groups(pf, day, kind, sourceTeams).values(), ...incoming.values()]) if (choice.none && choice.names.length)
+        throw new Error(T.t("前月の固定OCに、同じ役割の氏名と「なし」があります（{date} {shift} {role}）。前月の固定を修正してから取り込んでください", { date: `${nmn.year}/${nmn.month}/1`, shift, role: choice.role }));
+      const same = (a, b) => a.none === b.none && a.names.length === b.names.length && a.names.every(n => b.names.includes(n));
+      const describe = c => [...c.names, ...(c.none ? [T.t("なし")] : [])].join(T.nameSep());
+      const conflicts = [];
+      for (const [key, next] of incoming) { const old = current.get(key); if (old && !same(old, next)) conflicts.push(T.t("{date} {shift} {role}: 当月 {current} → 前月 {incoming}", {
+        date: `${nmn.year}/${nmn.month}/1`, shift, role: next.role === undefined ? next.names.join(T.nameSep()) : `${labels[next.role] || next.role} (${next.role})`, current: describe(old), incoming: describe(next) })); }
+      if (incoming.size) changes.push({ kind, incoming, current, conflicts });
+    }
+    return changes;
+  }
+  function confirmPreviousOcImport(prev, changes) {
+    const conflicts = changes.flatMap(c => c.conflicts); if (!conflicts.length) return true;
+    const sig0 = A.sig(), month = state.month, rules = state.rules, root = A.dirHandle, gen = A.dirGen, saveGeneration = A.saveGen, data = JSON.stringify(prev);
+    if (!confirm(T.t("前月の翌月1日欄と当月の固定OCが競合しています。\n{conflicts}\n表示した当月の固定OCを前月の指定で置き換えて、取り込みますか？キャンセルすると何も変更しません。", { conflicts: conflicts.join("\n") }))) return false;
+    if (sig0 !== A.sig() || month !== state.month || rules !== state.rules || root !== A.dirHandle || gen !== A.dirGen || saveGeneration !== A.saveGen || data !== JSON.stringify(prev)) {
+      A.toast(T.t("読み込みを中止しました（確認中に月・設定・保存先が変わりました）。もう一度操作してください")); return false; }
+    return true;
+  }
   // prev（前月の保存データ）から、対象月 nmn に前月末の接続・履歴・累計・月またぎの期間責任者を入れる
-  function applyConnection(prev, nmn) {
+  function applyConnection(prev, nmn, ocChanges = previousOcChanges(prev, nmn)) {
     const y = +prev.month.year, mo = +prev.month.month;
     const consecutive = (+nmn.year * 12 + +nmn.month) === (y * 12 + mo + 1);
     const notes = [];
@@ -31,8 +70,15 @@
     if (consecutive) { // 前月の翌月1日欄の固定指定を、当月1日の固定として引き継ぐ
       const pf = prev.month.fixed || {}, nk = String(A.daysIn(y, mo) + 1), got = [], carried = new Set(); nmn.fixed ||= {};
       for (const [tbl, lbl] of [["day", T.t("日勤")], ["night", T.t("夜勤")], ["weekend_charge", T.t("期間責任者")]]) { const v = (pf[tbl] || {})[nk]; if (v) { (nmn.fixed[tbl] ||= {})[1] = v; carried.add(tbl); got.push(`${lbl} ${v}`); } }
-      for (const [tbl, lbl] of [["day_oc", T.t("日勤OC")], ["night_oc", T.t("夜間OC")]]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); carried.add(tbl); got.push(`${lbl} ${v.join("・")}`); } }
-      for (const tbl of ["day_oc_none", "night_oc_none"]) { const v = [].concat((pf[tbl] || {})[nk] || []); if (v.length) { (nmn.fixed[tbl] ||= {})[1] = v.slice(); carried.add(tbl); got.push(`${T.t(tbl === "day_oc_none" ? "日勤OC" : "夜間OC")} ${T.t("なし")}（${v.join("・")}）`); } } // 「OC なし」の指定も固定の一部
+      for (const { kind, incoming, current } of ocChanges) {
+        const tbl = kind + "_oc", noneTbl = tbl + "_none", lbl = T.t(kind === "day" ? "日勤OC" : "夜間OC");
+        const untouched = [...current.values()].filter(c => !incoming.has(c.key)), choices = [...untouched, ...incoming.values()];
+        const ocNames = choices.flatMap(c => c.names), none = choices.filter(c => c.none).map(c => c.role);
+        if (ocNames.length) (nmn.fixed[tbl] ||= {})[1] = ocNames; else if (nmn.fixed[tbl]) delete nmn.fixed[tbl][1];
+        if (none.length) (nmn.fixed[noneTbl] ||= {})[1] = none; else if (nmn.fixed[noneTbl]) delete nmn.fixed[noneTbl][1];
+        carried.add(tbl); carried.add(noneTbl);
+        for (const c of incoming.values()) got.push(`${lbl} ${c.none ? `${T.t("なし")}（${c.role}）` : c.names.join("・")}`);
+      }
       // 置き換えた固定から外れた人の印だけを除く。同じ人の当月の印と、引き継がない枠の印は保持する。
       for (const key of Object.keys(nmn.fixed_tags || {})) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (dd === "1" && carried.has(kk) && ![].concat((nmn.fixed[kk] || {})[1] || []).includes(who)) delete nmn.fixed_tags[key]; }
       for (const [key, tg] of Object.entries(prev.month.fixed_tags || {})) { const [sl, ...ns] = key.split("|"), who = ns.join("|"), [dd, kk] = sl.split(":"); if (dd !== nk) continue; // 固定の印（日付を翌月 1 日から当月 1 日へ）。引き継いだ固定に付いている印だけ
@@ -65,29 +111,42 @@
     } else notes.push(T.t("{y}年{m}月 は未計算のため、前月末の接続と実績の累計は取り込めません（履歴は前月までの値）", { y, m: mo }));
     return notes;
   }
-  const importPrevious = () => A.transition("data", importPreviousCore); // 共通の窓口（計算中は断る・保存を待つ）
-  async function importPreviousCore() {
+  async function importPrevious() { // 共通の窓口（計算中は断る・保存を待つ）
+    // 非同期の読み取り中に打ち込んだ未確定の文字も守る。change がまだ来なくても入力を捨てずに中止する。
+    let edited = false; const markEdited = () => { edited = true; };
+    for (const event of ["input", "change"]) document.addEventListener?.(event, markEdited, true);
+    try { return await A.transition("data", () => importPreviousCore(() => edited)); }
+    finally { for (const event of ["input", "change"]) document.removeEventListener?.(event, markEdited, true); }
+  }
+  async function importPreviousCore(edited) {
+    const stopEdited = () => { if (!edited()) return false; A.toast(T.t("前月の取り込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度押してください")); return true; };
+    if (stopEdited()) return;
     const y = +state.month.year, mo = +state.month.month; const py = mo === 1 ? y - 1 : y, pm = mo === 1 ? 12 : mo - 1;
     const t = `${py}${String(pm).padStart(2, "0")}`;
     const month0 = state.month, rules0 = state.rules; // 読み取りの間に月・設定・接続先が切り替わっていたら適用しない（切替先の履歴を上書きしない）
     if (!A.dirHandle) { if (!(await A.ensureFolder())) return A.toast(T.t("前月のデータを読むにはフォルダの接続が必要です")); if (state.month !== month0 || state.rules !== rules0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); } // 接続で月データを読み込んで月が替わることがある
+    if (stopEdited()) return;
     const gen0 = A.dirGen; // 自分の接続を済ませてから、その後の切替を見張る
     await A.refreshMonths();
     const f = await A.findMonthData(t);
+    if (stopEdited()) return;
     if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください"));
     if (!f.data) return alert(T.t("{y}年{m}月 の保存データが見つかりません（探した場所: {tried}）", { y: py, m: pm, tried: f.tried.join(T.listSep()) }));
     const prev = A.isMonthObj(f.data.month) ? f.data : { month: f.data }; // findMonthData は旧形式（月そのもの）も読む。施設の判定と引き継ぎは同じ形で扱う
     if (A.otherFacility({ data: prev })) { // 別の施設のデータ（設定か月の施設の id が手元と違う）は、無確認で履歴・固定を混ぜない
       const v = await A.choose(T.t("{y}年{m}月 の保存データは別の施設（{id}）のものです。履歴・累計・前月末の接続・固定を取り込むと、別の施設の値が混ざります。", { y: py, m: pm, id: ((prev.rules || {}).profile || {}).id || (prev.month || {}).profile_id || "?" }),
         [{ label: T.t("取り込まない（推奨）"), value: null, cancel: true, primary: true }, { label: T.t("別の施設のデータと分かったうえで取り込む"), value: "go" }]);
+      if (stopEdited()) return;
       if (v !== "go") return A.toast(T.t("前月の取り込みをやめました（別の施設のデータ）"));
       if (state.month !== month0 || state.rules !== rules0 || A.dirGen !== gen0) return A.toast(T.t("前月の取り込みを中止しました（読み取りの間に月・設定・フォルダが切り替わりました）。もう一度押してください")); }
-    A.readAll();
+    // 入力欄の change はクリックより先に同期する。ここで readAll すると、取消しでも保存や状態変更が起きる。
     // 前月の名簿や結果を読めない場合も、当月の履歴・接続・固定を途中まで書き換えない。
     // 変換は複製で完了させ、成功したときだけ当月へ反映する。
     let month2, notes;
-    try { if (!A.confirmPreviousRoleImport(f.data, y, mo)) return A.toast(T.t("読み込みを取り消しました"));
-      month2 = JSON.parse(JSON.stringify(state.month)); notes = applyConnection(prev, month2); }
+    try { month2 = JSON.parse(JSON.stringify(state.month)); const ocChanges = previousOcChanges(prev, month2);
+      if (!A.confirmPreviousRoleImport(f.data, y, mo) || !confirmPreviousOcImport(prev, ocChanges)) return A.toast(T.t("読み込みを取り消しました"));
+      if (stopEdited()) return;
+      notes = applyConnection(prev, month2, ocChanges); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     try { month2.targets = T.autoTargets(state.rules, month2).targets; } catch (e) { }
     if (typeof A.pushUndo === "function") A.pushUndo("前月の取り込み", { auto: true });
