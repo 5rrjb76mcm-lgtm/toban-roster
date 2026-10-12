@@ -217,7 +217,7 @@
     if (!A.dirHandle || !A.isDirty()) return "skipped";
     const guard = saveGuard();
     if (!(await checkConflict(guard)) || guard.stale()) return "skipped";
-    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); A.markSaved(undefined, at, snap); return "saved"; }
+    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); return "saved"; }
     catch (e) { renderHeader(); A.toast(T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
   }
 
@@ -275,7 +275,7 @@
   }
   // 画面からのフォルダの変更・再接続は共通の窓口（A.transition: 計算中は断り、進行中の保存を待つ）を通す。
   // 保存処理の中からの接続（ensureFolder）は窓口を通さない版（openFolder / reconnectFolder）を使う（自分の保存を待つと止まる）
-  const setDir = h => { A.dirHandle = h; A.dirGen++; if (A.resetDoctorSelection) A.resetDoctorSelection(); if (state.month && typeof A.renderDoctor === "function") A.renderDoctor(); };
+  const setDir = h => { A.dirHandle = h; A.dirGen++; A.monthDirs = []; monthWrites.clear(); if (A.resetDoctorSelection) A.resetDoctorSelection(); if (state.month && typeof A.renderDoctor === "function") A.renderDoctor(); };
   const openFolderUI = () => A.transition("folder", openFolder);
   const reconnectFolderUI = () => A.transition("folder", reconnectFolder);
   async function reconnectFolder() { // 再接続を断られたら別のフォルダを選ぶ。その読込（プラグインの読取りまで）が終わるまで待つ（窓口の保護が途中で切れないように return する）
@@ -292,13 +292,26 @@
     A.toast(T.t("フォルダ「{name}」を開きました", { name: A.dirHandle.name }));
   }
   let pluginsFor = null; // plugins/ を読んだフォルダ（接続したフォルダごとに 1 回）
+  let monthScan = 0, monthWrite = 0;
+  const monthWrites = new Map();
+  // 書込みが close まで成功した月だけ登録する。別の月へ移っていても同じ接続先の一覧には残すが、別の接続先には持ち込まない。
+  function recordSavedMonth(root, S) {
+    if (root !== A.dirHandle || S.dirGen !== A.dirGen) return;
+    monthWrites.set(S.tag, { root, gen: S.dirGen, serial: ++monthWrite }); // 進行中の一覧の読取りにも、この保存を反映する
+    A.monthDirs = [...new Set(A.monthDirs.concat(S.tag))].sort();
+    if (S.tag !== A.tag()) renderHeader(); // 現在の月なら markSaved が保存基準の更新後に描画する。別の月なら一覧だけ更新
+  }
   async function refreshMonths() {
-    A.monthDirs = [];
-    if (!A.dirHandle) return renderFolderBar();
-    for await (const [name, h] of A.dirHandle.entries()) if (h.kind === "directory" && /^\d{6}/.test(name)) A.monthDirs.push(name);
-    A.monthDirs.sort(); renderFolderBar(); renderHeader();
-    if (A.solving) { if (pluginsFor !== A.dirHandle) { A.pluginsPending = true; A.toast(T.t("計算中のため、フォルダのプラグインは計算が終わってから読みます")); } } // 計算中は登録を変えない（計算した規則と検算する規則がずれる）。計算後に loadPendingPlugins が読む
-    else if (pluginsFor !== A.dirHandle) { pluginsFor = A.dirHandle; A.pluginsPending = false; await loadFolderPlugins(); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）。保留分もここで済む
+    const root = A.dirHandle, gen = A.dirGen, scan = ++monthScan, write = monthWrite, dirs = [];
+    if (!root) { A.monthDirs = []; return renderFolderBar(); }
+    const stale = () => root !== A.dirHandle || gen !== A.dirGen || scan !== monthScan;
+    try { for await (const [name, h] of root.entries()) if (h.kind === "directory" && /^\d{6}/.test(name)) dirs.push(name); }
+    catch (e) { if (stale()) return; throw e; } // 古い接続先の読取り失敗で現在の接続を失敗扱いにしない
+    if (stale()) return;
+    for (const [savedTag, saved] of monthWrites) if (saved.root === root && saved.gen === gen && saved.serial > write) dirs.push(savedTag);
+    A.monthDirs = [...new Set(dirs)].sort(); renderFolderBar(); renderHeader();
+    if (A.solving) { if (pluginsFor !== root) { A.pluginsPending = true; A.toast(T.t("計算中のため、フォルダのプラグインは計算が終わってから読みます")); } } // 計算中は登録を変えない（計算した規則と検算する規則がずれる）。計算後に loadPendingPlugins が読む
+    else if (pluginsFor !== root) { pluginsFor = root; A.pluginsPending = false; await loadFolderPlugins(root); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）。保留分もここで済む
   }
   // 接続直後: フォルダのファイルとブラウザ内の状態を照合し、フォルダの方が新しければそちらを読む
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
@@ -472,8 +485,8 @@
       const root = guard.root, prep = await prepareSave();
       await verifySaveFile(guard, prep.S.tag); // 帳票生成の待ち時間に別のウィンドウが保存していれば、書込み前に止める
       await writeSave(root, prep, () => verifySaveFile(guard, prep.S.tag));
+      recordSavedMonth(root, prep.S);
       commitSave(prep);
-      await refreshMonths();
       A.toast(T.t("{tag} フォルダに保存しました", { tag: prep.S.tag }) + (prep.hasAsg ? prep.note : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
       return "saved";
     } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
