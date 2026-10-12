@@ -1,6 +1,8 @@
 // 開始画面が出ている間の知らせ: 通知欄は不透明な開始画面の下になって見えないので、開始画面の中の欄（#startNote）に出す。
 // 開始画面を閉じるときに残っている知らせは通常の通知欄へ移し、閉じた後の知らせは通常の通知欄に出す。
-// 本体の index.html と全ての app-*.js を T.init まで動かし、開始画面のボタンを実際に押す。フォルダは架空のもの。画面の配置（重なり・位置）は実ブラウザ側の試験で見る。
+// 本体の index.html（スタイルシート込み）と全ての app-*.js を T.init まで動かし、開始画面のボタンを実際に押す。フォルダは架空のもの。
+// 前回のフォルダを覚えている開始画面（「開始（フォルダに再接続）」）は、架空の IndexedDB にフォルダの参照を入れて出す。
+// 欄の配置はスタイルの宣言で見る（高さが固定・中でスクロール・ボタンや言語選択に重ねない・開始画面ごとスクロールできる）。箱の実際の位置・大きさは jsdom では分からない。
 // Run: TOBAN_DOM_MODULE=/installed/node_modules/jsdom node test_start_note_dom_node.js
 const fs = require('fs'), path = require('path'), assert = require('assert');
 let JSDOM;
@@ -23,18 +25,27 @@ function readable(name) { const dirs = new Map(), files = new Map(); const file 
     async getFileHandle(n, o = {}) { return file(files, n, o); } }; }
 const unreadable = why => ({ name: 'Synthetic unreadable', kind: 'directory', async *entries() { throw Object.assign(new Error(why), { name: 'NotFoundError' }); }, async getDirectoryHandle() { throw missing(); }, async getFileHandle() { throw missing(); } });
 const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
-// 開始画面が出るところまで本体を動かす。before(A, w) は、開始画面を出す処理（restoreFolder）の前に行うこと
-async function makeApp(before) {
-  const dom = new JSDOM(source('index.html'), { url: 'https://example.invalid/synthetic/start.html', runScripts: 'outside-only' }), w = dom.window;
+// 前回のフォルダの参照（権限は、聞かれるまで無い）。answer は許可を求められたときの答え。onList は一覧の読取り中に呼ぶ
+function remembered(name, answer, onList) { const f = readable(name); return Object.assign(f, { async queryPermission() { return 'prompt'; }, async requestPermission() { if (answer === 'throw') throw new Error('Synthetic permission failure'); return answer; }, async isSameEntry(o) { return o === f; }, async *entries() { if (onList) onList(); yield* f.dirs; } }); }
+// 架空の IndexedDB（フォルダの参照を覚える kv だけ）
+function fakeIndexedDB(store) { const req = fn => { const r = {}; setTimeout(() => { try { r.result = fn(); if (r.onsuccess) r.onsuccess(); } catch (e) { r.error = e; if (r.onerror) r.onerror(); } }, 0); return r; };
+  const db = { createObjectStore() {}, transaction() { return { objectStore() { return { get: k => req(() => store.get(k)), put: (v, k) => req(() => { store.set(k, v); }) }; } }; } }; return { open() { return req(() => db); } }; }
+// 要素に当たる規則の宣言を、書かれた順に重ねたもの（印刷用を除く。詳細度・画面幅の条件は区別しない: 後から足した打ち消しの規則も拾う）
+function declared(w, el) { const out = {}; const visit = rules => { for (const r of rules) { if (!r.selectorText) { if (r.cssRules && !/print/.test(r.conditionText || '')) visit(r.cssRules); continue; }
+  let hit = false; try { hit = el.matches(r.selectorText); } catch (e) { } if (hit) for (let i = 0; i < r.style.length; i++) out[r.style[i]] = r.style.getPropertyValue(r.style[i]); } }; for (const sheet of w.document.styleSheets) visit(sheet.cssRules); return out; }
+// 開始画面が出るところまで本体を動かす。before(A, w) は、開始画面を出す処理（restoreFolder）の前に行うこと。stored は覚えているフォルダの参照
+async function makeApp(before, stored) {
+  const dom = new JSDOM(source('index.html').replace('/*__CSS__*/', source('style.css')), { url: 'https://example.invalid/synthetic/start.html', runScripts: 'outside-only' }), w = dom.window;
   await new Promise(r => w.document.readyState === 'complete' ? r() : w.addEventListener('load', r, { once: true }));
   const errors = []; w.addEventListener('error', e => { errors.push(e.error || e.message); e.preventDefault(); });
   w.Blob = globalThis.Blob; w.confirm = () => true; w.alert = msg => { throw new Error(msg); }; w.prompt = () => null;
   let pick = null; w.showDirectoryPicker = async () => { if (!pick) throw new w.DOMException('Synthetic user cancelled', 'AbortError'); return pick; }; // これがあると「フォルダを開いて開始」の開始画面になる
   w.T = { DEFAULT_RULES: clone(rules), SAMPLE_MONTH: clone(month), PROFILES: [], LANGS_DATA: ['ja.json', 'en.json'].map(f => JSON.parse(fs.readFileSync(path.join(__dirname, 'lang', f), 'utf8'))) };
+  const kv = new Map(); if (stored) w.indexedDB = fakeIndexedDB(kv);
   for (const f of scripts) w.eval(source(f) + '\n//# sourceURL=' + f);
-  const A = w.T.app, restore = A.restoreFolder; let started = false; A.restoreFolder = (...a) => { started = true; return before ? undefined : restore(...a); }; // before を使う場面では、開始画面を出す処理を後で呼ぶ
-  // 通知の消去（4 秒）は待たない。張られたタイマーだけ数える（開始画面の欄に出す知らせにはタイマーを張らない）
-  const timers = []; const native = w.setTimeout.bind(w); w.setTimeout = (fn, delay, ...a) => { if (delay === 4000 || delay === 3000) { timers.push(delay); return 99; } return native(fn, delay, ...a); };
+  const A = w.T.app, restore = A.restoreFolder; let started = false; if (stored) kv.set(A.DIR_KEY, stored); A.restoreFolder = (...a) => { started = true; return before ? undefined : restore(...a); }; // before を使う場面では、開始画面を出す処理を後で呼ぶ
+  // 通知の消去（4 秒）・自動保存（3 秒）など、1 秒以上のタイマーは待たない。張られた数だけ数える（開始画面の欄に出す知らせには、どんな長さのタイマーも張らない）
+  const timers = []; const native = w.setTimeout.bind(w); w.setTimeout = (fn, delay, ...a) => { if (delay >= 1000) { timers.push(delay); return 99; } return native(fn, delay, ...a); };
   w.localStorage.setItem('toban.lang', 'ja'); w.T.init(); assert.ok(started, 'init asks for the start screen');
   const q = s => w.document.querySelector(s);
   if (before) { await before(A, w, q); restore(); }
@@ -44,9 +55,9 @@ async function makeApp(before) {
   const view = () => ({ gate: !q('#startGate').hidden, note: q('#startNote').textContent, toast: q('#toast').hidden ? null : q('#toast').textContent });
   return { dom, w, A, q, errors, timers, press, view, setPick: p => { pick = p; } };
 }
-let cases = 0, finished = false; const EXPECTED_CASES = 5;
+let cases = 0, finished = false; const EXPECTED_CASES = 9;
 process.on('exit', () => { if ((!finished || cases !== EXPECTED_CASES) && !process.exitCode) { console.error('NOT COMPLETED: ' + cases + '/' + EXPECTED_CASES + ' cases passed, finished=' + finished); process.exitCode = 1; } });
-async function scenario(name, fn, before) { const app = await makeApp(before); try { await fn(app); assert.deepStrictEqual(app.errors, [], 'no page error'); cases++; console.log('PASS ' + name); } finally { app.dom.window.close(); } }
+async function scenario(name, fn, before, stored) { const app = await makeApp(before, stored); try { await fn(app); assert.deepStrictEqual(app.errors, [], 'no page error'); cases++; console.log('PASS ' + name); } finally { app.dom.window.close(); } }
 (async () => {
   await scenario('開始画面が出ている間の知らせは開始画面の中の欄に出て、通知欄は使わず、時間では消えない', async ({ A, q, view, timers }) => {
     assert.strictEqual(q('#startNote').parentElement, q('#startBox'), 'the note is inside the start screen'); assert.strictEqual(q('#startNote').getAttribute('role'), 'status');
@@ -75,5 +86,30 @@ async function scenario(name, fn, before) { const app = await makeApp(before); t
   await scenario('開始画面を出す直前に出ていた通知（前回のフォルダに接続できなかった理由など）は、開始画面の欄へ移る', async ({ view }) => {
     assert.deepStrictEqual(view(), { gate: true, note: '前回のフォルダに接続できませんでした: Synthetic stale handle', toast: null });
   }, async (A, w, q) => { A.toast('前回のフォルダに接続できませんでした: Synthetic stale handle'); assert.strictEqual(q('#toast').hidden, false, 'shown in the row while the start screen is not up yet'); });
+  await scenario('欄の場所は開始画面の中に常に確保され、高さは文の有無・長さで変わらない（ボタン・言語選択に重ねず、長い文は欄の中で、低い画面は開始画面ごとスクロール）', async ({ A, q, w }) => {
+    const note = q('#startNote'), gate = q('#startGate'), box = q('#startBox');
+    assert.ok(w.document.styleSheets.length && w.document.styleSheets[0].cssRules.length > 50, 'the stylesheet is loaded');
+    assert.strictEqual(q('#startBtns').nextElementSibling, note, 'the note follows the buttons in the normal flow of the box'); assert.ok(box.contains(q('#startLang')) && !note.contains(q('#startLang')));
+    const check = when => { const n = declared(w, note);
+      assert.strictEqual(n.height, 'calc(4.5em + 10px)', when + ': fixed height'); assert.strictEqual(n['box-sizing'], 'border-box'); assert.ok(!n['max-height'] && !n['min-height']);
+      assert.strictEqual(n['overflow-y'], 'auto', when + ': long text scrolls inside the note'); assert.ok(!n.overflow && !n['overflow-x'], 'not clipped'); assert.strictEqual(n['white-space'], 'pre-wrap'); assert.strictEqual(n['overflow-wrap'], 'anywhere');
+      assert.ok(!n.position && !n.top && !n.bottom && !n.inset && !n.float && !n.transform && !n['z-index'], when + ': in the flow, never on top of the buttons or the language select'); assert.ok(!n.display && !n.visibility && !n.opacity, when + ': never removed');
+      const cs = w.getComputedStyle(note); assert.notStrictEqual(cs.display, 'none', when + ': the space is reserved'); assert.notStrictEqual(cs.visibility, 'hidden'); };
+    assert.strictEqual(note.textContent, ''); check('empty'); A.toast('架空の長い知らせ '.repeat(40)); assert.notStrictEqual(note.textContent, ''); check('with a long text');
+    const g = declared(w, gate); assert.strictEqual(g.overflow, 'auto', 'the start screen itself scrolls when the window is too low'); assert.strictEqual(g.position, 'fixed'); assert.strictEqual(g.display, 'flex');
+    assert.strictEqual(declared(w, box).margin, 'auto', 'the box is centred without being cut off at the top when it is taller than the window'); assert.notStrictEqual(w.getComputedStyle(gate).display, 'none');
+  });
+  // ---- 前回のフォルダを覚えている開始画面（「開始（フォルダに再接続）」）
+  for (const answer of ['denied', 'throw']) await scenario('再接続できなかった（' + (answer === 'denied' ? '許可されなかった' : '許可の確認が失敗した') + '）: 理由が開始画面の欄に出て、開始画面は閉じない', async ({ A, q, view, press, w }) => {
+    assert.match(w.document.querySelectorAll('#startBtns button')[0].textContent, /開始（フォルダ「Synthetic remembered」に再接続）/, 'this is the start screen of a remembered folder'); assert.deepStrictEqual(view(), { gate: true, note: '', toast: null });
+    await press(0); const v = view(); assert.strictEqual(v.gate, true, 'the start screen stays'); assert.strictEqual(v.note, '再接続できませんでした。「別のフォルダを開く」で保存フォルダを選び直してください'); assert.strictEqual(v.toast, null, 'nothing under the start screen'); assert.ok(!A.dirHandle);
+  }, null, remembered('Synthetic remembered', answer));
+  { let app = null, listed = 0;
+    await scenario('再接続できた: 開始画面が閉じ、読取り中に出ていた知らせを通常の通知欄へ移してから「再接続しました」を出す（古い知らせが後から置き換えない）', async a => {
+      app = a; const { A, view, press } = a; assert.deepStrictEqual(view(), { gate: true, note: '', toast: null });
+      await press(0); await tick(20); await tick(20); // 後から出し直す実装（次の処理・次のタイマー）だと、ここまでに古い知らせが新しい通知を置き換える
+      const v = view(); assert.strictEqual(v.gate, false, 'the start screen is closed'); assert.strictEqual(v.note, '', 'the note is emptied'); assert.strictEqual(v.toast, 'フォルダ「Synthetic remembered」に再接続しました', 'the newer notification is the one that stays');
+      assert.strictEqual(A.dirHandle && A.dirHandle.name, 'Synthetic remembered'); assert.ok(listed >= 1, 'a note was raised while the folder was read');
+    }, null, remembered('Synthetic remembered', 'granted', () => { if (app) { listed++; assert.strictEqual(app.view().gate, true, 'the folder is read while the start screen is shown'); app.A.toast('架空の、読取り中の知らせ'); assert.strictEqual(app.view().note, '架空の、読取り中の知らせ'); } })); }
   console.log(cases + '/' + EXPECTED_CASES + ' start-screen note cases passed'); finished = true;
 })().catch(e => { console.error(e.stack); process.exitCode = 1; });

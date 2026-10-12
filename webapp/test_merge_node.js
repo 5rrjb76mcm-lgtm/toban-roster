@@ -80,3 +80,24 @@ r=T.mergeMonth(base, mine2, theirs, 'mine'); console.log('prefer mine notes:', r
     assert.strictEqual(r.conflicts.length, 1); assert.strictEqual(r.conflicts[0].label, '5日 日の予定');
     assert.deepStrictEqual(flags(r.merged), flags(b)); assert.strictEqual(r.merged.day_notes[5], (prefer === 'mine' ? mine : theirs).day_notes[5]); }
   console.log('day flag IDs containing colons preserved: true'); }
+
+// 版の記録の完了情報（fp: 保存先にある帳票の中身の印）。版の履歴は和集合で同じ番号は手元の記録が残るが、fp だけは 3 者で比べる:
+// 手元が共通の元から変えておらず相手だけが変えたなら相手の印（ほかのウィンドウが帳票を書き足した後の印を、古い印で書き戻さない）。手元が変えていれば手元のまま
+{ const assert = require('assert'), c = x => JSON.parse(JSON.stringify(x)), X = ['10:aa.bb', '20:cc.dd'], Y = ['11:ee.ff', '20:cc.dd'], Z = ['12:11.22', '20:cc.dd'];
+  const rec = (fp, extra) => Object.assign({ ver: 1, at: '2026-10-01T00:00:00.000Z', label: '確認版', sig: 'synthetic-sig', docx: 'a.docx', html: 'a.html' }, fp ? { fp: fp.slice() } : {}, extra || {});
+  const withVers = (...v) => { const m = c(base); m.doc_versions = v; return m; }, fpOf = r => r.merged.doc_versions.map(v => v.fp || null);
+  let r = T.mergeMonth(withVers(rec(X)), withVers(rec(X, { at: 'mine' })), withVers(rec(Y, { at: 'theirs' })));
+  assert.deepStrictEqual(fpOf(r), [Y], '相手だけが完了情報を変えた: 相手の印を採る'); assert.strictEqual(r.merged.doc_versions[0].at, 'mine', '印のほかは手元の記録のまま'); assert.strictEqual(r.merged.doc_versions.length, 1);
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(Y)), withVers(rec(X))); assert.deepStrictEqual(fpOf(r), [Y], '手元だけが変えた（帳票は書いたが月データを書けなかった）: 手元の印のまま');
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(Y)), withVers(rec(Z))); assert.deepStrictEqual(fpOf(r), [Y], '両方が変えた: 手元の印のまま（従来どおり）');
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(X)), withVers(rec(X))); assert.deepStrictEqual(fpOf(r), [X]);
+  r = T.mergeMonth(withVers(rec(null)), withVers(rec(null)), withVers(rec(Y))); assert.deepStrictEqual(fpOf(r), [Y], '完了情報の無い旧い記録に、相手が完了情報を付けた: 採る');
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(X)), withVers(rec(null))); assert.deepStrictEqual(fpOf(r), [X], '相手の記録に完了情報が無い: 手元の印を消さない');
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(X)), withVers(rec(Y, { sig: 'synthetic-other-sig' }))); assert.deepStrictEqual(fpOf(r), [X], '同じ番号でも内容（署名）が違う記録の印は採らない'); assert.strictEqual(r.merged.doc_versions[0].sig, 'synthetic-sig');
+  r = T.mergeMonth(withVers(rec(X, { sig: 'synthetic-base-sig' })), withVers(rec(X)), withVers(rec(Y))); assert.deepStrictEqual(fpOf(r), [X], '共通の元の記録が別の内容: 比べられないので手元のまま');
+  r = T.mergeMonth(withVers(), withVers(rec(X)), withVers(rec(Y))); assert.deepStrictEqual(fpOf(r), [X], '共通の元に記録が無い: 手元のまま');
+  r = T.mergeMonth(null, withVers(rec(X)), withVers(rec(Y))); assert.deepStrictEqual(fpOf(r), [X], '共通の元が無い: 手元のまま');
+  r = T.mergeMonth(withVers(rec(X)), withVers(rec(X)), withVers(rec(Y), rec(Z, { ver: 2 }))); assert.deepStrictEqual(fpOf(r), [Y, Z], '相手だけにある版はそのまま入る'); assert.deepStrictEqual(r.merged.doc_versions.map(v => v.ver), [1, 2]);
+  const mineOnly = withVers(rec(X), rec(Z, { ver: 2 })); r = T.mergeMonth(withVers(rec(X)), mineOnly, withVers(rec(X))); assert.deepStrictEqual(fpOf(r), [X, Z], '手元だけにある版はそのまま残る');
+  const theirsIn = withVers(rec(Y)); r = T.mergeMonth(withVers(rec(X)), withVers(rec(X)), theirsIn); r.merged.doc_versions[0].fp[0] = 'changed'; assert.deepStrictEqual(theirsIn.doc_versions[0].fp, Y, '採った印は写し（相手の版を書き換えない）');
+  console.log('version completion info is merged three-way: true'); }

@@ -1,6 +1,7 @@
 // 保存できなかった記録（#saveFail）: フォルダへの保存が失敗した・止めた理由を、通知とは別に残す。
 // 本体の index.html と全ての app-*.js を T.init まで動かし、入力欄の change・ヘッダーの保存ボタン・自動保存のタイマーから保存を通す。
 // フォルダは架空の File System Access ハンドル。実ブラウザの配置・権限・通信は確かめない（配置は実ブラウザ側の試験で見る）。
+// スタイルシートは読み込む: 確認ボタンが、記録のある間・無関係な通知の間に、スタイルで隠されたり押せなくされたりしていないことは宣言と算出値で見る（箱の位置・大きさは jsdom では分からない）。
 // Run: TOBAN_DOM_MODULE=/installed/node_modules/jsdom node test_save_failure_record_dom_node.js
 const fs = require('fs'), path = require('path'), assert = require('assert');
 let JSDOM;
@@ -31,8 +32,18 @@ function memoryFolder(name, place, store) {
   return root;
 }
 const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
+// スタイルシート込みで、要素が見えていて押せるか。自身と祖先の算出値が display:none・visibility:hidden でなく、
+// 自身か祖先に当たる規則（印刷用を除く。画面幅の条件は区別せず全部）が、表示を消す・透明にする・ポインタを通す宣言をしていない
+function usable(w, el) {
+  const chain=[];for(let x=el;x&&x.nodeType===1;x=x.parentElement)chain.push(x);
+  for(const x of chain){const cs=w.getComputedStyle(x);if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse')return false;}
+  let ok=true;const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/print/.test(r.conditionText||''))visit(r.cssRules);continue;}
+    let hit=false;try{hit=chain.some(x=>x.matches(r.selectorText));}catch(e){}if(!hit)continue;
+    const v=n=>r.style.getPropertyValue(n);if(v('display')==='none'||/hidden|collapse/.test(v('visibility'))||v('opacity')==='0'||v('pointer-events')==='none')ok=false;}};
+  for(const sheet of w.document.styleSheets)visit(sheet.cssRules);return ok;
+}
 async function makeApp(){
-  const dom=new JSDOM(source('index.html'),{url:'https://example.invalid/synthetic/save-failure.html',runScripts:'outside-only'}),w=dom.window;
+  const dom=new JSDOM(source('index.html').replace('/*__CSS__*/',source('style.css')),{url:'https://example.invalid/synthetic/save-failure.html',runScripts:'outside-only'}),w=dom.window;
   await new Promise(r=>w.document.readyState==='complete'?r():w.addEventListener('load',r,{once:true}));
   const errors=[];w.addEventListener('error',e=>{errors.push(e.error||e.message);e.preventDefault();});
   w.Blob=globalThis.Blob;w.confirm=()=>true;w.alert=msg=>{throw new Error(msg);};w.prompt=()=>null;
@@ -64,17 +75,19 @@ async function plantOtherFacility({root,change,auto}){change('Synthetic first sa
 (async()=>{
   await scenario('自動保存の失敗は記録に残り、別の通知・通知の消去でも失われず、同じ保存先・同じ月の保存成功で消える', async({A,root,q,change,auto,rec,hide,w})=>{
     assert.deepStrictEqual(rec(),{shown:false,text:'',items:[],button:false});
+    assert.ok(w.document.styleSheets.length&&w.document.styleSheets[0].cssRules.length>50,'the stylesheet is loaded');assert.strictEqual(usable(w,q('#saveFailOk')),false,'without a record the button is not shown (the check sees a hidden element)');assert.strictEqual(usable(w,q('nav .tab')),true);
     const notes=q('#monthSettings [data-path="notes"]');notes.focus();
     root.fail='Synthetic close denied';change('Synthetic draft 1');assert.strictEqual(await auto(),'failed');
     let r=rec();assert(r.shown&&r.button);assert.strictEqual(r.items.length,1);
     assert.match(r.items[0],/保存できていません/);assert.match(r.items[0],/202611/);assert.match(r.items[0],/Synthetic folder/);assert.match(r.items[0],/自動保存に失敗しました: Synthetic close denied/);
     assert.strictEqual(q('#toast').hidden,false);assert.match(q('#toast').textContent,/Synthetic close denied/,'the failure is also announced as a normal toast');
     assert.strictEqual(w.document.activeElement,notes,'recording a failure does not move focus');assert.strictEqual(notes.value,'Synthetic draft 1');
-    const ack=q('#saveFailOk');ack.focus();assert.strictEqual(w.document.activeElement,ack);
-    A.toast('架空の別の通知');assert.strictEqual(q('#toast').textContent,'架空の別の通知');
+    const ack=q('#saveFailOk');assert.strictEqual(usable(w,ack),true,'with a record the button is shown and can be pressed (the failure toast is still visible here)');ack.focus();assert.strictEqual(w.document.activeElement,ack);
+    A.toast('架空の別の通知');assert.strictEqual(q('#toast').textContent,'架空の別の通知');assert.strictEqual(q('#toast').hidden,false);
+    assert.strictEqual(usable(w,ack),true,'with the stylesheet too, an unrelated toast neither hides the button nor makes it unclickable');assert.strictEqual(usable(w,q('#saveFail')),false,'while the toast is read, only the record text gives way to it');
     assert.deepStrictEqual(rec().items,r.items,'another toast does not replace the record');
     assert.strictEqual(q('#saveFailOk'),ack,'an unrelated toast does not recreate the acknowledge button');assert.strictEqual(ack.hidden,false);assert.strictEqual(q('#saveFail').hidden,false,'nor remove the record');assert.strictEqual(w.document.activeElement,ack,'keyboard focus stays on the button');notes.focus();
-    hide();assert.strictEqual(q('#toast').hidden,true);assert.deepStrictEqual(rec().items,r.items,'the record outlives the toast');assert.strictEqual(rec().shown,true);
+    hide();assert.strictEqual(q('#toast').hidden,true);assert.deepStrictEqual(rec().items,r.items,'the record outlives the toast');assert.strictEqual(rec().shown,true);assert.strictEqual(usable(w,q('#saveFail')),true,'the record text is back');assert.strictEqual(usable(w,ack),true);
     assert.strictEqual(q('#saveState').className,'dirty');assert.strictEqual(A.isDirty(),true);
     root.fail=null;change('Synthetic draft 2');assert.strictEqual(await auto(),'saved');
     assert.deepStrictEqual(rec(),{shown:false,text:'',items:[],button:false},'success on the same folder and month clears the record');

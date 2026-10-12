@@ -84,7 +84,7 @@ async function withV1(name = 'synthetic-folder') { const dir = folder(name), tag
 const prepKind = prep => prep.reuse ? 'reuse' : prep.docs.length ? 'new' : 'none'; // 試験の場面が、狙った経路（同じ版の再利用）に届いていることを確かめる
 const DOCS = /^帳票の出力が完了していません 202611・フォルダ synthetic-folder・.* — 勤務表・説明資料の書き出しが完了しませんでした: /, DATA = /^保存できていません 202611・フォルダ synthetic-folder・/;
 
-let cases = 0; const total = 25;
+let cases = 0; const total = 33;
 process.on('exit', () => { if (cases !== total && !process.exitCode) { console.error('NOT COMPLETED: ' + cases + '/' + total); process.exitCode = 1; } });
 const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' + name); };
 (async () => {
@@ -190,6 +190,52 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     dir.files.delete(docx1); dir.files.delete(html1); w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w).sort(), [docx1, html1].sort()); assert.deepStrictEqual(versions(), [1]); assert.strictEqual(A.isDirty(), false);
     w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), []);
   });
+  for (const kind of ['空のまま残った', '同じ大きさで中身が違う']) await scenario('片方が無く、ある方はこの版のものでない（' + kind + '）: 書き足さず、空いている番号で出し直す。ある方には触れない', async () => {
+    const { dir, tag } = await withV1(), [docx1, html1] = V1(tag), fp1 = JSON.stringify(A.state.month.doc_versions[0].fp); dir.files.delete(docx1);
+    const other = kind === '空のまま残った' ? '' : dir.files.get(html1).replace('synthetic', 'SYNTHETIC'); if (other) assert.strictEqual(other.length, dir.files.get(html1).length); dir.files.set(html1, other);
+    assert.strictEqual(prepKind(await A.prepareSave()), 'reuse'); let w = dir.writes.length; assert.strictEqual(await manual(), 'saved');
+    assert.deepStrictEqual(versions(), [1, 2], 'the report that is there is not of this version, so version 1 is not completed by adding the roster'); const v2 = A.state.month.doc_versions[1]; assert.deepStrictEqual(docWritesSince(dir, w).sort(), [v2.docx, v2.html].sort());
+    assert.ok(!dir.files.has(docx1), 'the missing roster is not written under version 1'); assert.strictEqual(dir.files.get(html1), other, 'the report is left as it is'); assert.strictEqual(JSON.stringify(A.state.month.doc_versions[0].fp), fp1, 'the record of version 1 is not restamped with the other report');
+    assert.match(lastToast(), /v1 は別の内容の可能性があるので上書きしていません/); assert.doesNotMatch(lastToast(), /書き直しました|v1 のまま/); assert.deepStrictEqual(records(), []);
+    w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), []); assert.match(lastToast(), /v2 のまま/);
+  });
+  await scenario('欠けた帳票を書き足した保存で、月データの書込みが失敗: 書き足した帳票は次の保存で自分の版と確かめられ、版を増やさない', async () => {
+    const { dir, tag } = await withV1(), [docx1, html1] = V1(tag), make = T.makeDocx, old = JSON.parse(JSON.stringify(A.state.month.doc_versions[0].fp)), dataBefore = dir.files.get(A.FILES.data(tag)), htmlBefore = dir.files.get(html1);
+    dir.files.delete(docx1); T.makeDocx = async (P, asg, label) => new Blob(['synthetic roster ' + label + ' (written on another day)']); // 作り直した勤務表は、前のものと中身が少し違う
+    dir.refuse = n => isData(n) ? 'synthetic data refused' : null; let w = dir.writes.length;
+    try { assert.strictEqual(await manual(), 'failed'); } finally { T.makeDocx = make; }
+    assert.deepStrictEqual(docWritesSince(dir, w), [docx1], 'the missing roster was written before the month data failed'); assert.strictEqual(dir.files.get(A.FILES.data(tag)), dataBefore, 'the month data is as before');
+    let r = records(); assert.strictEqual(r.length, 1, 'only the month data failed'); assert.match(r[0], DATA); assert.strictEqual(A.isDirty(), true);
+    const now = JSON.parse(JSON.stringify(A.state.month.doc_versions[0].fp)); assert.notDeepStrictEqual(now, old, 'the state records the roster that is now in the folder'); assert.deepStrictEqual(JSON.parse(dir.files.get(A.FILES.data(tag))).month.doc_versions[0].fp, old, 'the saved month data still has the earlier completion info');
+    dir.refuse = () => null; w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'both documents are confirmed as version 1; nothing is written again'); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /v1 のまま/);
+    assert.deepStrictEqual(JSON.parse(dir.files.get(A.FILES.data(tag))).month.doc_versions[0].fp, now, 'state and month data agree again'); assert.strictEqual(dir.files.get(html1), htmlBefore); assert.strictEqual(A.isDirty(), false); assert.deepStrictEqual(records(), []);
+  });
+  // ---- 新しい版として書く経路: 手元に版の記録が無く、保存先の月データには同じ内容の版 1 の記録がある
+  // （前の世代の月データを読み込んで「このブラウザの状態で上書きする」を選んだ・ほかのウィンドウが先に同じ内容を出した、など）。
+  // 保存先の記録で「この番号＝この内容」でも、いまある帳票の中身がその記録の完了情報と同じときだけ同じ番号で書く。確かめられなければ上書きしない
+  const forgetVersions = (dir, tag) => { delete A.state.month.doc_versions; A.markSaved(undefined, JSON.parse(dir.files.get(A.FILES.data(tag))).saved_at); toasts.length = 0; };
+  await scenario('新しい版として書く経路: 保存先の記録と帳票の中身が合っていれば同じ番号で書き、帳票が無ければその番号で書く', async () => {
+    { const { dir, tag } = await withV1(), pair = V1(tag); forgetVersions(dir, tag); assert.strictEqual(prepKind(await A.prepareSave()), 'new', 'the save is on the new-version path');
+      const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w).sort(), pair.slice().sort(), 'the confirmed own documents are written again under the same number'); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /勤務表 v1 を追加）/); assert.deepStrictEqual(records(), []); }
+    { const { dir, tag } = await withV1(), pair = V1(tag); forgetVersions(dir, tag); for (const n of pair) dir.files.delete(n);
+      const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w).sort(), pair.slice().sort()); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /勤務表 v1 を追加）/); }
+  });
+  for (const kind of ['勤務表がアプリの外で書き換えられている', '説明資料が空のまま残っている', '保存先の記録に完了情報が無い（旧い記録）']) await scenario('新しい版として書く経路: 保存先に同じ内容の版の記録があっても、' + kind + 'ときは上書きせず、空いている番号で出す', async () => {
+    const { dir, tag } = await withV1(), [docx1, html1] = V1(tag);
+    if (kind.startsWith('勤務表')) dir.files.set(docx1, dir.files.get(docx1) + ' (remarks typed in a word processor)');
+    else if (kind.startsWith('説明資料')) dir.files.set(html1, '');
+    else { const o = JSON.parse(dir.files.get(A.FILES.data(tag))); delete o.month.doc_versions[0].fp; dir.files.set(A.FILES.data(tag), JSON.stringify(o)); }
+    const a = dir.files.get(docx1), b = dir.files.get(html1); forgetVersions(dir, tag); assert.strictEqual(prepKind(await A.prepareSave()), 'new', 'the save is on the new-version path');
+    let w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [2], 'output under a free number'); const v2 = A.state.month.doc_versions[0];
+    assert.deepStrictEqual(docWritesSince(dir, w).sort(), [v2.docx, v2.html].sort()); assert.strictEqual(dir.files.get(docx1), a, 'the existing roster is not overwritten'); assert.strictEqual(dir.files.get(html1), b, 'nor the existing report');
+    assert.match(lastToast(), /勤務表 v2 を追加。このフォルダの v1 は別の内容の可能性があるので上書きしていません/); assert.ok(Array.isArray(v2.fp)); assert.deepStrictEqual(records(), []);
+    w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), []); assert.match(lastToast(), /v2 のまま/);
+  });
+  await scenario('新しい版として書く経路: 保存先に同じ内容の版の記録があり、帳票があるのに読めないときは、上書きせず保存を止める', async () => {
+    const { dir, tag } = await withV1(), [docx1] = V1(tag), a = dir.files.get(docx1); forgetVersions(dir, tag); const data = dir.files.get(A.FILES.data(tag)); dir.unreadable = n => n === docx1 ? 'synthetic unreadable document' : null;
+    const w = dir.writes.length; assert.strictEqual(await manual(), 'failed'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'no document is written'); assert.strictEqual(dir.files.get(docx1), a); assert.strictEqual(dir.files.get(A.FILES.data(tag)), data, 'the month data is not written');
+    const r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DATA); assert.match(r[0], /synthetic unreadable document/); acknowledge();
+  });
   await scenario('書いた直後に読み直して確かめる: フォルダにある中身が書いた内容と違えば完了とせず、版の記録にも入れない', async () => {
     const dir = folder('synthetic-folder'), tag = open(dir); dir.mangle = (n, text) => /\.html$/.test(n) ? text.slice(0, 5) : text; edit('synthetic edit');
     assert.strictEqual(await manual(), 'saved'); const r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DOCS); assert.match(r[0], /_report_v1_draft\.html を書き込みましたが、内容を確かめられませんでした$/); assert.deepStrictEqual(versions(), []);
@@ -209,6 +255,8 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
       assert.ok(Array.isArray(A.state.month.doc_versions[1].fp)); const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'the new version is confirmed from then on'); }
     { const { dir, tag } = await withV1(), [docx1, html1] = V1(tag); legacy(dir, tag); dir.files.delete(docx1); dir.files.delete(html1);
       assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [1]); assert.ok(dir.files.get(docx1) && dir.files.get(html1)); assert.ok(Array.isArray(A.state.month.doc_versions[0].fp), 'the rewritten pair gets completion info'); assert.strictEqual(A.isDirty(), false); }
+    { const { dir, tag } = await withV1(), [docx1, html1] = V1(tag), b = dir.files.get(html1); legacy(dir, tag); dir.files.delete(docx1); // 片方だけ無い: ある方をこの版のものと確かめられないので、書き足さない
+      assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [1, 2], 'the report that is there cannot be confirmed, so nothing is added to version 1'); assert.ok(!dir.files.has(docx1)); assert.strictEqual(dir.files.get(html1), b); assert.match(lastToast(), /v1 は別の内容の可能性/); }
   });
   await scenario('2 つのウィンドウ: ほかのウィンドウが同じ版の帳票を書き足した後、古い完了情報を持つ側が保存しても、版を増やさず保存先の記録に合わせる', async () => {
     const { dir, tag } = await withV1(), [docx1] = V1(tag), stale = JSON.parse(JSON.stringify(A.state.month.doc_versions)), make = T.makeDocx;

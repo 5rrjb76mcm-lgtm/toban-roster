@@ -94,18 +94,19 @@ for (const mode of ['auto', 'header']) {
   });
 }
 for (const mode of ['auto', 'header']) test(mode + ': current-month bookkeeping precedes every header render', async () => {
-  const root = reset(), title = el('#monthTitle'); let html = title.innerHTML, renders = 0;
+  const root = reset(), title = el('#monthTitle'); let html = title.innerHTML, renders = 0, premature = 0;
   Object.defineProperty(title, 'innerHTML', { configurable: true, get: () => html, set(value) {
     renders++;
     // A renderer that cannot handle a half-committed save must not prevent saved bookkeeping.
-    if (!A.state.meta) throw new Error('synthetic premature precommit render');
+    // Count it as well: the save swallows a failure of the folder listing, so a throw from a render inside the listing would go unnoticed.
+    if (!A.state.meta) { premature++; throw new Error('synthetic premature precommit render'); }
     html = value;
   } });
   try {
     const result = await (mode === 'auto' ? A.autosaveJson() : entry(mode));
     // How often the header is drawn is an implementation detail (a manual save also lists the folder again).
-    // What matters: it is never drawn from a half-committed save (the setter above throws), and the result is right.
-    assert.strictEqual(result, 'saved'); assert.ok(renders >= 1, 'the header was drawn after the commit');
+    // What matters: it is never drawn from a half-committed save, whichever step draws it, and the result is right.
+    assert.strictEqual(result, 'saved'); assert.strictEqual(premature, 0, 'the header is never drawn before the save is committed (also not by the folder listing)'); assert.ok(renders >= 1, 'the header was drawn after the commit');
     assert.strictEqual(A.isDirty(), false); assert.strictEqual(el('#saveState').className, 'saved'); assert.doesNotMatch(option('202611'), /未保存/); assert.deepStrictEqual(A.monthDirs, ['202611']);
     assert.strictEqual(savedFile(root).month.notes, 'synthetic saved content');
   } finally { Object.defineProperty(title, 'innerHTML', { configurable: true, writable: true, value: html }); }

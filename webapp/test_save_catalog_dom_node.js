@@ -54,9 +54,14 @@ process.on('exit',()=>{if((!finished||cases!==EXPECTED_CASES)&&!process.exitCode
       // The header is published after the write (how many times is an implementation detail: a manual save also lists the folder again).
       // What must hold: the list and the save state are right, and the field being edited keeps its focus and its text.
       const notes=q('#monthSettings [data-path="notes"]');notes.focus();assert.strictEqual(dom.window.document.activeElement,notes);
-      let renders=0;const observer=new dom.window.MutationObserver(records=>{renders+=records.length;});root.beforeClose=async()=>observer.observe(q('#monthTitle'),{childList:true});
+      // From the close of the write until the save is committed the state is still unsaved: a header drawn in that window would show a half-committed save.
+      // Watch every write of the header title (own accessor in front of the DOM one) and note the save state at that moment.
+      const title=q('#monthTitle'),inner=Object.getOwnPropertyDescriptor(dom.window.Element.prototype,'innerHTML');let armed=false,early=0;
+      Object.defineProperty(title,'innerHTML',{configurable:true,get(){return inner.get.call(this);},set(v){if(armed&&A.isDirty())early++;inner.set.call(this,v);}});
+      let renders=0;const observer=new dom.window.MutationObserver(records=>{renders+=records.length;});root.beforeClose=async()=>{armed=true;observer.observe(title,{childList:true});};
       if(mode==='auto')assert.strictEqual(await app.runTimer(),'saved');else{q('#btnHeaderSave').click();await A.awaitSaves();}
-      await Promise.resolve();observer.disconnect();root.beforeClose=null;assert.ok(renders>=1,'successful current-month write publishes the header');
+      await Promise.resolve();observer.disconnect();root.beforeClose=null;armed=false;delete title.innerHTML;assert.ok(renders>=1,'successful current-month write publishes the header');
+      assert.strictEqual(early,0,'the header is not drawn between the write and the commit of the save');
       assert.strictEqual(dom.window.document.activeElement,notes,'the edited field keeps focus through the save');assert.strictEqual(notes.value,'Synthetic edited through real textarea');assert.deepStrictEqual([...A.monthDirs],['202611']);
       assert.strictEqual(q('#monthSel').value,'202611');assert.doesNotMatch(q('#monthSel').selectedOptions[0].textContent,/未保存/);
       assert.strictEqual(q('#saveState').className,'saved');assert.strictEqual(A.isDirty(),false);

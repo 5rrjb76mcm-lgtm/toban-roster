@@ -150,8 +150,15 @@
       if (v !== undefined) out[k] = v;
     }
     const merged = unflatten(out, theirs);
-    // 版の履歴は和集合
+    // 版の履歴は和集合（同じ番号は手元の記録）
     const vers = {}; for (const v of [...(theirs.doc_versions || []), ...(mine.doc_versions || [])]) vers[v.ver] = v;
+    // 帳票の完了情報（fp: 保存先にある帳票の中身の印）だけは 3 者で比べる: 同じ番号・同じ内容の記録で、手元が共通の元から変えておらず相手だけが変えていれば、相手の印を採る
+    // （ほかのウィンドウが足りない帳票を書き足した後の印を、手元の古い印で書き戻さない）。手元が変えていれば手元のまま（帳票は書いたが月データを書けなかったとき）
+    const fpOf = v => JSON.stringify(v && Array.isArray(v.fp) ? v.fp : null), verOf = (m, n) => ((m && m.doc_versions) || []).find(v => v && v.ver === n);
+    for (const t of theirs.doc_versions || []) {
+      const m = vers[t.ver], b = verOf(base, t.ver);
+      if (m !== t && b && Array.isArray(t.fp) && m.sig === t.sig && b.sig === t.sig && fpOf(m) === fpOf(b) && fpOf(t) !== fpOf(b)) vers[t.ver] = Object.assign({}, m, { fp: t.fp.slice() });
+    }
     merged.doc_versions = Object.values(vers).sort((x, y) => x.ver - y.ver);
     return { merged, mineChanges, theirChanges, conflicts };
   }

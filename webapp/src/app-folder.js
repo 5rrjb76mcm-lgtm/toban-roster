@@ -596,13 +596,13 @@
     if (prev && prev.__corrupt) throw saveChangedError(); // 読めない状態を「ファイルなし」として上書きしない
     if (prev && !prev.__corrupt && prev.month && Array.isArray(prev.month.doc_versions)) prevVers = prev.month.doc_versions.filter(v => v && typeof v === "object");
     try { if (prev && !prev.__corrupt) await writeFile(dir, A.FILES.dataPrev(prep.S.tag), new Blob([JSON.stringify(prev, null, 1)], { type: "application/json" })); } catch (e) { } // 誤操作や統合の取り違えからの復元用
-    // 版の番号: 保存先の記録に同じ番号で別の署名の版があれば、その番号の帳票は別の内容（別のフォルダから持ち込んだ月データなど）。同じ名前の帳票が片方でもあるのに記録で「この番号＝この内容」と確かめられないときも同じ。
-    // どちらも上書きせず、記録にも帳票にも無い番号を付け直す
+    // 版の番号: 保存先の記録に同じ番号で別の署名の版があれば、その番号の帳票は別の内容（別のフォルダから持ち込んだ月データなど）。同じ名前の帳票が片方でもあるのに「この番号＝この内容」と確かめられないときも同じ。
+    // 確かめられるのは、保存先の記録に同じ番号・同じ署名の版があり、いまある同じ名前の帳票の中身の印がその記録の完了情報（fp）と同じときだけ
+    // （記録があっても、帳票がアプリの外で書き換えられている・書込みが途中で止まっている・完了情報の無い旧い記録、のときは確かめられない）。
+    // 確かめられない番号の帳票は上書きせず、記録にも帳票にも無い番号を付け直す
     const exists = async n => { try { await dir.getFileHandle(n); return true; } catch (e) { if (notFound(e)) return false; throw e; } }, namesOf = (ver, label) => [A.FILES.roster(prep.S.tag, ver, label), A.FILES.report(prep.S.tag, ver, label)]; // 存在確認の失敗は「無い」ではない。既存帳票を上書きしないよう保存を止める
     const clash = ver => prevVers.some(v => +v.ver === ver && v.sig !== prep.vsig), verified = ver => prevVers.some(v => +v.ver === ver && v.sig === prep.vsig);
     const anyExists = async (ver, label) => { for (const n of namesOf(ver, label)) if (await exists(n)) return true; return false; };
-    const taken = async (ver, label) => clash(ver) || (!verified(ver) && await anyExists(ver, label)); // この番号は別の内容の帳票に使われている（かもしれない）
-    const freeVer = async label => { let v = Math.max(0, ...prevVers.map(x => +x.ver || 0), ...(prep.S.month.doc_versions || []).map(x => +x.ver || 0)) + 1; while (await taken(v, label)) v++; return v; };
     // 帳票の完了情報（版の記録の fp）: 勤務表と説明資料の中身の印（長さとハッシュ）。両方を書き、フォルダから読み直して、書いた内容と同じだと確かめられたときだけ記録に入れる。
     // 「この版はこのフォルダに完成している」と言えるのは、いまフォルダにある 2 つのファイルの印が記録の印と同じときだけ。同じ名前のファイルがあるだけ・保存先の月データに版の記録があるだけでは言えない
     // （書込みに失敗して空のファイルが残ったときも、別の内容の同名のファイルがあるフォルダへ月データを持ち込んだときも、月データには版の記録が入る）。
@@ -612,11 +612,18 @@
     const printOf = async x => { const b = await bytesOf(x); let h1 = 2166136261, h2 = 2654435769;
       for (let i = 0; i < b.length; i++) { h1 = Math.imul(h1 ^ b[i], 16777619); h2 = Math.imul(h2 ^ b[i], 2246822507); h2 = (h2 << 13) | (h2 >>> 19); } return b.length + ":" + (h1 >>> 0).toString(16) + "." + (h2 >>> 0).toString(16); };
     const filePrint = async n => { let fh; try { fh = await dir.getFileHandle(n); } catch (e) { if (notFound(e)) return null; throw e; } return printOf(await fh.getFile()); }; // 無ければ null。あるのに読めないときは例外（「無い」ではない。既存の帳票を上書きしないよう保存を止める）
+    const valid = fp => Array.isArray(fp) && fp.length === 2 && fp.every(x => typeof x === "string" && x !== "");
+    // 保存先の記録の同じ番号・同じ署名の版のものだと確かめられるか: いまある同じ名前の帳票が、どれもその記録の完了情報と同じ中身
+    const ownFiles = async (ver, label) => { const r = prevVers.find(v => +v.ver === ver && v.sig === prep.vsig); if (!r || !valid(r.fp)) return false; const pair = namesOf(ver, label); for (let i = 0; i < 2; i++) { const h = await filePrint(pair[i]); if (h !== null && h !== r.fp[i]) return false; } return true; };
+    const taken = async (ver, label) => clash(ver) || (await anyExists(ver, label) && !(await ownFiles(ver, label))); // この番号は別の内容の帳票に使われている（かもしれない）
+    const freeVer = async label => { let v = Math.max(0, ...prevVers.map(x => +x.ver || 0), ...(prep.S.month.doc_versions || []).map(x => +x.ver || 0)) + 1; while (await taken(v, label)) v++; return v; };
     // 帳票を書き、読み直して、書いた内容がフォルダにあることを確かめ、その印を返す。片方でも書けない・確かめられないときは例外（完了ではない）
     const writeDocs = async docs => { for (const f of docs) await writeFile(dir, f.name, f.blob); const fps = []; for (const f of docs) { const want = await printOf(f.blob), got = await filePrint(f.name); if (got !== want) throw new Error(T.t("{name} を書き込みましたが、内容を確かめられませんでした", { name: f.name })); fps.push(got); } return fps; };
     const docsFailed = e => { if (e && e.saveChanged) throw e; prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); };
     if (prep.docs.length && prep.version && await taken(prep.version.ver, prep.label)) {
-      try { const old = prep.version.ver, ver = await freeVer(prep.label); prep.docs = await makeDocs(prep.S, prep.P, ver, prep.label); prep.version = Object.assign({}, prep.version, { ver, docx: prep.docs[0].name, html: prep.docs[1].name }); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容なので上書きしていません）", { v: ver, old }); }
+      // 保存先の記録ではこの番号＝この内容なのに帳票の中身を確かめられなかったときは「別の内容の可能性」（記録が別の署名・記録の無い帳票は「別の内容」）
+      try { const old = prep.version.ver, maybe = !clash(old) && verified(old), ver = await freeVer(prep.label); prep.docs = await makeDocs(prep.S, prep.P, ver, prep.label); prep.version = Object.assign({}, prep.version, { ver, docx: prep.docs[0].name, html: prep.docs[1].name });
+        prep.note = maybe ? T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容の可能性があるので上書きしていません）", { v: ver, old }) : T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容なので上書きしていません）", { v: ver, old }); }
       catch (e) { prep.docs = []; docsFailed(e); } }
     if (prep.docs.length) {
       try { if (verify) await verify(); const fp = await writeDocs(prep.docs); prep.version = Object.assign({}, prep.version, { fp }); prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); }
@@ -628,7 +635,7 @@
       //  (c) それ以外（同じ名前のファイルがあるが、中身が違う・空・途中まで。完了情報の無い記録。この番号が保存先では別の内容）→ 上書きせず、空いている番号で出し直す
       // 生成 → 保存先の照合（verify）→ 書込み の順は変えない（生成の待ち時間に別のウィンドウが保存していれば、書く前に止める）
       const { ver, label, P } = prep.reuse, pair = namesOf(ver, label), rec = (prep.S.month.doc_versions || []).slice().reverse().find(v => +v.ver === ver && v.sig === prep.vsig);
-      const have = [await filePrint(pair[0]), await filePrint(pair[1])], valid = fp => Array.isArray(fp) && fp.length === 2 && fp.every(x => typeof x === "string" && x !== "");
+      const have = [await filePrint(pair[0]), await filePrint(pair[1])];
       // 完了情報の候補は 2 つ: 保存先の月データにある同じ版・同じ内容の記録（ほかのウィンドウが足りない帳票を書き足した後の印はこちらにある）と、手元の記録。どちらかと合えばこの版のファイル
       const there = prevVers.find(v => +v.ver === ver && v.sig === prep.vsig), cands = [there && there.fp, rec && rec.fp].filter(valid);
       const full = cands.find(c => have.every((h, i) => h !== null && h === c[i])), part = cands.find(c => have.every((h, i) => h === null || h === c[i]));
