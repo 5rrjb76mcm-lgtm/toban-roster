@@ -614,8 +614,9 @@
     const filePrint = async n => { let fh; try { fh = await dir.getFileHandle(n); } catch (e) { if (notFound(e)) return null; throw e; } return printOf(await fh.getFile()); }; // 無ければ null。あるのに読めないときは例外（「無い」ではない。既存の帳票を上書きしないよう保存を止める）
     const valid = fp => Array.isArray(fp) && fp.length === 2 && fp.every(x => typeof x === "string" && x !== "");
     // 保存先の記録の同じ番号・同じ署名の版のものだと確かめられるか: いまある同じ名前の帳票が、どれもその記録の完了情報と同じ中身。
-    // 記録に完了情報が無い・先に読んだ帳票が合わないときは、残りを読まずに「確かめられない」（その番号を使わないだけなので、読めない帳票があっても保存は続く）。
-    // 照らすために読んだ帳票が読めないときだけ例外（確かめられるかどうかを決められない。上書きしないよう保存を止める）
+    // 記録に完了情報が無い・先に読んだ帳票が合わないときは、残りの中身を読まずに「確かめられない」（その番号を使わないだけなので、中身を読めない帳票が残りにあっても保存は続く）。
+    // 照らすために読んだ帳票の中身が読めないときは例外（確かめられるかどうかを決められない。上書きしないよう保存を止める）。
+    // 同じ名前の帳票があるかどうかを確かめられないとき（exists の例外）は、完了情報の有無によらず、ここへ来る前に保存が止まる
     const ownFiles = async (ver, label) => { const r = prevVers.find(v => +v.ver === ver && v.sig === prep.vsig); if (!r || !valid(r.fp)) return false; const pair = namesOf(ver, label); for (let i = 0; i < 2; i++) { const h = await filePrint(pair[i]); if (h !== null && h !== r.fp[i]) return false; } return true; };
     const taken = async (ver, label) => clash(ver) || (await anyExists(ver, label) && !(await ownFiles(ver, label))); // この番号は別の内容の帳票に使われている（かもしれない）
     const freeVer = async label => { let v = Math.max(0, ...prevVers.map(x => +x.ver || 0), ...(prep.S.month.doc_versions || []).map(x => +x.ver || 0)) + 1; while (await taken(v, label)) v++; return v; };

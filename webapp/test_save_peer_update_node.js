@@ -144,13 +144,17 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
   // The folder's month data and the files are shared; each window has its own copy of the version record. These cases run the real three-way merge.
   const roster1 = A.FILES.roster('202611', 1, '確認版'), report1 = A.FILES.report('202611', 1, '確認版'), isDoc = n => /\.(docx|html)$/.test(n);
   const takeWindow = () => clone(A.state), putWindow = w => { for (const k of Object.keys(A.state)) delete A.state[k]; Object.assign(A.state, clone(w)); };
+  // A save is stamped with the clock (milliseconds), and an equal stamp means "the revision this window synced last". Where a case needs a later
+  // revision from a real save, it waits first, so that the two stamps cannot fall into the same millisecond.
+  const laterStamp = () => new Promise(r => setTimeout(r, 5));
   const folderFp = f => JSON.parse(f.files.get(dataName)).month.doc_versions.map(v => v.fp), stateVers = () => (A.state.month.doc_versions || []).map(v => v.ver);
   await test('two windows: a JSON-only autosave from the window with the old completion info does not write it back; its next manual save adds no version', async () => {
     const f = setup(); assert.strictEqual(await A.saveToFolder(), 'saved'); assert.deepStrictEqual(stateVers(), [1]);
     const window2 = takeWindow(), old = clone(A.state.month.doc_versions[0].fp); // both windows are in sync with version 1 here
     // Window 1: the roster is gone from the folder; it is written again under version 1 on another day (other bytes).
-    f.files.delete(roster1); T.makeDocx = async () => new Blob(['synthetic roster, written on another day']); A.state.result.seconds = 2;
+    f.files.delete(roster1); T.makeDocx = async () => new Blob(['synthetic roster, written on another day']); A.state.result.seconds = 2; await laterStamp();
     assert.strictEqual(await A.saveToFolder(), 'saved'); assert.deepStrictEqual(stateVers(), [1]); const fresh = folderFp(f)[0]; assert.notDeepStrictEqual(fresh, old, 'the folder records the rewritten roster');
+    assert.notStrictEqual(JSON.parse(f.files.get(dataName)).saved_at, window2.meta.savedAt, 'the folder now holds a later revision than the one window 2 synced');
     const window1 = takeWindow();
     // Window 2: recalculated with the same assignment (the documents are unchanged), then its autosave runs and merges window 1's save.
     putWindow(window2); T.makeDocx = async () => new Blob(['synthetic roster']); A.state.result.seconds = 9; f.toasts.length = 0;
@@ -192,10 +196,11 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
   });
   // ---- The reported sequence for the new-version path: the previous generation of the month data is loaded again and saved over the folder's data.
   await test('manual: restoring the previous month data and saving over the folder does not overwrite a roster edited outside the app', async () => {
-    const f = setup(); A.state.month.notes = 'synthetic content B'; assert.strictEqual(await A.autosaveJson(), 'saved'); // the JSON-only autosave becomes the previous generation
+    const f = setup(); A.state.month.notes = 'synthetic content B'; assert.strictEqual(await A.autosaveJson(), 'saved'); await laterStamp(); // the JSON-only autosave becomes the previous generation
     assert.strictEqual(await A.saveToFolder(), 'saved'); assert.deepStrictEqual(stateVers(), [1]); const prevJson = f.files.get(A.FILES.dataPrev('202611')); assert.ok(!JSON.parse(prevJson).month.doc_versions, 'the previous generation has no version record');
     const edited = f.files.get(roster1) + ' + remarks typed in a word processor', report = f.files.get(report1); f.files.set(roster1, edited); // the roster is edited outside the app
-    A.state.month.notes = 'synthetic content C (a mistake)'; assert.strictEqual(await A.autosaveJson(), 'saved');
+    A.state.month.notes = 'synthetic content C (a mistake)'; await laterStamp(); assert.strictEqual(await A.autosaveJson(), 'saved');
+    assert.notStrictEqual(JSON.parse(f.files.get(dataName)).saved_at, JSON.parse(prevJson).saved_at, 'the folder holds a later revision than the previous generation');
     const choose = A.choose, alertWas = globalThis.alert, confirmWas = globalThis.confirm; globalThis.alert = m => { throw new Error('alert: ' + m); }; globalThis.confirm = () => true;
     try {
       await A.loadJsonFile({ text: async () => prevJson }); clearTimeout(A.autosaveTimer);

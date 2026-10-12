@@ -42,6 +42,13 @@ function usable(w, el) {
     const v=n=>r.style.getPropertyValue(n);if(v('display')==='none'||/hidden|collapse/.test(v('visibility'))||v('opacity')==='0'||v('pointer-events')==='none')ok=false;}};
   for(const sheet of w.document.styleSheets)visit(sheet.cssRules);return ok;
 }
+// 要素とその祖先に当たる規則（印刷用を除く）の一覧。通知が出ているときと出ていないときで同じなら、どんな宣言であれ「通知が出ている間だけ」ボタンに効く規則は無い
+// （大きさを 0 にする・画面の外へ出す・切り抜くなど、上の usable が見ていない消し方も、通知を条件にしていれば拾う）
+function rulesFor(w, el) {
+  const chain=[];for(let x=el;x&&x.nodeType===1;x=x.parentElement)chain.push(x);
+  const out=[];const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/print/.test(r.conditionText||''))visit(r.cssRules);continue;}let hit=false;try{hit=chain.some(x=>x.matches(r.selectorText));}catch(e){}if(hit)out.push(r.cssText);}};
+  for(const sheet of w.document.styleSheets)visit(sheet.cssRules);return out;
+}
 async function makeApp(){
   const dom=new JSDOM(source('index.html').replace('/*__CSS__*/',source('style.css')),{url:'https://example.invalid/synthetic/save-failure.html',runScripts:'outside-only'}),w=dom.window;
   await new Promise(r=>w.document.readyState==='complete'?r():w.addEventListener('load',r,{once:true}));
@@ -85,9 +92,11 @@ async function plantOtherFacility({root,change,auto}){change('Synthetic first sa
     const ack=q('#saveFailOk');assert.strictEqual(usable(w,ack),true,'with a record the button is shown and can be pressed (the failure toast is still visible here)');ack.focus();assert.strictEqual(w.document.activeElement,ack);
     A.toast('架空の別の通知');assert.strictEqual(q('#toast').textContent,'架空の別の通知');assert.strictEqual(q('#toast').hidden,false);
     assert.strictEqual(usable(w,ack),true,'with the stylesheet too, an unrelated toast neither hides the button nor makes it unclickable');assert.strictEqual(usable(w,q('#saveFail')),false,'while the toast is read, only the record text gives way to it');
+    const underToast=rulesFor(w,ack);assert.ok(underToast.length>0,'rules for the button and its row are found');assert.notDeepStrictEqual(rulesFor(w,q('#saveFail')),(()=>{q('#toast').hidden=true;const x=rulesFor(w,q('#saveFail'));q('#toast').hidden=false;return x;})(),'the comparison sees a rule that depends on the toast (the one for the record text)');
     assert.deepStrictEqual(rec().items,r.items,'another toast does not replace the record');
     assert.strictEqual(q('#saveFailOk'),ack,'an unrelated toast does not recreate the acknowledge button');assert.strictEqual(ack.hidden,false);assert.strictEqual(q('#saveFail').hidden,false,'nor remove the record');assert.strictEqual(w.document.activeElement,ack,'keyboard focus stays on the button');notes.focus();
     hide();assert.strictEqual(q('#toast').hidden,true);assert.deepStrictEqual(rec().items,r.items,'the record outlives the toast');assert.strictEqual(rec().shown,true);assert.strictEqual(usable(w,q('#saveFail')),true,'the record text is back');assert.strictEqual(usable(w,ack),true);
+    assert.deepStrictEqual(underToast,rulesFor(w,ack),'no style rule applies to the button (or its row) only while a toast is shown, whatever it declares');
     assert.strictEqual(q('#saveState').className,'dirty');assert.strictEqual(A.isDirty(),true);
     root.fail=null;change('Synthetic draft 2');assert.strictEqual(await auto(),'saved');
     assert.deepStrictEqual(rec(),{shown:false,text:'',items:[],button:false},'success on the same folder and month clears the record');

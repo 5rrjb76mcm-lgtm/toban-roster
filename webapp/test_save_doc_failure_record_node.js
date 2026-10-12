@@ -84,7 +84,7 @@ async function withV1(name = 'synthetic-folder') { const dir = folder(name), tag
 const prepKind = prep => prep.reuse ? 'reuse' : prep.docs.length ? 'new' : 'none'; // 試験の場面が、狙った経路（同じ版の再利用）に届いていることを確かめる
 const DOCS = /^帳票の出力が完了していません 202611・フォルダ synthetic-folder・.* — 勤務表・説明資料の書き出しが完了しませんでした: /, DATA = /^保存できていません 202611・フォルダ synthetic-folder・/;
 
-let cases = 0; const total = 33;
+let cases = 0; const total = 35;
 process.on('exit', () => { if (cases !== total && !process.exitCode) { console.error('NOT COMPLETED: ' + cases + '/' + total); process.exitCode = 1; } });
 const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' + name); };
 (async () => {
@@ -112,6 +112,7 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     dir.refuse = () => null; edit('synthetic edit 2'); assert.strictEqual(await auto(), 'saved'); assert.strictEqual(records().length, 1, 'the autosave does not clear it, although one document exists');
     assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(records(), []); const v = A.state.month.doc_versions; assert.strictEqual(v.length, 1);
     assert.ok(dir.files.has(v[0].docx) && dir.files.has(v[0].html), 'both documents of the recorded version exist'); assert.strictEqual(v[0].ver, 2, 'the half-written number is not reused');
+    assert.match(lastToast(), /勤務表 v2 を追加。このフォルダの v1 は別の内容なので上書きしていません/, 'documents without a version record: the definite wording'); assert.doesNotMatch(lastToast(), /可能性/);
   });
   await scenario('月データの再失敗: 帳票の記録を置き換えない。月データの記録だけが最新の理由になり、月データの成功でそれだけが消える', async () => {
     const dir = folder('synthetic-folder'); open(dir); dir.refuse = n => isDoc(n) ? 'synthetic doc refused' : null; edit('synthetic edit'); assert.strictEqual(await manual(), 'saved'); const docsLine = records()[0];
@@ -220,14 +221,15 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     { const { dir, tag } = await withV1(), pair = V1(tag); forgetVersions(dir, tag); for (const n of pair) dir.files.delete(n);
       const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w).sort(), pair.slice().sort()); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /勤務表 v1 を追加）/); }
   });
-  for (const kind of ['勤務表がアプリの外で書き換えられている', '説明資料が空のまま残っている', '保存先の記録に完了情報が無い（旧い記録）']) await scenario('新しい版として書く経路: 保存先に同じ内容の版の記録があっても、' + kind + 'ときは上書きせず、空いている番号で出す', async () => {
+  for (const kind of ['勤務表がアプリの外で書き換えられている', '説明資料が空のまま残っている', '保存先の記録に完了情報が無い（旧い記録）', '勤務表が無く、説明資料がアプリの外で書き換えられている', '勤務表が無く、説明資料が空のまま残っている']) await scenario('新しい版として書く経路: 保存先に同じ内容の版の記録があっても、' + kind + 'ときは上書きせず、空いている番号で出す', async () => {
     const { dir, tag } = await withV1(), [docx1, html1] = V1(tag);
-    if (kind.startsWith('勤務表')) dir.files.set(docx1, dir.files.get(docx1) + ' (remarks typed in a word processor)');
+    if (kind.startsWith('勤務表が無く')) { dir.files.delete(docx1); dir.files.set(html1, kind.includes('空') ? '' : dir.files.get(html1) + ' (edited outside the app)'); } // 片方が無くても、ある方が確かめられなければその番号は使わない
+    else if (kind.startsWith('勤務表')) dir.files.set(docx1, dir.files.get(docx1) + ' (remarks typed in a word processor)');
     else if (kind.startsWith('説明資料')) dir.files.set(html1, '');
     else { const o = JSON.parse(dir.files.get(A.FILES.data(tag))); delete o.month.doc_versions[0].fp; dir.files.set(A.FILES.data(tag), JSON.stringify(o)); }
     const a = dir.files.get(docx1), b = dir.files.get(html1); forgetVersions(dir, tag); assert.strictEqual(prepKind(await A.prepareSave()), 'new', 'the save is on the new-version path');
     let w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [2], 'output under a free number'); const v2 = A.state.month.doc_versions[0];
-    assert.deepStrictEqual(docWritesSince(dir, w).sort(), [v2.docx, v2.html].sort()); assert.strictEqual(dir.files.get(docx1), a, 'the existing roster is not overwritten'); assert.strictEqual(dir.files.get(html1), b, 'nor the existing report');
+    assert.deepStrictEqual(docWritesSince(dir, w).sort(), [v2.docx, v2.html].sort()); assert.strictEqual(dir.files.get(docx1), a, 'the existing roster is not overwritten (a missing one is not created under version 1)'); assert.strictEqual(dir.files.has(docx1), a !== undefined); assert.strictEqual(dir.files.get(html1), b, 'nor the existing report');
     assert.match(lastToast(), /勤務表 v2 を追加。このフォルダの v1 は別の内容の可能性があるので上書きしていません/); assert.ok(Array.isArray(v2.fp)); assert.deepStrictEqual(records(), []);
     w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), []); assert.match(lastToast(), /v2 のまま/);
   });

@@ -30,9 +30,13 @@ function remembered(name, answer, onList) { const f = readable(name); return Obj
 // 架空の IndexedDB（フォルダの参照を覚える kv だけ）
 function fakeIndexedDB(store) { const req = fn => { const r = {}; setTimeout(() => { try { r.result = fn(); if (r.onsuccess) r.onsuccess(); } catch (e) { r.error = e; if (r.onerror) r.onerror(); } }, 0); return r; };
   const db = { createObjectStore() {}, transaction() { return { objectStore() { return { get: k => req(() => store.get(k)), put: (v, k) => req(() => { store.set(k, v); }) }; } }; } }; return { open() { return req(() => db); } }; }
-// 要素に当たる規則の宣言を、書かれた順に重ねたもの（印刷用を除く。詳細度・画面幅の条件は区別しない: 後から足した打ち消しの規則も拾う）
+// 要素に当たる全ての規則（印刷用を除く。詳細度・書かれた順・画面幅の条件は区別しない）が宣言している値を、性質ごとに全部集める。
+// 値を確かめる性質は「宣言が 1 通りで、その値」であること（only）、あってはならない性質は「どの規則も宣言していない」こと（none）で見る。
+// どの規則が勝つかを計算しないので、前に置いた詳細度の高い打ち消し・!important・画面幅ごとの打ち消しも、宣言が 2 通りになって拾える
 function declared(w, el) { const out = {}; const visit = rules => { for (const r of rules) { if (!r.selectorText) { if (r.cssRules && !/print/.test(r.conditionText || '')) visit(r.cssRules); continue; }
-  let hit = false; try { hit = el.matches(r.selectorText); } catch (e) { } if (hit) for (let i = 0; i < r.style.length; i++) out[r.style[i]] = r.style.getPropertyValue(r.style[i]); } }; for (const sheet of w.document.styleSheets) visit(sheet.cssRules); return out; }
+  let hit = false; try { hit = el.matches(r.selectorText); } catch (e) { } if (hit) for (let i = 0; i < r.style.length; i++) { const k = r.style[i], v = r.style.getPropertyValue(k); (out[k] ||= []).includes(v) || out[k].push(v); } } }; for (const sheet of w.document.styleSheets) visit(sheet.cssRules); return out; }
+const only = (d, prop, value, why) => assert.deepStrictEqual(d[prop] || [], [value], why + ': ' + prop + ' is declared once, as ' + value);
+const none = (d, props, why) => { for (const prop of props) assert.deepStrictEqual(d[prop] || [], [], why + ': ' + prop + ' is not declared by any rule'); };
 // 開始画面が出るところまで本体を動かす。before(A, w) は、開始画面を出す処理（restoreFolder）の前に行うこと。stored は覚えているフォルダの参照
 async function makeApp(before, stored) {
   const dom = new JSDOM(source('index.html').replace('/*__CSS__*/', source('style.css')), { url: 'https://example.invalid/synthetic/start.html', runScripts: 'outside-only' }), w = dom.window;
@@ -91,13 +95,13 @@ async function scenario(name, fn, before, stored) { const app = await makeApp(be
     assert.ok(w.document.styleSheets.length && w.document.styleSheets[0].cssRules.length > 50, 'the stylesheet is loaded');
     assert.strictEqual(q('#startBtns').nextElementSibling, note, 'the note follows the buttons in the normal flow of the box'); assert.ok(box.contains(q('#startLang')) && !note.contains(q('#startLang')));
     const check = when => { const n = declared(w, note);
-      assert.strictEqual(n.height, 'calc(4.5em + 10px)', when + ': fixed height'); assert.strictEqual(n['box-sizing'], 'border-box'); assert.ok(!n['max-height'] && !n['min-height']);
-      assert.strictEqual(n['overflow-y'], 'auto', when + ': long text scrolls inside the note'); assert.ok(!n.overflow && !n['overflow-x'], 'not clipped'); assert.strictEqual(n['white-space'], 'pre-wrap'); assert.strictEqual(n['overflow-wrap'], 'anywhere');
-      assert.ok(!n.position && !n.top && !n.bottom && !n.inset && !n.float && !n.transform && !n['z-index'], when + ': in the flow, never on top of the buttons or the language select'); assert.ok(!n.display && !n.visibility && !n.opacity, when + ': never removed');
+      only(n, 'height', 'calc(4.5em + 10px)', when + ': fixed height'); only(n, 'box-sizing', 'border-box', when); none(n, ['max-height', 'min-height', 'block-size'], when + ': fixed height');
+      only(n, 'overflow-y', 'auto', when + ': long text scrolls inside the note'); none(n, ['overflow', 'overflow-x'], when + ': not clipped'); only(n, 'white-space', 'pre-wrap', when); only(n, 'overflow-wrap', 'anywhere', when);
+      none(n, ['position', 'top', 'bottom', 'left', 'right', 'inset', 'float', 'transform', 'z-index'], when + ': in the flow, never on top of the buttons or the language select'); none(n, ['display', 'visibility', 'opacity', 'clip', 'clip-path'], when + ': never removed');
       const cs = w.getComputedStyle(note); assert.notStrictEqual(cs.display, 'none', when + ': the space is reserved'); assert.notStrictEqual(cs.visibility, 'hidden'); };
     assert.strictEqual(note.textContent, ''); check('empty'); A.toast('架空の長い知らせ '.repeat(40)); assert.notStrictEqual(note.textContent, ''); check('with a long text');
-    const g = declared(w, gate); assert.strictEqual(g.overflow, 'auto', 'the start screen itself scrolls when the window is too low'); assert.strictEqual(g.position, 'fixed'); assert.strictEqual(g.display, 'flex');
-    assert.strictEqual(declared(w, box).margin, 'auto', 'the box is centred without being cut off at the top when it is taller than the window'); assert.notStrictEqual(w.getComputedStyle(gate).display, 'none');
+    const g = declared(w, gate); only(g, 'overflow', 'auto', 'the start screen itself scrolls when the window is too low'); none(g, ['overflow-x', 'overflow-y'], 'the start screen scrolls'); only(g, 'position', 'fixed', 'the start screen covers the page'); only(g, 'display', 'flex', 'the start screen centres its box');
+    only(declared(w, box), 'margin', 'auto', 'the box is centred without being cut off at the top when it is taller than the window'); assert.notStrictEqual(w.getComputedStyle(gate).display, 'none');
   });
   // ---- 前回のフォルダを覚えている開始画面（「開始（フォルダに再接続）」）
   for (const answer of ['denied', 'throw']) await scenario('再接続できなかった（' + (answer === 'denied' ? '許可されなかった' : '許可の確認が失敗した') + '）: 理由が開始画面の欄に出て、開始画面は閉じない', async ({ A, q, view, press, w }) => {
