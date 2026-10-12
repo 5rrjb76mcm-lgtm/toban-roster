@@ -141,7 +141,9 @@
     });
     const p = chooseChain.then(run, run); chooseChain = p.catch(() => { }); return p;
   }
-  const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 4000); };
+  // 狭い・低い画面では通知欄の高さが固定で、長い文は欄の中でスクロールして読む。読んでいる間（ポインタが乗っている・フォーカスがある）は消さない
+  const toastHide = () => { const el = $("#toast"); if (el.matches && el.matches(":hover,:focus")) { toast.t = setTimeout(toastHide, 1000); return; } el.hidden = true; };
+  const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; el.scrollTop = 0; clearTimeout(toast.t); toast.t = setTimeout(toastHide, 4000); };
 
   // 施設の識別（設定の profile.id と月の profile_id）。相手（フォルダ・前月）のデータが別の施設のものかは、手元と相手の id の集合が 1 つでないことで判定する
   // 読み取りを待つ操作の見張り: 始めるときの年月と接続の世代を覚え、読み終えた後・当てる直前に変わっていないかを見る（変わっていたら古い読取結果を捨てる）。

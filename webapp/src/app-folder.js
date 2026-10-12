@@ -17,8 +17,36 @@
     else { cls = "dirty"; html = `${esc(T.t("未保存の変更あり"))}${A.dirHandle ? esc(T.t("（数秒後に自動保存）")) : ""} <button id="btnHeaderSave">${esc(T.t(A.dirHandle ? "今すぐ保存" : "接続して保存"))}</button>`; }
     // 内容が同じなら DOM を触らない。入力欄から「今すぐ保存」へクリックすると、欄の blur の change でここが呼ばれる。そのたびにボタンを作り直すと、押している途中のボタンが別の要素になりクリックが消える
     if (el.className !== cls || saveStateHtml !== html || (cls === "dirty" && !$("#btnHeaderSave"))) { el.className = cls; el.innerHTML = html; saveStateHtml = html; if (cls === "dirty") $("#btnHeaderSave").addEventListener("click", () => saveToFolder()); }
+    renderSaveFailures();
   }
   let saveStateHtml = null; // 前回描いた保存状態の中身
+  // ---------- 保存できなかった記録 ----------
+  // フォルダへの保存が失敗した・止めた理由は、通知（数秒で消え、次の通知で置き換わる）とは別に、利用者が確認するか、同じ保存先・同じ月への保存が成功するまで残す。
+  // 記録と解除は保存の処理が行う（失敗した箇所で noteSaveFailure、書込みが成功した箇所で clearSaveFailure）。通知の文面からは判定しない。
+  // 保存先（フォルダの参照）と月の組ごとに最新の 1 件を持つ。別の月・別の保存先への保存が成功しても消さない。text は表示言語の切替に追従するよう関数で持つ
+  const saveFailures = []; // { root, name, tag, at, text() }
+  let saveFailHtml = null; // 前回描いた中身（同じなら DOM を触らない。読んでいる途中のスクロール位置を保つ）
+  function noteSaveFailure(root, ym, text) {
+    const i = saveFailures.findIndex(f => f.root === root && f.tag === ym); if (i >= 0) saveFailures.splice(i, 1);
+    saveFailures.push({ root, name: root && root.name || "", tag: ym, at: new Date(), text }); renderSaveFailures();
+  }
+  // 保存先が同じかは参照の一致で見る。選び直して参照が替わった同じフォルダは isSameEntry で確かめ、確かめられなければ別の保存先として残す
+  async function clearSaveFailure(root, ym) {
+    for (const f of saveFailures.filter(f => f.tag === ym)) {
+      let same = f.root === root; if (!same) try { same = !!(f.root && root && typeof f.root.isSameEntry === "function" && await f.root.isSameEntry(root)); } catch (e) { same = false; }
+      const i = saveFailures.indexOf(f); if (same && i >= 0) saveFailures.splice(i, 1); // 確かめている間に同じ組の新しい失敗が入っていれば、それは別の記録なので残る
+    }
+    renderSaveFailures();
+  }
+  function renderSaveFailures() {
+    const el = $("#saveFail"); if (!el) return;
+    const loc = T.dateLocale(), html = saveFailures.length ? `<div id="saveFailMsg">${saveFailures.slice().reverse().map(f => `<p><b>${esc(T.t("保存できていません"))}</b> ${esc(f.tag)}・${esc(T.t("フォルダ"))} ${esc(f.name)}・${esc(f.at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }))} — ${esc(f.text())}</p>`).join("")}</div><button id="saveFailOk" type="button">${esc(T.t("確認しました"))}</button>` : "";
+    if (html === saveFailHtml) return;
+    saveFailHtml = html; el.innerHTML = html; el.hidden = !html;
+    const ok = $("#saveFailOk"); if (!ok) return;
+    ok.addEventListener("mousedown", ev => ev.preventDefault()); // 押しても入力中の欄からフォーカスを奪わない
+    ok.addEventListener("click", () => { saveFailures.length = 0; renderSaveFailures(); });
+  }
   const roleFixedIds = (m, day = null) => [...new Set(["day_oc_none", "night_oc_none"].flatMap(k => Object.entries(((m || {}).fixed || {})[k] || {}).filter(([d]) => day === null || +d === day).flatMap(([, v]) => [].concat(v || []).map(String))))].sort();
   const hasRoleFixed = m => roleFixedIds(m).length > 0;
   // 確認はこの読込内容・この時点の月/設定/保存先だけに有効。確認中の新しい編集には流用しない。
@@ -177,7 +205,7 @@
   // 保存前の読取・確認は、始めた接続先・月・同期基準にだけ有効。
   // フォルダ選択中に予約済みの自動保存が始まることもあるため、切替窓口の待機だけに頼らない。
   function saveGuard() {
-    const g = A.switchMark(), guard = { root: A.dirHandle, monthDirs: A.monthDirs.slice(), saveGen: A.saveGen };
+    const g = A.switchMark(), guard = { root: A.dirHandle, tag: A.tag(), monthDirs: A.monthDirs.slice(), saveGen: A.saveGen };
     guard.stale = () => A.switchStale(g) || A.dirHandle !== guard.root || A.saveGen !== guard.saveGen;
     return guard;
   }
@@ -191,7 +219,7 @@
     const f = await findMonthData(A.tag());
     if (guard.stale()) return false;
     guard.fileStamp = saveFileStamp(f); // 利用者が確認した（または自動統合の元になった）保存先の版
-    if (!f.data && f.corrupt) { A.toast(f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: A.tag(), err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error })); return false; }
+    if (!f.data && f.corrupt) { const why = () => f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: guard.tag, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error }); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
     noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
@@ -217,8 +245,8 @@
     if (!A.dirHandle || !A.isDirty()) return "skipped";
     const guard = saveGuard();
     if (!(await checkConflict(guard)) || guard.stale()) return "skipped";
-    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); return "saved"; }
-    catch (e) { renderHeader(); A.toast(T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
+    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); clearSaveFailure(guard.root, snap.tag); return "saved"; }
+    catch (e) { const why = () => T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return "failed"; }
   }
 
   // ---------- フォルダ（File System Access API） ----------
@@ -487,9 +515,10 @@
       await writeSave(root, prep, () => verifySaveFile(guard, prep.S.tag));
       recordSavedMonth(root, prep.S);
       commitSave(prep);
+      clearSaveFailure(root, prep.S.tag);
       A.toast(T.t("{tag} フォルダに保存しました", { tag: prep.S.tag }) + (prep.hasAsg ? prep.note : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
       return "saved";
-    } catch (e) { renderHeader(); A.toast(T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e })); return "failed"; }
+    } catch (e) { const why = () => T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return "failed"; }
   }
   // 勤務表・説明資料を出してよいかの確認（フォルダ保存と直接ダウンロードで共通。写し S に対して判定する）。どれかに当たれば止める文（stop）を返す
   // （順に: 入力を読めない／プラグインが欠けた・読めない・変換に失敗（計算ボタンと同じ判定）／計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。

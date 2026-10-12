@@ -38,8 +38,15 @@ table.calendar td.next{background:#f6f6ee;border:1px dashed #999} table.calendar
 table.calendar .dnum{font-weight:bold;font-size:14px} table.calendar .dnum small{font-weight:normal;color:#666;margin-left:3px}
 table.calendar select{font-size:12px;padding:0 1px;max-width:5.2em} table.calendar select.un{max-width:9em} table.calendar label.wish{margin:0;font-size:11px} table.calendar label.wish input{vertical-align:middle;margin:0 1px 0 4px}
 @media print{ .subnav{display:none} }
-/* Status occupies its own header row, never an overlay over navigation or inputs. */
-#toast{position:static;box-sizing:border-box;max-width:100%;padding:8px 12px;border:1px solid rgba(255,255,255,.5);border-radius:6px;background:#1f3a5f;color:#fff;white-space:normal;overflow-wrap:anywhere;pointer-events:none}
+/* 通知: 広くて高さのある画面では画面下部に重ねて出す（本文の位置を動かさない。クリックは下の要素へ通す）。
+   狭い・低い画面での置き方は、ヘッダーを流す条件と同じ @media の側に書く */
+#toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);box-sizing:border-box;background:#1f3a5f;color:#fff;padding:8px 16px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:50;max-width:80%;overflow-wrap:break-word;pointer-events:none}
+/* 保存できなかった記録: 通知と同じ場所に、確認するか同じ保存先・月の保存が成功するまで残す。通知が出ている間は通知を見せ、通知が消えると戻る */
+#saveFail{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);box-sizing:border-box;display:flex;align-items:flex-start;gap:10px;background:#8c1d18;color:#fff;padding:8px 10px 8px 16px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:50;max-width:80%;overflow-wrap:break-word}
+#saveFailMsg{flex:1 1 auto;min-width:0;line-height:1.5;max-height:6em;overflow-y:auto;overscroll-behavior:contain} #saveFailMsg p{margin:0} #saveFailMsg p+p{margin-top:4px}
+#saveFail button{flex:0 0 auto;font-size:12px;padding:2px 8px}
+#toast:not([hidden])+#saveFail{display:none}
+@media print{#toastRow{display:none!important}}
 #folderBar{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap} #toolbar{row-gap:6px}
 details.box summary{cursor:pointer;font-weight:bold}
 
@@ -86,7 +93,20 @@ details.box summary{cursor:pointer;font-weight:bold}
 @media (max-width:1080px){header{padding:6px 10px} header .hrow{gap:8px} header h1{font-size:16px} header small{margin-left:4px} #monthTitle{font-size:16px;padding:4px 8px} #monthTitle select,#monthTitle .editing-month{font-size:16px} #outputs{padding:4px 6px;gap:4px}}
 /* Small/short viewports must be able to scroll the entire header out of the way.
    Do not shrink the year/month text further or hide controls to fit the header. */
-@media screen and (max-width:800px), screen and (max-height:640px){header{position:static}}
+@media screen and (max-width:800px), screen and (max-height:640px){
+  header{position:static}
+  /* 通知欄はヘッダーのすぐ下に、通知が無いときも同じ高さで確保する（通知の出入りや文の長さで本文の位置を変えない）。
+     欄に収まらない文は欄の中でスクロールして読む */
+  #toastRow{box-sizing:content-box;height:calc(3em + 10px);padding:0 16px 6px;background:#1f3a5f;box-shadow:0 2px 3px -1px rgba(0,0,0,.3)}
+  #toast{position:static;transform:none;z-index:auto;max-width:none;height:100%;padding:4px 10px;border:1px solid rgba(255,255,255,.5);box-shadow:none;line-height:1.5;overflow-wrap:anywhere;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto}
+  #saveFail{position:static;transform:none;z-index:auto;max-width:none;height:100%;padding:4px 6px 4px 10px;border:1px solid rgba(255,255,255,.6);box-shadow:none;line-height:1.5;overflow-wrap:anywhere}
+  #saveFailMsg{max-height:none;height:100%}
+  /* 続きがあることが分かるように、収まらないときはスクロールバーを常に見せる（重ねて隠れる種類のスクロールバーにしない） */
+  #toast::-webkit-scrollbar{width:8px} #toast::-webkit-scrollbar-thumb{background:rgba(255,255,255,.65);border-radius:4px}
+}
+#saveFailMsg::-webkit-scrollbar{width:8px} #saveFailMsg::-webkit-scrollbar-thumb{background:rgba(255,255,255,.65);border-radius:4px}
+@media screen and (max-width:1080px){#toastRow{padding-left:10px;padding-right:10px}}
+@media screen and (max-width:480px){#toastRow{height:calc(4.5em + 10px)}}
 @media screen and (max-width:800px){
   header .hrow>*,#monthTitle,#outputs,#fileCluster,#folderBar,#saveState,#undoBox{min-width:0;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}
   #monthTitle{flex-wrap:wrap}

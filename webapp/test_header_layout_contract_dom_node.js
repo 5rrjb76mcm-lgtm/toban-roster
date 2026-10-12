@@ -54,16 +54,43 @@ try {
     assert.equal(toast.hidden,false); assert.equal(toast.getAttribute('role'),'status');
     assert.equal(toast.getAttribute('aria-live'),'polite'); assert.equal(toast.getAttribute('aria-atomic'),'true');
     assert.equal(w.document.activeElement,q('#monthSel'),'toast must not steal focus');
-    assert.equal(toast.parentElement,q('header')); assert.equal(q('header').lastElementChild,toast);
+    // The status lives in its own row directly after the header (outside the header's stacking
+    // context, so the wide-screen overlay keeps its place above dialogs) and before the content.
+    const row=q('#toastRow');
+    // It shares the row with the kept save-failure record, which shows only while no toast is visible.
+    const kept=q('#saveFail');
+    assert.equal(toast.parentElement,row); assert.equal(kept.parentElement,row); assert.equal(row.children.length,2); assert.equal(row.hidden,false);
+    assert.equal(toast.nextElementSibling,kept); assert.equal(kept.hidden,true,'no record unless a save failed'); assert.equal(kept.children.length,0);
+    assert.equal(declared('#toast:not([hidden])+#saveFail',1280,960).display,'none','a visible toast takes the place of the record');
+    assert.equal(row.previousElementSibling,q('header')); assert.equal(row.nextElementSibling,q('main'));
+    assert.equal(toast.closest('header'),null);
     assert(q('nav').compareDocumentPosition(toast) & w.Node.DOCUMENT_POSITION_FOLLOWING);
-    assert.equal(toast.querySelector('button,a,input,select,[tabindex]'),null);
+    assert.equal(toast.querySelector('button,a,input,select,[tabindex]'),null); assert.equal(toast.getAttribute('tabindex'),null);
     for (const tab of w.document.querySelectorAll('nav .tab')) { assert(!tab.disabled); assert(!tab.hidden); }
-    for (const [width,height] of [[320,568],[375,667],[768,1024],[1280,960],[1280,568],[1024,768]]) {
-      const header=declared('header',width,height), status=declared('#toast',width,height);
-      assert.equal(header.position,width<=800 || height<=640 ? 'static' : 'sticky');
-      assert.equal(status.position,'static'); assert.equal(status['pointer-events'],'none');
-      assert.equal(status['max-width'],'100%'); assert.equal(status['overflow-wrap'],'anywhere');
-      assert(!status.transform && !status.bottom && !status.top,'status must remain in normal flow');
+    for (const [width,height] of [[320,568],[375,667],[480,800],[481,800],[768,1024],[800,1024],[801,1024],[1280,960],[1280,568],[1280,640],[1280,641],[1024,768]]) {
+      const header=declared('header',width,height), status=declared('#toast',width,height), statusRow=declared('#toastRow',width,height);
+      const small=width<=800 || height<=640;
+      assert.equal(header.position,small ? 'static' : 'sticky');
+      if (small) {
+        // Reserved row: the same height with or without a message, whatever its length.
+        assert.equal(statusRow.height,width<=480 ? 'calc(4.5em + 10px)' : 'calc(3em + 10px)','reserved status row height');
+        assert.equal(statusRow['box-sizing'],'content-box'); assert(!statusRow.display,'reserved row must stay rendered');
+        assert.equal(status.position,'static'); assert.equal(status.transform,'none'); assert.equal(status.height,'100%');
+        assert.equal(status['overflow-y'],'auto','long text is read by scrolling inside the row, not cut off');
+        assert.equal(status['pointer-events'],'auto'); assert.equal(status['max-width'],'none'); assert.equal(status['overflow-wrap'],'anywhere');
+        // The kept record fills the same row: same height, its text scrolls inside, the button stays beside it.
+        const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
+        assert.equal(record.position,'static'); assert.equal(record.transform,'none'); assert.equal(record.height,'100%'); assert.equal(record.display,'flex');
+        assert.equal(recordText.height,'100%'); assert.equal(recordText['max-height'],'none'); assert.equal(recordText['overflow-y'],'auto');
+      } else {
+        // Overlay near the bottom of the viewport: takes no space and lets clicks through.
+        assert(!statusRow.height && !statusRow['padding-top'] && !statusRow['padding-bottom'],'no reserved row on large viewports');
+        assert.equal(status.position,'fixed'); assert.equal(status.bottom,'70px'); assert.equal(status['z-index'],'50');
+        assert.equal(status['pointer-events'],'none'); assert.equal(status['max-width'],'80%'); assert(!status.height && !status['overflow-y']);
+        const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
+        assert.equal(record.position,'fixed'); assert.equal(record.bottom,'70px'); assert.equal(record['z-index'],'50'); assert(!record.height);
+        assert.equal(recordText['max-height'],'6em'); assert.equal(recordText['overflow-y'],'auto');
+      }
       const select=declared('#monthTitle select',width,height);
       assert.equal(select['font-size'],width<=1080 ? '16px' : width<=1200 ? '17px' : '18px');
       const editing=declared('#monthTitle .editing-month',width,height);
@@ -81,7 +108,8 @@ try {
       cases++;
     }
     toast.hidden=true;
-    assert.equal(w.getComputedStyle(toast).display,'none','hidden status consumes no row');
+    assert.equal(w.getComputedStyle(toast).display,'none','hidden status is not rendered or announced');
+    assert.notEqual(w.getComputedStyle(row).display,'none','the row that reserves the space stays');
   }
   // Real person selection and an in-progress (not yet committed) calendar edit.
   // Fire the production toast hide callback deterministically, without waiting 4s.
@@ -109,6 +137,17 @@ try {
       assert.equal(q('#docSel').value,'Synthetic Beta'); assert.equal(q('#doctorPane').dataset.doctor,'Synthetic Beta');
       assert.equal(JSON.stringify(A.state.month),snapshot,'hiding toast must not mutate calendar');
     }
+    // While the status is being read (pointer over it, or keyboard focus in it) the hide
+    // callback re-arms instead of hiding; a new message starts from the top of the row.
+    const el=q('#toast'), matches=el.matches; let reading=true, asked='';
+    el.matches=sel=>{ asked=sel; return reading; };
+    try {
+      A.toast('Synthetic long status'); hideToast(); const again=hideToast;
+      assert.equal(el.hidden,false,'not hidden while being read'); assert(asked.includes(':hover') && asked.includes(':focus'));
+      reading=false; again(); assert.equal(el.hidden,true,'hidden once no longer being read');
+      el.scrollTop=30; A.toast('Synthetic next status'); assert.equal(el.scrollTop,0,'next status starts from the top');
+      assert.equal(el.hidden,false); hideToast(); assert.equal(el.hidden,true);
+    } finally { el.matches=matches; }
   } finally { w.setTimeout=setTimer; }
-  console.log(`PASS header/status DOM and responsive CSS contracts (${cases} JP/EN viewport policies; visible/hidden notification preserves calendar focus/input/person; no browser geometry measured)`);
+  console.log(`PASS header/status DOM and responsive CSS contracts (${cases} JP/EN viewport policies; overlay on large viewports, reserved fixed-height row otherwise; visible/hidden notification preserves calendar focus/input/person; no browser geometry measured)`);
 } finally { dom.window.close(); }

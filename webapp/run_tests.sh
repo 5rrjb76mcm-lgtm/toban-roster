@@ -59,6 +59,7 @@ run test_save_peer_update_node.js
 run test_save_local_input_node.js
 run test_save_catalog_node.js
 run test_save_catalog_dom_node.js
+run test_save_failure_record_dom_node.js
 run test_import_previous_node.js
 run test_import_previous_oc_conflict_node.js "$HP"
 run test_editing_month_header_node.js

@@ -289,6 +289,8 @@
     "未保存の変更あり": "Unsaved changes",
     "（数秒後に自動保存）": " (autosave in a few seconds)",
     "今すぐ保存": "Save now",
+    "保存できていません": "Not saved",
+    "確認しました": "Got it",
     "接続して保存": "Connect and save",
     "フォルダ": "folder",
     "ダウンロード": "download",
