@@ -63,7 +63,7 @@ async function delayedSave(f, mode, during, generation = 1) {
 let passed = 0, failed = 0, finished = false;
 // The run must reach its end: several cases wait for a gate inside the save (the document generator); if a change to the save code
 // makes that gate unreachable, Node would simply drain the event loop and exit 0 without running the remaining cases.
-const EXPECTED_CASES = 13;
+const EXPECTED_CASES = 14;
 process.on('exit', () => { if (!finished || passed + failed !== EXPECTED_CASES) { console.error(`NOT COMPLETED: ${passed + failed}/${EXPECTED_CASES} cases ran, finished=${finished}`); process.exitCode = 1; } else if (failed) process.exitCode = 1; });
 async function test(label, fn) { try { await fn(); passed++; console.log('ok ' + label); } catch (e) { failed++; console.error('FAIL ' + label + ': ' + e.message.split('\n')[0]); } }
 (async () => {
@@ -172,6 +172,23 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
     const peer = JSON.parse(f.files.get(dataName)); peer.month.holidays = [3]; peer.saved_at = '2026-10-03T00:00:00.000Z'; f.files.set(dataName, JSON.stringify(peer));
     T.makeDocx = async () => new Blob(['synthetic roster']); f.toasts.length = 0; assert.strictEqual(await A.autosaveJson(), 'saved'); assert.ok(f.toasts.some(t => /自動で統合しました/.test(t)));
     assert.deepStrictEqual(A.state.month.holidays, [3], 'the peer edit is merged'); assert.deepStrictEqual(A.state.month.doc_versions[0].fp, mine, 'own newer completion info is kept'); assert.deepStrictEqual(folderFp(f), [mine]);
+  });
+  // Known limit of the merge: it does not read the documents, so it cannot tell which completion info describes them. When older info is saved over the folder
+  // (an older generation of the month data written back), this window takes it like any other change of the peer. What must still hold: no document is overwritten,
+  // none is taken for the finished version, and the cost is one extra version, once.
+  await test('two windows: older completion info saved over the folder costs one extra version on the next unchanged save, and overwrites nothing', async () => {
+    const f = setup(); assert.strictEqual(await A.saveToFolder(), 'saved'); const old = clone(A.state.month.doc_versions[0].fp);
+    f.files.delete(roster1); T.makeDocx = async () => new Blob(['synthetic roster, written on another day']); A.state.result.seconds = 2;
+    assert.strictEqual(await A.saveToFolder(), 'saved'); const fresh = clone(A.state.month.doc_versions[0].fp); assert.notDeepStrictEqual(fresh, old); assert.deepStrictEqual(folderFp(f), [fresh]); // this window, its base and the folder all describe the files
+    // A peer writes month data that still carries the earlier completion info over the folder (the output content is the same, so this window stays on the same-version path).
+    const peer = JSON.parse(f.files.get(dataName)); peer.month.doc_versions[0].fp = clone(old); peer.saved_at = '2026-10-04T00:00:00.000Z'; f.files.set(dataName, JSON.stringify(peer));
+    T.makeDocx = async () => new Blob(['synthetic roster']); A.state.result.seconds = 3; f.toasts.length = 0; assert.strictEqual(await A.autosaveJson(), 'saved'); assert.ok(f.toasts.some(t => /自動で統合しました/.test(t)));
+    assert.deepStrictEqual(A.state.month.doc_versions[0].fp, old, 'the merge took the peer change, which is the older info here');
+    const a = f.files.get(roster1), b = f.files.get(report1), w = f.writes.length; f.toasts.length = 0; A.state.result.seconds = 4; assert.ok((await A.prepareSave()).reuse, 'the save is on the same-version path'); assert.strictEqual(await A.saveToFolder(), 'saved');
+    assert.strictEqual(f.files.get(roster1), a, 'the roster of version 1 is not overwritten'); assert.strictEqual(f.files.get(report1), b); assert.deepStrictEqual(stateVers(), [1, 2], 'output again under a free number');
+    assert.match(f.toasts[f.toasts.length - 1], /勤務表 v2 を追加。このフォルダの v1 は別の内容の可能性があるので上書きしていません/); assert.doesNotMatch(f.toasts[f.toasts.length - 1], /v1 のまま/);
+    assert.deepStrictEqual(f.writes.slice(w).filter(isDoc).sort(), [A.FILES.roster('202611', 2, '確認版'), A.FILES.report('202611', 2, '確認版')].sort());
+    const w2 = f.writes.length; A.state.result.seconds = 5; f.toasts.length = 0; assert.strictEqual(await A.saveToFolder(), 'saved'); assert.deepStrictEqual(f.writes.slice(w2).filter(isDoc), [], 'only once'); assert.match(f.toasts[f.toasts.length - 1], /v2 のまま/);
   });
   // ---- The reported sequence for the new-version path: the previous generation of the month data is loaded again and saved over the folder's data.
   await test('manual: restoring the previous month data and saving over the folder does not overwrite a roster edited outside the app', async () => {

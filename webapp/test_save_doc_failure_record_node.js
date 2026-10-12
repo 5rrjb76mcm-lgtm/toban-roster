@@ -231,10 +231,17 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     assert.match(lastToast(), /勤務表 v2 を追加。このフォルダの v1 は別の内容の可能性があるので上書きしていません/); assert.ok(Array.isArray(v2.fp)); assert.deepStrictEqual(records(), []);
     w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), []); assert.match(lastToast(), /v2 のまま/);
   });
-  await scenario('新しい版として書く経路: 保存先に同じ内容の版の記録があり、帳票があるのに読めないときは、上書きせず保存を止める', async () => {
-    const { dir, tag } = await withV1(), [docx1] = V1(tag), a = dir.files.get(docx1); forgetVersions(dir, tag); const data = dir.files.get(A.FILES.data(tag)); dir.unreadable = n => n === docx1 ? 'synthetic unreadable document' : null;
-    const w = dir.writes.length; assert.strictEqual(await manual(), 'failed'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'no document is written'); assert.strictEqual(dir.files.get(docx1), a); assert.strictEqual(dir.files.get(A.FILES.data(tag)), data, 'the month data is not written');
-    const r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DATA); assert.match(r[0], /synthetic unreadable document/); acknowledge();
+  await scenario('新しい版として書く経路: 帳票があるのに読めないとき、照らすために読む必要があれば保存を止め、読むまでもなく確かめられなければ空いている番号で出す（どちらも上書きしない）', async () => {
+    const stopped = async (which, prepare) => { const { dir, tag } = await withV1(), pair = V1(tag), before = pair.map(n => dir.files.get(n)); if (prepare) prepare(dir, pair); forgetVersions(dir, tag); const data = dir.files.get(A.FILES.data(tag)); dir.unreadable = n => n === pair[which] ? 'synthetic unreadable document' : null;
+      const w = dir.writes.length; assert.strictEqual(await manual(), 'failed'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'no document is written'); assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before); assert.strictEqual(dir.files.get(A.FILES.data(tag)), data, 'the month data is not written');
+      const r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DATA); assert.match(r[0], /synthetic unreadable document/); acknowledge(); };
+    await stopped(0); // 保存先の記録に完了情報がある。勤務表が読めない
+    await stopped(1); // 勤務表は記録と合う。説明資料が読めない
+    const proceeds = async (which, prepare) => { const { dir, tag } = await withV1(), pair = V1(tag); prepare(dir, tag, pair); const before = pair.map(n => dir.files.get(n)); forgetVersions(dir, tag); dir.unreadable = n => n === pair[which] ? 'synthetic unreadable document' : null;
+      const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [2]); const v2 = A.state.month.doc_versions[0]; assert.deepStrictEqual(docWritesSince(dir, w).sort(), [v2.docx, v2.html].sort());
+      assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before, 'the existing documents are not overwritten'); assert.match(lastToast(), /v1 は別の内容の可能性があるので上書きしていません/); assert.deepStrictEqual(records(), []); };
+    await proceeds(1, (dir, tag, pair) => dir.files.set(pair[0], dir.files.get(pair[0]) + ' (edited)')); // 勤務表が記録と合わない時点で確かめられない。読めない説明資料は読まない
+    await proceeds(0, (dir, tag) => { const o = JSON.parse(dir.files.get(A.FILES.data(tag))); delete o.month.doc_versions[0].fp; dir.files.set(A.FILES.data(tag), JSON.stringify(o)); }); // 記録に完了情報が無い。帳票は読まない
   });
   await scenario('書いた直後に読み直して確かめる: フォルダにある中身が書いた内容と違えば完了とせず、版の記録にも入れない', async () => {
     const dir = folder('synthetic-folder'), tag = open(dir); dir.mangle = (n, text) => /\.html$/.test(n) ? text.slice(0, 5) : text; edit('synthetic edit');
