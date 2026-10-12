@@ -23,16 +23,18 @@
   // ---------- 保存できなかった記録 ----------
   // フォルダへの保存が失敗した・止めた理由は、通知（数秒で消え、次の通知で置き換わる）とは別に、利用者が確認するか、同じ保存先・同じ月への保存が成功するまで残す。
   // 記録と解除は保存の処理が行う（失敗した箇所で noteSaveFailure、書込みが成功した箇所で clearSaveFailure）。通知の文面からは判定しない。
-  // 保存先（フォルダの参照）と月の組ごとに最新の 1 件を持つ。別の月・別の保存先への保存が成功しても消さない。text は表示言語の切替に追従するよう関数で持つ
-  const saveFailures = []; // { root, name, tag, at, text() }
+  // 保存先（フォルダの参照）・月・種類の組ごとに最新の 1 件を持つ。別の月・別の保存先への保存が成功しても消さない。text は表示言語の切替に追従するよう関数で持つ
+  // 種類は 2 つ: "data"＝月データの保存、"docs"＝勤務表・説明資料の出力。月データは保存できたが帳票だけ出せなかった、という状態を別に持ち、
+  // 月データの保存の成功・失敗（帳票を出さない自動保存を含む）で帳票の記録を消したり置き換えたりしない
+  const saveFailures = []; // { root, name, tag, kind, at, text() }
   let saveFailHtml = null; // 前回描いた中身（同じなら DOM を触らない。読んでいる途中のスクロール位置を保つ）
-  function noteSaveFailure(root, ym, text) {
-    const i = saveFailures.findIndex(f => f.root === root && f.tag === ym); if (i >= 0) saveFailures.splice(i, 1);
-    saveFailures.push({ root, name: root && root.name || "", tag: ym, at: new Date(), text }); renderSaveFailures();
+  function noteSaveFailure(root, ym, kind, text) {
+    const i = saveFailures.findIndex(f => f.root === root && f.tag === ym && f.kind === kind); if (i >= 0) saveFailures.splice(i, 1);
+    saveFailures.push({ root, name: root && root.name || "", tag: ym, kind, at: new Date(), text }); renderSaveFailures();
   }
   // 保存先が同じかは参照の一致で見る。選び直して参照が替わった同じフォルダは isSameEntry で確かめ、確かめられなければ別の保存先として残す
-  async function clearSaveFailure(root, ym) {
-    for (const f of saveFailures.filter(f => f.tag === ym)) {
+  async function clearSaveFailure(root, ym, kind) {
+    for (const f of saveFailures.filter(f => f.tag === ym && f.kind === kind)) {
       let same = f.root === root; if (!same) try { same = !!(f.root && root && typeof f.root.isSameEntry === "function" && await f.root.isSameEntry(root)); } catch (e) { same = false; }
       const i = saveFailures.indexOf(f); if (same && i >= 0) saveFailures.splice(i, 1); // 確かめている間に同じ組の新しい失敗が入っていれば、それは別の記録なので残る
     }
@@ -40,7 +42,10 @@
   }
   function renderSaveFailures() {
     const el = $("#saveFail"); if (!el) return;
-    const loc = T.dateLocale(), html = saveFailures.length ? `<div id="saveFailMsg">${saveFailures.slice().reverse().map(f => `<p><b>${esc(T.t("保存できていません"))}</b> ${esc(f.tag)}・${esc(T.t("フォルダ"))} ${esc(f.name)}・${esc(f.at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }))} — ${esc(f.text())}</p>`).join("")}</div><button id="saveFailOk" type="button">${esc(T.t("確認しました"))}</button>` : "";
+    // 記録が複数あるときは、欄をスクロールしなくても種類と件数が分かるよう、先頭に内訳を出す（欄の高さは固定なので、2 件目以降は下に続く）
+    const count = k => saveFailures.filter(f => f.kind === k).length, parts = [["data", "月データの保存 {n} 件"], ["docs", "帳票の出力 {n} 件"]].filter(([k]) => count(k)).map(([k, key]) => T.t(key, { n: count(k) }));
+    const sum = saveFailures.length > 1 ? `<div class="sum">${esc(T.t("未解決 {n} 件（{list}）。下に続きます", { n: saveFailures.length, list: parts.join(T.listSep()) }))}</div>` : "";
+    const loc = T.dateLocale(), html = saveFailures.length ? `<div id="saveFailMsg">${sum}${saveFailures.slice().reverse().map(f => `<p><b>${esc(T.t(f.kind === "docs" ? "帳票の出力が完了していません" : "保存できていません"))}</b> ${esc(f.tag)}・${esc(T.t("フォルダ"))} ${esc(f.name)}・${esc(f.at.toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" }))} — ${esc(f.text())}</p>`).join("")}</div><button id="saveFailOk" type="button">${esc(T.t("確認しました"))}</button>` : "";
     if (html === saveFailHtml) return;
     saveFailHtml = html; el.innerHTML = html; el.hidden = !html;
     const ok = $("#saveFailOk"); if (!ok) return;
@@ -219,7 +224,7 @@
     const f = await findMonthData(A.tag());
     if (guard.stale()) return false;
     guard.fileStamp = saveFileStamp(f); // 利用者が確認した（または自動統合の元になった）保存先の版
-    if (!f.data && f.corrupt) { const why = () => f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: guard.tag, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error }); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return false; }
+    if (!f.data && f.corrupt) { const why = () => f.unreadable ? T.t("フォルダの {file} を確かめられません（{err}）。相手の内容を上書きしないよう保存を止めました。入力はブラウザ内に残っています。もう一度保存してください", { file: f.corrupt, err: f.error }) : f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。上書きしないよう保存を止めました。ファイルを退避するか正しい場所に移してから保存してください", { file: f.corrupt, tag: guard.tag, err: f.error }) : T.t("フォルダの {file} が壊れていて読めません（{err}）。上書きしないよう保存を止めました。ファイルを退避してから保存してください", { file: f.corrupt, err: f.error }); noteSaveFailure(guard.root, guard.tag, "data", why); A.toast(why()); return false; }
     if (!f.data) return true; // フォルダにまだ無い月
     noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
@@ -245,8 +250,8 @@
     if (!A.dirHandle || !A.isDirty()) return "skipped";
     const guard = saveGuard();
     if (!(await checkConflict(guard)) || guard.stale()) return "skipped";
-    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); clearSaveFailure(guard.root, snap.tag); return "saved"; }
-    catch (e) { const why = () => T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return "failed"; }
+    try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); clearSaveFailure(guard.root, snap.tag, "data"); return "saved"; } // 自動保存は月データだけを書く。帳票の記録には触れない
+    catch (e) { const why = () => T.t("自動保存に失敗しました: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, "data", why); A.toast(why()); return "failed"; }
   }
 
   // ---------- フォルダ（File System Access API） ----------
@@ -515,10 +520,14 @@
       await writeSave(root, prep, () => verifySaveFile(guard, prep.S.tag));
       recordSavedMonth(root, prep.S);
       commitSave(prep);
-      clearSaveFailure(root, prep.S.tag);
+      clearSaveFailure(root, prep.S.tag, "data");
+      // 帳票: 生成・書込みが失敗していれば記録し、今回の出力対象の版がこのフォルダに揃った（書けた、または同じ版だと記録で確かめられた帳票が両方ある）ときだけ記録を消す。
+      // 出力前の確認で出さなかった（未計算・検算の違反・プラグインの欠落など）ときは、失敗として記録もせず、前の記録も消さない
+      if (prep.docError) { const err = prep.docError; noteSaveFailure(root, prep.S.tag, "docs", () => T.t("勤務表・説明資料の書き出しが完了しませんでした: {err}", { err: err && err.message || err })); }
+      else if (prep.docsWritten || prep.docsDone) clearSaveFailure(root, prep.S.tag, "docs");
       A.toast(T.t("{tag} フォルダに保存しました", { tag: prep.S.tag }) + (prep.hasAsg ? prep.note : T.t("（データのみ。計算後に保存すると勤務表と説明資料も出ます）")));
       return "saved";
-    } catch (e) { const why = () => T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, why); A.toast(why()); return "failed"; }
+    } catch (e) { const why = () => T.t("フォルダに保存できませんでした: {err}。入力はブラウザ内に残っています", { err: e && e.message || e }); renderHeader(); noteSaveFailure(guard.root, guard.tag, "data", why); A.toast(why()); return "failed"; }
   }
   // 勤務表・説明資料を出してよいかの確認（フォルダ保存と直接ダウンロードで共通。写し S に対して判定する）。どれかに当たれば止める文（stop）を返す
   // （順に: 入力を読めない／プラグインが欠けた・読めない・変換に失敗（計算ボタンと同じ判定）／計算した後にプラグインが変わった（結果の印 result.plugins と今の印。印の無い旧形式の結果は通す）／検算に違反がある・検算が完了しない）。
@@ -553,7 +562,7 @@
           prep.docs = await makeDocs(S, P, ver, label);
           prep.version = { ver, at, label, sig: vsig, docx: prep.docs[0].name, html: prep.docs[1].name }; // 版の記録は、書けたときだけ writeSave が写しに足す
           prep.note = T.t("（勤務表 v{v} を追加）", { v: ver });
-        } catch (e) { prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
+        } catch (e) { prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
       } else { prep.note = T.t("（勤務表は v{v} のまま。出力に関わる変更なし）", { v: last.ver }); prep.reuse = { ver: last.ver, label, P }; } // 同じ版。保存先の記録が同じ内容だと確かめられて帳票もあれば再利用、無ければ writeSave が同じ内容・版で書き直す
     }
     return prep;
@@ -582,18 +591,19 @@
     const freeVer = async label => { let v = Math.max(0, ...prevVers.map(x => +x.ver || 0), ...(prep.S.month.doc_versions || []).map(x => +x.ver || 0)) + 1; while (await taken(v, label)) v++; return v; };
     if (prep.docs.length && prep.version && await taken(prep.version.ver, prep.label)) {
       try { const old = prep.version.ver, ver = await freeVer(prep.label); prep.docs = await makeDocs(prep.S, prep.P, ver, prep.label); prep.version = Object.assign({}, prep.version, { ver, docx: prep.docs[0].name, html: prep.docs[1].name }); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容なので上書きしていません）", { v: ver, old }); }
-      catch (e) { prep.docs = []; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
+      catch (e) { prep.docs = []; prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
     if (prep.docs.length) {
       try { if (verify) await verify(); for (const f of prep.docs) await writeFile(dir, f.name, f.blob); prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); }
-      catch (e) { if (e && e.saveChanged) throw e; prep.docsWritten = false; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); }
+      catch (e) { if (e && e.saveChanged) throw e; prep.docsWritten = false; prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } // 片方だけ書けた場合もここ（完了ではない）
     } else if (prep.reuse) { // 同じ版でも、保存先（別のフォルダに移した・消した）に勤務表か説明資料が無ければ、同じ内容・同じ版で書き直す。その番号が別の内容の帳票に使われている（かもしれない）なら、再利用も上書きもせず新しい番号で書く
       const { ver, label, P } = prep.reuse;
       if (await taken(ver, label)) {
         try { const nv = await freeVer(label), docs = await makeDocs(prep.S, P, nv, label); if (verify) await verify(); for (const f of docs) await writeFile(dir, f.name, f.blob); prep.version = { ver: nv, at: prep.at, label, sig: prep.vsig, docx: docs[0].name, html: docs[1].name }; prep.docsWritten = true; (prep.S.month.doc_versions ||= []).push(prep.version); prep.note = T.t("（勤務表 v{v} を追加。このフォルダの v{old} は別の内容の可能性があるので上書きしていません）", { v: nv, old: ver }); }
-        catch (e) { if (e && e.saveChanged) throw e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
+        catch (e) { if (e && e.saveChanged) throw e; prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
       else if (!(await allExist(ver, label))) {
-        try { const docs = await makeDocs(prep.S, P, ver, label); if (verify) await verify(); for (const f of docs) await writeFile(dir, f.name, f.blob); prep.note = T.t("（勤務表 v{v} がこのフォルダに無かったので書き直しました）", { v: ver }); }
-        catch (e) { if (e && e.saveChanged) throw e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
+        try { const docs = await makeDocs(prep.S, P, ver, label); if (verify) await verify(); for (const f of docs) await writeFile(dir, f.name, f.blob); prep.docsDone = true; prep.note = T.t("（勤務表 v{v} がこのフォルダに無かったので書き直しました）", { v: ver }); }
+        catch (e) { if (e && e.saveChanged) throw e; prep.docError = e; prep.note = T.t("（勤務表と説明資料は書き出せませんでした: {err}。月データは保存しました）", { err: e && e.message || e }); } }
+      else prep.docsDone = true; // ここに来るのは、保存先の版の記録でこの番号＝今回の内容と確かめられ（taken でない）、勤務表と説明資料が両方ある（allExist）とき。ファイルがあるだけでは来ない
     }
     prep.S.refresh(); // 版の記録（書けたときだけ）を反映した署名と中身
     if (verify) await verify(); // 版番号の変更・不足帳票の再生成にも await があるため、月JSONの上書き直前にも照合

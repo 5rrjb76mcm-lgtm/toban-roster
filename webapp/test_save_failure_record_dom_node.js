@@ -54,8 +54,12 @@ async function makeApp(){
   return {dom,w,A,T:w.T,root,q,change,auto,manual,answer,rec,connect,settle,errors,hide:()=>{assert(hideToast,'toast armed its hide timer');const fn=hideToast;hideToast=null;fn();}};
 }
 let cases=0;
-process.on('exit',()=>{if(cases!==8&&!process.exitCode){console.error('NOT COMPLETED: '+cases+'/8 (a step is still waiting, for example an unanswered dialog)');process.exitCode=1;}});
+const total=17;
+process.on('exit',()=>{if(cases!==total&&!process.exitCode){console.error('NOT COMPLETED: '+cases+'/'+total+' (a step is still waiting, for example an unanswered dialog)');process.exitCode=1;}});
 async function scenario(name, fn){const app=await makeApp();try{await fn(app);assert.deepStrictEqual(app.errors,[],'no page error');cases++;console.log('PASS '+name);}finally{app.dom.window.close();}}
+const NONE={shown:false,text:'',items:[],button:false};
+// 保存先に「別の施設」の月データを置く（自動統合の対象にならず、必ず確認の画面が出る）
+async function plantOtherFacility({root,change,auto}){change('Synthetic first save');assert.strictEqual(await auto(),'saved');const dir=root.dirs.get('202611'),o=JSON.parse(dir.files.get('202611_data.json'));o.rules.profile.id='synthetic-other-facility';o.month.profile_id='synthetic-other-facility';o.month.notes='Synthetic peer data';o.saved_at='2026-10-01T00:00:00.000Z';dir.files.set('202611_data.json',JSON.stringify(o));return dir;}
 (async()=>{
   await scenario('自動保存の失敗は記録に残り、別の通知・通知の消去でも失われず、同じ保存先・同じ月の保存成功で消える', async({A,root,q,change,auto,rec,hide,w})=>{
     assert.deepStrictEqual(rec(),{shown:false,text:'',items:[],button:false});
@@ -108,8 +112,8 @@ async function scenario(name, fn){const app=await makeApp();try{await fn(app);as
     assert(root.dirs.get('202612').files.has('202612_data.json'));assert.strictEqual(q('#saveState').className,'saved');
     assert.deepStrictEqual(rec().items,kept,'success for another month keeps the record');assert.match(rec().items[0],/202611/);
     root.fail='Synthetic December denied';change('Synthetic December draft 2');assert.strictEqual(await auto(),'failed');
-    let r=rec();assert.strictEqual(r.items.length,2,'one record per folder and month');assert.match(r.items[0],/202612.*Synthetic December denied/);assert.match(r.items[1],/202611.*Synthetic close denied/);
-    root.fail=null;await manual();r=rec();assert.strictEqual(r.items.length,1);assert.match(r.items[0],/202611/,'December success clears only December');
+    let r=rec();assert.strictEqual(r.items.length,2,'one record per folder and month');assert.strictEqual(q('#saveFailMsg .sum').textContent,'未解決 2 件（月データの保存 2 件）。下に続きます');assert.match(r.items[0],/202612.*Synthetic December denied/);assert.match(r.items[1],/202611.*Synthetic close denied/);
+    root.fail=null;await manual();r=rec();assert.strictEqual(r.items.length,1);assert.match(r.items[0],/202611/,'December success clears only December');assert.strictEqual(q('#saveFailMsg .sum'),null);
     const back=A.transition('month',()=>A.onMonthChange(2026,11));await answer(/空の月として作成/);await back;assert.strictEqual(A.tag(),'202611');
     change('Synthetic November again');await manual();assert.strictEqual(rec().shown,false,'success for the failed month clears it');
   });
@@ -138,5 +142,51 @@ async function scenario(name, fn){const app=await makeApp();try{await fn(app);as
     T.setLang('en');A.renderHeader();const r=rec();
     assert.match(r.items[0],/Not saved/);assert.match(r.items[0],/Autosave failed: Synthetic close denied/);assert.match(r.text,/Got it/);assert.doesNotMatch(r.text,/保存できていません|確認しました/);
   });
-  console.log(cases+'/8 save failure record cases passed');
+  // ---- 「確認しました」は記録の確認だけで、未保存のデータを保存済みにせず、再保存や未保存の保護を妨げない
+  await scenario('確認しても未保存のまま: 保存表示・保存ボタン・ページを離れるときの警告が残る', async({A,root,q,change,auto,rec,w})=>{
+    root.fail='Synthetic close denied';change('Synthetic draft');assert.strictEqual(await auto(),'failed');assert.strictEqual(rec().shown,true);
+    q('#saveFailOk').click();assert.deepStrictEqual(rec(),NONE);
+    assert.strictEqual(A.isDirty(),true);assert.strictEqual(q('#saveState').className,'dirty');assert(q('#btnHeaderSave'),'save button still offered');assert.match(q('#monthSel').selectedOptions[0].textContent,/未保存/);
+    const ev=new w.Event('beforeunload',{cancelable:true});w.dispatchEvent(ev);assert.strictEqual(ev.defaultPrevented,true,'leaving the page still warns about unsaved changes');
+    assert.strictEqual(root.dirs.get('202611')?.files.has('202611_data.json')||false,false,'nothing was written');assert.strictEqual(A.state.month.notes,'Synthetic draft');
+  });
+  await scenario('確認した後も再保存できる: まだ失敗するなら記録が戻り、直れば保存されて消える', async({A,root,q,change,auto,manual,rec})=>{
+    root.fail='Synthetic close denied';change('Synthetic draft');assert.strictEqual(await auto(),'failed');q('#saveFailOk').click();assert.deepStrictEqual(rec(),NONE);
+    await manual();let r=rec();assert.strictEqual(r.items.length,1,'the next failed save is recorded again');assert.match(r.items[0],/フォルダに保存できませんでした: Synthetic close denied/);
+    q('#saveFailOk').click();change('Synthetic draft 2');assert.strictEqual(await auto(),'failed','autosave still runs after acknowledging');assert.strictEqual(rec().items.length,1);
+    q('#saveFailOk').click();root.fail=null;await manual();assert.deepStrictEqual(rec(),NONE);assert.strictEqual(q('#saveState').className,'saved');assert.strictEqual(A.isDirty(),false);
+    assert.strictEqual(JSON.parse(root.dirs.get('202611').files.get('202611_data.json')).month.notes,'Synthetic draft 2');
+  });
+  await scenario('確認した後も、月を切り替える前の未保存の保護が働く（中止を選ぶと月も入力もそのまま）', async({A,root,q,change,auto,rec,answer})=>{
+    root.fail='Synthetic close denied';change('Synthetic draft');assert.strictEqual(await auto(),'failed');q('#saveFailOk').click();assert.deepStrictEqual(rec(),NONE);
+    const sw=A.transition('month',()=>A.onMonthChange(2026,12));await answer(/切り替えを中止する/);await sw;
+    assert.match(q('#modalMsg').textContent,/保存できませんでした.*未保存の入力が失われます/,'the unsaved-data dialog was shown');
+    assert.strictEqual(A.tag(),'202611');assert.strictEqual(A.state.month.notes,'Synthetic draft');assert.strictEqual(A.isDirty(),true);assert.strictEqual(q('#saveState').className,'dirty');
+    assert.strictEqual(rec().items.length,1,'the save attempted before switching failed and is recorded');
+  });
+  // ---- 利用者が意図的に取り消しただけの操作は、保存失敗として記録しない
+  await scenario('取消: 手動保存の確認画面で「何もしない（後で判断）」: 記録しない', async(app)=>{const {A,q,change,manual,rec,answer}=app;const dir=await plantOtherFacility(app);
+    change('Synthetic my edit');const p=manual();await answer(/何もしない（後で判断）/);await p;
+    assert.strictEqual(q('#toast').textContent,'保存を見送りました');assert.deepStrictEqual(rec(),NONE);assert.strictEqual(A.isDirty(),true);assert.match(dir.files.get('202611_data.json'),/Synthetic peer data/,'peer file untouched');
+  });
+  await scenario('取消: 自動保存の確認画面で「何もしない（後で判断）」: 記録しない', async(app)=>{const {A,change,auto,rec,answer}=app;await plantOtherFacility(app);
+    change('Synthetic my edit');const p=auto();await answer(/何もしない（後で判断）/);assert.strictEqual(await p,'skipped');assert.deepStrictEqual(rec(),NONE);assert.strictEqual(A.isDirty(),true);
+  });
+  await scenario('取消: 確認画面を Esc で閉じる: 記録しない', async(app)=>{const {A,q,w,change,manual,rec}=app;await plantOtherFacility(app);
+    change('Synthetic my edit');const p=manual();for(let i=0;i<400&&q('#modal').hidden;i++)await tick(5);assert.strictEqual(q('#modal').hidden,false);w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await p;
+    assert.deepStrictEqual(rec(),NONE);assert.strictEqual(A.isDirty(),true);
+  });
+  await scenario('取消: 確認画面で「相手の保存データを読み込む」: 保存せず読み込むだけで、記録しない', async(app)=>{const {A,change,manual,rec,answer}=app;await plantOtherFacility(app);
+    change('Synthetic my edit');const p=manual();await answer(/相手の保存データを読み込む/);await p;assert.deepStrictEqual(rec(),NONE);assert.strictEqual(A.state.month.notes,'Synthetic peer data');
+  });
+  await scenario('取消: 未接続で「接続して保存」を押し、フォルダの選択を取り消す: 記録しない', async({A,q,w,change,manual,rec})=>{
+    A.dirHandle=null;A.storedHandle=null;A.dirGen++;let asked=0;w.showDirectoryPicker=async()=>{asked++;throw new w.DOMException('Synthetic user cancelled','AbortError');};A.renderHeader();
+    change('Synthetic draft');assert.strictEqual(q('#btnHeaderSave').textContent,'接続して保存');await manual();
+    assert.strictEqual(asked,1,'the folder picker was offered');assert.deepStrictEqual(rec(),NONE);assert.strictEqual(A.isDirty(),true);assert.strictEqual(q('#saveState').className,'dirty');
+  });
+  await scenario('取消: 月の作り方の選択で「やめる（今の月のまま）」: 記録しない', async({A,q,change,auto,rec,answer})=>{
+    change('Synthetic draft');assert.strictEqual(await auto(),'saved');const sw=A.transition('month',()=>A.onMonthChange(2026,12));await answer(/やめる（今の月のまま）/);await sw;
+    assert.strictEqual(A.tag(),'202611');assert.deepStrictEqual(rec(),NONE);assert.strictEqual(q('#saveState').className,'saved');
+  });
+  console.log(cases+'/'+total+' save failure record cases passed');
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

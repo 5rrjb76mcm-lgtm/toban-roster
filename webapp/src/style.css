@@ -46,7 +46,7 @@ table.calendar select{font-size:12px;padding:0 1px;max-width:5.2em} table.calend
 #toast{padding:4px 10px;background:#1f3a5f;overflow-x:hidden;overflow-y:auto}
 /* 保存できなかった記録: 通知と同じ欄に、確認するか同じ保存先・月の保存が成功するまで残す。通知が出ている間は通知を見せ、通知が消えると戻る */
 #saveFail{display:flex;align-items:flex-start;gap:10px;padding:4px 6px 4px 10px;background:#8c1d18;border-color:rgba(255,255,255,.6)}
-#saveFailMsg{flex:1 1 auto;min-width:0;height:100%;overflow-y:auto} #saveFailMsg p{margin:0} #saveFailMsg p+p{margin-top:4px}
+#saveFailMsg{flex:1 1 auto;min-width:0;height:100%;overflow-y:auto} #saveFailMsg p{margin:0} #saveFailMsg .sum{font-weight:bold}
 #saveFail button{flex:0 0 auto;font-size:12px;padding:2px 8px}
 #toast:not([hidden])+#saveFail{display:none}
 /* 続きがあることが分かるように、収まらないときはスクロールバーを常に見せる（重ねて隠れる種類のスクロールバーにしない） */
