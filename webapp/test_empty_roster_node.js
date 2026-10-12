@@ -2,7 +2,7 @@
 // Exercise real deletion, persistence, calendar rendering/readback and recovery.
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const elements = new Map(), saved = new Map();
-function element() { return { dataset: {}, children: [], innerHTML: '', value: '', textContent: '', querySelectorAll: () => [], querySelector: () => null, addEventListener() {} }; }
+function element() { return { dataset: {}, children: [], innerHTML: '', value: '', textContent: '', querySelectorAll: () => [], querySelector: () => null, handlers: {}, addEventListener(k, fn) { this.handlers[k] = fn; } }; }
 globalThis.document = { querySelector(s) { if (!elements.has(s)) elements.set(s, element()); return elements.get(s); }, querySelectorAll: () => [] };
 globalThis.location = { pathname: '/synthetic/empty-roster.html' };
 globalThis.localStorage = { getItem: k => saved.get(k) || null, setItem: (k,v) => saved.set(k,v) };
@@ -36,13 +36,13 @@ test('readback with no selected person cannot manufacture undefined-name data',(
   document.querySelector('#doctorPane').children=[{}]; A.readAll(); A.readAll();
   assert.deepStrictEqual(clone(A.state.month),before); assert(!JSON.stringify(A.state.month).includes('undefined'));
 });
-test('adding a new person restores the calendar without reloading',()=>{
+test('adding a new person requires explicit selection before restoring the calendar',()=>{
   setup(); A.removeDoctor(0); A.renderDoctor(); A.state.rules.doctors.push({name:'Synthetic New',team:'S',quota:1}); A.refreshNameOrder(A.state.rules);
-  A.renderDoctor(); const root=document.querySelector('#doctorPane'); assert.strictEqual(root.dataset.doctor,'Synthetic New'); assert(root.innerHTML.includes('data-cal="duty"'));
+  A.renderDoctor(); const root=document.querySelector('#doctorPane'); assert.strictEqual(root.dataset.doctor,undefined); A.bindDoctor(); root.handlers.change({target:{id:'docSel',value:'Synthetic New'}}); assert.strictEqual(root.dataset.doctor,'Synthetic New'); assert(root.innerHTML.includes('data-cal="duty"'));
 });
 (async()=>{
   setup(); A.pushUndo('remove last person'); A.removeDoctor(0); A.refreshNameOrder(A.state.rules); await Promise.resolve(); A.renderDoctor(); A.undo();
-  assert.strictEqual(A.state.rules.doctors[0].name,n); assert.strictEqual(document.querySelector('#doctorPane').dataset.doctor,n);
+  assert.strictEqual(A.state.rules.doctors[0].name,n); assert.strictEqual(document.querySelector('#doctorPane').dataset.doctor,undefined); A.bindDoctor(); document.querySelector('#doctorPane').handlers.change({target:{id:'docSel',value:n}}); assert.strictEqual(document.querySelector('#doctorPane').dataset.doctor,n);
   assert.deepStrictEqual(A.state.month.unavailable_night[n],[5]); console.log('ok undo restores the deleted person and calendar'); count++;
   console.log(`ALL OK (${count})`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

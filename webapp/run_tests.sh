@@ -38,6 +38,7 @@ run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_calendar_person_selection_dom_node.js
 run test_calendar_boundary_count_node.js
 run test_previous_selection_preservation_node.js
 run test_fixed_condition_readback_node.js
@@ -57,6 +58,8 @@ run test_save_context_node.js
 run test_save_peer_update_node.js
 run test_save_local_input_node.js
 run test_import_previous_node.js
+run test_import_previous_oc_conflict_node.js "$HP"
+run test_editing_month_header_node.js
 run test_import_previous_role_identity_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js

@@ -45,13 +45,18 @@
   let langPaint = () => { }; // initLang が中身を入れる
   function renderLangs() { langPaint(); }
   function showTab(id) { const r = showTab0(id); T.applyI18n(); return r; }
-  function showTab0(id) { const pane = id === "resultCal" ? "result" : id; /* 3-1 結果 と 3-2 医師別カレンダー は同じ #result の中の2画面 */ document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id)); document.querySelectorAll(".pane").forEach(p => p.hidden = p.id !== pane); if (pane === "result") A.renderResult(id === "resultCal" ? "resCal" : "resMain"); if (id === "settings") A.renderSettings(); if (id === "input") { A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); } }
+  function showTab0(id) {
+    const input = $("#input"), doctor = $("#doctorPane");
+    if (input && doctor && !doctor.hidden && input.hidden !== (id !== "input")) {
+      A.readAll(); A.resetDoctorSelection(); // 出る直前に未確定の欄を確保し、入るときは必ず選び直す。
+    }
+    const pane = id === "resultCal" ? "result" : id; /* 3-1 結果 と 3-2 医師別カレンダー は同じ #result の中の2画面 */ document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id)); document.querySelectorAll(".pane").forEach(p => p.hidden = p.id !== pane); if (pane === "result") A.renderResult(id === "resultCal" ? "resCal" : "resMain"); if (id === "settings") A.renderSettings(); if (id === "input") { A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); } }
 
   function init() {
     const saved = A.load();
     if (saved) Object.assign(state, saved); else { state.rules = JSON.parse(JSON.stringify(T.DEFAULT_RULES)); state.month = T.SAMPLE_MONTH ? JSON.parse(JSON.stringify(T.SAMPLE_MONTH)) : A.blankMonth(new Date().getFullYear(), new Date().getMonth() + 1); }
     if (!state.rules) state.rules = JSON.parse(JSON.stringify(T.DEFAULT_RULES));
-    state.ui = state.ui || { doctor: 0 };
+    state.ui = state.ui || {}; A.resetDoctorSelection(); // 旧版の保存済み doctor は復元しない。
     A.ensureMonth(state.month); // 設定の欠損補完と月データの整形（保存データが古い版でも落ちない）
     window.addEventListener("unhandledrejection", ev => { const r = ev.reason; A.toast(T.t("処理に失敗しました: {err}", { err: (r && r.message || r) })); });
     initLang();
@@ -59,7 +64,13 @@
     A.restoreFolder();
     window.addEventListener("beforeunload", ev => { if (A.isDirty()) { ev.preventDefault(); ev.returnValue = T.t("未保存の変更があります"); } });
     document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { A.readAll(); showTab(t.dataset.tab); }));
-    document.querySelectorAll(".subnav .sub").forEach(b => b.addEventListener("click", () => { A.readAll(); document.querySelectorAll(".subnav .sub").forEach(x => x.classList.toggle("active", x === b)); ["monthSettings", "doctorPane", "fixedPane"].forEach(id => $("#" + id).hidden = id !== b.dataset.sub); if (b.dataset.sub === "doctorPane") A.renderDoctor(); else if (b.dataset.sub === "fixedPane") A.renderFixed(); else A.renderSettingsMonth(); }));
+    document.querySelectorAll(".subnav .sub").forEach(b => b.addEventListener("click", () => {
+      A.readAll();
+      if ($("#doctorPane").hidden !== (b.dataset.sub !== "doctorPane")) A.resetDoctorSelection();
+      document.querySelectorAll(".subnav .sub").forEach(x => x.classList.toggle("active", x === b));
+      ["monthSettings", "doctorPane", "fixedPane"].forEach(id => $("#" + id).hidden = id !== b.dataset.sub);
+      if (b.dataset.sub === "doctorPane") A.renderDoctor(); else if (b.dataset.sub === "fixedPane") A.renderFixed(); else A.renderSettingsMonth();
+    }));
     $("#btnSolve").addEventListener("click", A.runSolve);
     $("#btnCancel").addEventListener("click", () => { if (A.highs && A.highs.terminate) { A.highs.terminate(); A.highs = null; } });
     $("#btnDocx").addEventListener("click", A.downloadDocx);

@@ -53,7 +53,13 @@ details.box summary{cursor:pointer;font-weight:bold}
 
 #toolbar{justify-content:flex-end}
 
-#monthTitle{display:flex;align-items:center;gap:6px} #monthTitle select{font-size:18px;font-weight:bold;color:#1f3a5f;border:1px solid #1f3a5f;border-radius:4px;padding:2px 6px;background:#fff;width:9.5em}
+#monthTitle{display:flex;align-items:center;gap:6px;flex-wrap:wrap;max-width:100%;min-width:0;box-sizing:border-box}
+#monthTitle .editing-month{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0;padding:4px 8px;border:2px solid #9a6700;border-radius:6px;background:#fff1b8;color:#533800;max-width:100%;box-sizing:border-box}
+#monthTitle .editing-month>span{font-size:14px;font-weight:bold}
+#monthTitle .editing-month select{background:#fff1b8;color:#533800;border:1px solid #9a6700;max-width:100%;min-width:0}
+#monthTitle .note{overflow-wrap:anywhere;min-width:0}
+#monthTitle select:focus-visible{outline:3px solid #1f3a5f;outline-offset:2px}
+ #monthTitle select{font-size:18px;font-weight:bold;color:#1f3a5f;border:1px solid #1f3a5f;border-radius:4px;padding:2px 6px;background:#fff;width:9.5em}
 
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:40;display:flex;align-items:center;justify-content:center}
 #modalBox{background:#fff;border-radius:8px;padding:18px 22px;max-width:560px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,.35)}

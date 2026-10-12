@@ -1200,7 +1200,16 @@
     "前月と現在の設定では、固定「OCなし」の役割IDの対応が異なるか確認できません。\n前月 → 現在:\n{roles}\n履歴の取り込みでは設定は変更せず、IDをそのまま現在の役割として扱います。未定義のIDは保持しますが、指定が効かない場合があります。": "The role IDs in the fixed “no OC” entries differ between the previous and current settings, or their correspondence cannot be verified.\nPrevious → current:\n{roles}\nImporting history keeps the current settings and interprets these IDs as current roles without changing them. Undefined IDs are retained, but may have no effect.",
     "規則の候補説明でエラーがあり、一部の説明を省略しました。確認済みの解除候補は有効です: {errors}": "Some rule-owned candidate explanations failed and were omitted. Verified sufficient relaxations remain valid: {errors}",
     "規則の日付・勤務帯の候補は、その日付・勤務帯に対応づけられた条件行をすべて解除します。複数日にまたがる行も含み、その日の勤務入力だけを消す意味ではありません。": "A rule date/slot candidate relaxes all declared rows associated with that date/slot, including rows spanning several days. It does not mean deleting only that day’s assignment.",
-    "   この規則には日付・勤務帯・氏名の絞り込み情報がないため、規則全体の条件行だけを試行しました。個別の解除候補は未確認です。": "   This rule provides no date, slot or name refinement metadata. Only the whole rule’s declared rows were tested; individual alternatives remain unexamined."
+    "   この規則には日付・勤務帯・氏名の絞り込み情報がないため、規則全体の条件行だけを試行しました。個別の解除候補は未確認です。": "   This rule provides no date, slot or name refinement metadata. Only the whole rule’s declared rows were tested; individual alternatives remain unexamined.",
+    "編集中": "Editing",
+    "編集中の年月（選択すると月を切り替えます）": "Editing year and month (select to switch month)",
+    "前月の固定OCに、同じ役割の氏名と「なし」があります（{date} {shift} {role}）。前月の固定を修正してから取り込んでください": "The previous month's fixed on-call entries contain both a name and “none” for the same role ({date} {shift} {role}). Correct the previous month's fixed entries before importing.",
+    "{date} {shift} {role}: 当月 {current} → 前月 {incoming}": "{date} {shift} {role}: current month {current} → previous month {incoming}",
+    "前月の翌月1日欄と当月の固定OCが競合しています。\n{conflicts}\n表示した当月の固定OCを前月の指定で置き換えて、取り込みますか？キャンセルすると何も変更しません。": "The previous month's next-month-first-day entries conflict with this month's fixed on-call entries.\n{conflicts}\nReplace the listed current-month fixed on-call entries with the previous month's choices and import? Cancel leaves everything unchanged.",
+    "編集する{person}を選んでください": "Choose the {person} to edit",
+    "カレンダーに入るたびに、編集する{person}を選び直してください。": "Choose the person you want to edit each time you enter this calendar.",
+    "編集中: {who}": "Editing: {who}",
+    "前月の取り込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度押してください": "Previous-month import was canceled because input changed during the read. Finish the edit, then try again."
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",

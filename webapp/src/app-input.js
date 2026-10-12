@@ -152,6 +152,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     root.addEventListener("change", ev => { if (ev.target.dataset?.target !== undefined) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
+      if (b.id === "btnImportPrev") { A.importPrevious(); return; } // 読込の取消・失敗では読み戻し・保存・Undo を作らない。通常の入力は change で確定する。
       undoPoint("月別条件の変更"); readSettingsMonth(); const m = state.month; const id = b.id, del = b.dataset.del;
       if (id === "btnPurgeUnknown") { const unknown = Object.keys(T.monthNameRefs(m)).filter(n => !state.rules.doctors.some(d => d.name === n)); if (!unknown.length) return;
         if (!confirm(T.t("{who} の入力（固定指定・不可・希望・業務・目標）をこの月から消します。よろしいですか", { who: unknown.join("・") }))) return;
@@ -162,7 +163,6 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       else if (id === "btnClearTargets") m.targets = {};
       else if (id === "btnClearLimits") { m.count_min = {}; m.count_max = {}; }
       else if (id === "btnAutoHol") { const a = A.autoCalendar(+m.year, +m.month); m.holidays = a.holidays; m.closure_days = a.closure; m.next_month_first_day_is_holiday = a.nextFirst; A.toast(T.t("祝日・施設の休日: {days}{note}", { days: a.holidays.join(", ") || T.t("なし"), note: a.nextFirst ? T.t("（翌月1日は休日）") : "" })); }
-      else if (id === "btnImportPrev") { A.importPrevious(); return; }
       else if (id === "pmExtAdd") { if ($("#pmExtDay").value && $("#pmExtName").value) (m.confirmed_pm_external_night ||= []).push({ day: +$("#pmExtDay").value, name: $("#pmExtName").value }); }
       else if (del === "pmext") m.confirmed_pm_external_night.splice(+b.dataset.i, 1);
       else return;
@@ -171,16 +171,48 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
   }
 
   // ---------- 医師別カレンダー ----------
-  function curDoctor() { const list = A.names(); state.ui = state.ui || { doctor: 0 }; if (state.ui.doctor >= list.length) state.ui.doctor = 0; return list[state.ui.doctor]; }
+  // 編集者の選択はこの画面に入ってからの明示操作だけ。保存済みの位置・先頭の人からは復元しない。
+  // 名前に加えて描いた月・名簿の本人を照合し、削除後に同じ氏名を使った別人にも書き戻さない。
+  let doctorSelection = null, doctorRendered = null;
+  const doctorVisible = () => { const root = $("#doctorPane"); return !!root && !root.hidden && !(typeof root.closest === "function" && root.closest("[hidden]")); };
+  const doctorContext = () => [state.month, state.rules, state.month && state.month.year, state.month && state.month.month, state.month && state.month.profile_id, A.dirGen];
+  function resetDoctorSelection() { doctorSelection = null; (state.ui ||= {}).doctor = null; const root = $("#doctorPane"); if (root) delete root.dataset.doctor; }
+  function curDoctor() {
+    if (!doctorSelection) return null;
+    const { name, person, context } = doctorSelection, docs = (state.rules || {}).doctors || [];
+    if (!doctorContext().every((v, i) => v === context[i]) || !docs.includes(person) || person.name !== name || docs.filter(d => d.name === name).length !== 1) { resetDoctorSelection(); return null; }
+    return name;
+  }
+  // プラグインの正規化は成功時に名簿を複製へ差し替える。同じ正規化の前後だけ本人の参照を結び直す。
+  // 通常の削除・改名・データ置換はこの窓口を通らず、氏名の一致だけでは選択を復元しない。
+  function doctorNormalizationCheckpoint() {
+    const n = curDoctor(), selection = doctorSelection, context = doctorContext(), docs = (state.rules || {}).doctors || [], rosterNamesBefore = docs.map(d => d.name), renames = JSON.stringify(state.renames || []);
+    const rendered = doctorRendered && context.every((v, i) => v === doctorRendered.context[i]) && docs.length === doctorRendered.people.length && docs.every((d, i) => d === doctorRendered.people[i]);
+    return () => {
+      const after = (state.rules || {}).doctors || [];
+      if (!context.every((v, i) => v === doctorContext()[i]) || JSON.stringify(rosterNamesBefore) !== JSON.stringify(after.map(d => d.name)) || renames !== JSON.stringify(state.renames || [])) { resetDoctorSelection(); return; }
+      if (n && selection === doctorSelection) doctorSelection.person = after.find(d => d.name === n);
+      if (rendered) doctorRendered.people = after.slice();
+    };
+  }
+  function selectDoctor(name) {
+    const docs = ((state.rules || {}).doctors || []).filter(d => d.name === name);
+    resetDoctorSelection(); if (!name || docs.length !== 1 || !doctorVisible()) return;
+    doctorSelection = { name, person: docs[0], context: doctorContext() };
+  }
+  const doctorChooser = n => `<label for="docSel">${esc(T.t("編集する{person}を選んでください"))}</label> ${A.sel([["", T.t("編集する{person}を選んでください")], ...A.names().map(x => [x, x])], n || "", 'id="docSel"')}`;
   function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if (hasDay(m.unavailable_night?.[n], d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +x.day === d); return a ? "avoid_" + (a.part || "allday") : ""; }
   function renderDoctor() {
-    const m = state.month; A.ensureMonth(m);
+    const m = state.month, root = $("#doctorPane");
+    if (curDoctor()) A.ensureMonth(m); // 正規化の後で本人をもう一度確認する（プラグインによる名簿変更も安全側へ）。
+    doctorRendered = { context: doctorContext(), people: state.rules.doctors.slice() };
     const n = curDoctor(), y = +m.year, mo = +m.month, N = A.daysIn(y, mo);
     const hol = new Set((m.holidays || []).map(Number));
     const doc = state.rules.doctors.find(d => d.name === n);
-    if (!doc) { // 名簿を空にして作り直す途中も、保存済みの空名簿を開いたときも表示を続ける。
-      const root = $("#doctorPane"); delete root.dataset.doctor;
-      root.innerHTML = `<div class="box"><p>${esc(T.t("名簿が空です。設定タブで職員を追加してください。"))}</p></div>`;
+    if (!doc) { // 選ぶ前は編集欄・一括操作を置かず、月データも読み戻さない。
+      resetDoctorSelection();
+      root.innerHTML = A.names().length ? `<div class="box"><div class="docnav">${doctorChooser(null)}</div><p class="note">${esc(T.t("カレンダーに入るたびに、編集する{person}を選び直してください。"))}</p></div>`
+        : `<div class="box"><p>${esc(T.t("名簿が空です。設定タブで職員を追加してください。"))}</p></div>`;
       return;
     }
     const isDuty = true; // 部長も同じ欄を出す（当直候補でない間はソルバーが無視する）
@@ -244,10 +276,10 @@ ${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m
     { const nd = N + 1, w = (A.dowOf(y, mo, N) + 1) % 7, nh = !!m.next_month_first_day_is_holiday; cells.push(`<td class="cal next"><div class="dnum">${esc(T.t("翌{m}/1", { m: mo === 12 ? 1 : mo + 1 }))}<small>${esc(dowJa(w))}${nh && w < 5 ? esc(T.t("祝")) : ""}</small></div><div>${esc(T.t("午前"))} ${kindSel(nd, "am")}</div><div>${esc(T.t("午後"))} ${kindSel(nd, "pm")}</div>${isDuty ? `<div>${esc(T.t("固定"))} ${fixedSel(nd, dayOn(w >= 5 || nh), nightOn(w >= 5 || nh))}</div>` : ""}<div class="note">${esc(T.t("翌月1日（月末の判定用。固定は翌月へ引き継ぐ）"))}</div></td>`); }
     const rem = (first + N + 1) % 7; if (rem) for (let i = rem; i < 7; i++) cells.push(`<td class="empty"></td>`);
     const pats = (m.regular_duties?.[n] || []);
-    const list = A.names();
     $("#doctorPane").dataset.doctor = n;
     $("#doctorPane").innerHTML = `<div class="box">
-<div class="docnav"><button id="docPrev">◀ ${esc(T.t("前の{person}"))}</button> ${A.sel(list.map((x, i) => [i, x]), state.ui.doctor, 'id="docSel"')} <button id="docNext">${esc(T.t("次の{person}"))} ▶</button>
+<h3 class="doctorEditing" aria-live="polite">${esc(T.t("編集中: {who}", { who: n }))}</h3>
+<div class="docnav"><button id="docPrev">◀ ${esc(T.t("前の{person}"))}</button> ${doctorChooser(n)} <button id="docNext">${esc(T.t("次の{person}"))} ▶</button>
 　<span class="note">${esc((T.roleLabels(R) || {})[doc.team] || doc.team)}${(R.profile || {}).quota_mode === "share" ? `　${esc(T.t("比重 {n}", { n: doc.share ?? 1 }))}` : doc.quota ? `　${esc(T.t("目安 {n} 回", { n: doc.quota }))}` : ""}${doc.cath ? `　${esc(T.term(T.t("専門業務（{role}）", { role: doc.cath === "I" ? "{charge}" : "{other}" }), R))}` : ""}${monthlyWorkExcluded ? `　<b>${esc(T.t("今月の実勤務は候補外です（月の設定で予備の登用を許可できます）。固定・希望の記録は保持します。"))}</b>${monthlyOCEligible ? ` ${esc(T.t("OC は候補のままです。"))}` : ""}` : !isCand ? `　<b>${esc(T.t(doc.duty === "never" ? "当番は配置禁止" : "当番は原則配置しない"))}</b>${esc(T.t("（不可・希望・固定は記録のみ"))}${doc.duty === "no_unless_needed" ? esc(T.t("。月の設定で候補に含めると有効")) : ""}${esc(T.t("）"))}` : ""}</span>
 　${isDuty && T.ruleState(R, "wish_weekend_dayshift") !== "off" ? `<label><input type="checkbox" id="wkwish" ${(m.wishes?.weekend_dayshift || []).includes(n) ? "checked" : ""}> ${esc(T.t("休日のいずれかの日勤（できれば）"))}</label>` : ""}</div>
 <table class="calendar"><tr><th class="sun">${esc(dowJa(6))}</th>${[0, 1, 2, 3, 4].map(i => `<th>${esc(dowJa(i))}</th>`).join("")}<th class="sat">${esc(dowJa(5))}</th></tr><tr>${cells.join("")}</tr></table>
@@ -261,9 +293,9 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
   }
 
   function readDoctor() {
-    const m = state.month, R = state.rules, root = $("#doctorPane"); if (!root.children.length) return;
-    const n = root.dataset.doctor; // 描画したときの医師（名簿の並べ替え・改名の後に別人へ書き戻さないため）
-    if (!n || !A.names().includes(n)) { renderDoctor(); return; }
+    const m = state.month, R = state.rules, root = $("#doctorPane"); if (!doctorVisible() || !root.children.length) return;
+    const n = curDoctor(); // 選んだ本人・月と描画した本人が同じときだけ読む。隠れた古い DOM は読まない。
+    if (!n || root.dataset.doctor !== n) { if (root.querySelector("[data-cal]")) renderDoctor(); return; }
     const patHol = $("#patHol"); if (patHol) m.duties_on_holidays = patHol.checked; // 曜日パターンの土日祝への展開も月の入力として保存・翌月へ引き継ぐ。
     const dd = Object.assign({}, m.duty_days[n] || {}), seen = new Set(); // 出している日だけ作り直す（業務欄を隠す施設では当月の分を残し、翌月 1 日の欄だけ読む）
     root.querySelectorAll('[data-cal="duty"]').forEach(el => { const d = +el.dataset.d; if (!seen.has(d)) { seen.add(d); delete dd[d]; } if (el.value) (dd[d] ||= {})[el.dataset.part] = el.value; });
@@ -341,12 +373,20 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
 
   function bindDoctor() {
     const root = $("#doctorPane");
-    root.addEventListener("change", ev => { undoPoint("{person}別カレンダーの変更"); if (ev.target.id === "docSel") { readDoctor(); state.ui.doctor = +ev.target.value; A.save(); renderDoctor(); } else readDoctor(); });
+    root.addEventListener("change", ev => {
+      if (!doctorVisible() || (typeof root.contains === "function" && !root.contains(ev.target))) return;
+      if (ev.target.id === "docSel") { const next = ev.target.value;
+        if (!doctorRendered || !doctorContext().every((v, i) => v === doctorRendered.context[i]) || (next && !doctorRendered.people.some(d => d.name === next && state.rules.doctors.includes(d)))) { resetDoctorSelection(); renderDoctor(); return; }
+        if (curDoctor()) { undoPoint("{person}別カレンダーの変更"); readDoctor(); } selectDoctor(next); renderDoctor(); return; }
+      if (!curDoctor() || root.dataset.doctor !== curDoctor()) { renderDoctor(); return; }
+      undoPoint("{person}別カレンダーの変更"); readDoctor();
+    });
     root.addEventListener("click", ev => {
-      const b = ev.target.closest("button"); if (!b) return;
-      undoPoint("{person}別カレンダーの変更"); readDoctor(); const m = state.month, n = curDoctor(), list = A.names();
-      if (b.id === "docPrev") state.ui.doctor = (state.ui.doctor + list.length - 1) % list.length;
-      else if (b.id === "docNext") state.ui.doctor = (state.ui.doctor + 1) % list.length;
+      const b = ev.target.closest("button"); if (!b || !doctorVisible() || (typeof root.contains === "function" && !root.contains(b))) return;
+      const n = curDoctor(); if (!n || root.dataset.doctor !== n) { renderDoctor(); return; }
+      undoPoint("{person}別カレンダーの変更"); readDoctor(); const m = state.month, list = A.names(), i = list.indexOf(n);
+      if (b.id === "docPrev") selectDoctor(list[(i + list.length - 1) % list.length]);
+      else if (b.id === "docNext") selectDoctor(list[(i + 1) % list.length]);
       else if (b.dataset.act === "patAdd") m.regular_duties[n].push({ kind: "outpatient", dow: "Mon", part: "full" });
       else if (b.dataset.act === "patDel") m.regular_duties[n].splice(+b.closest("tr").dataset.i, 1);
       else if (b.dataset.act === "patExpand") { const mm = Object.assign({}, m, { duties_on_holidays: $("#patHol").checked }); m.duty_days[n] = T.expandDuties(state.rules, mm, [n])[n]; m.avoid = (m.avoid || []).filter(u => u.name !== n).concat(T.expandAvoid(state.rules, mm, [n])[n] || []); if (!m.avoid.length) delete m.avoid; }
@@ -449,5 +489,5 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
     root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; undoPoint("固定配置の変更"); if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
   }
 
-  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
+  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, resetDoctorSelection, doctorNormalizationCheckpoint, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});
