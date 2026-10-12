@@ -15,7 +15,7 @@ for (const f of ['i18n.js', 'rules-core.js', 'model.js', 'messages.js', 'merge.j
   vm.runInThisContext(fs.readFileSync(f === 'app-folder.js' && process.env.TOBAN_SAVE_FOLDER_SOURCE || path.join(__dirname, 'src', f), 'utf8'), { filename: f });
 T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, 'lang/ja.json'), 'utf8'))); T.setLang('ja');
 const A = T.app;
-A.readAll = A.renderAll = A.toast = () => {}; A.choose = async () => null;
+const toasts = []; A.readAll = A.renderAll = () => {}; A.toast = x => { toasts.push(String(x)); }; A.choose = async () => null;
 T.plugins = { beginFolder() {}, stamp: () => [] };
 const missing = () => Object.assign(new Error('synthetic missing'), { name: 'NotFoundError' });
 const denied = () => Object.assign(new Error('synthetic denied'), { name: 'NotAllowedError' });
@@ -93,7 +93,7 @@ for (const mode of ['auto', 'header']) {
     if (change === 'edit') assert.strictEqual(A.state.month.notes, 'synthetic later draft');
   });
 }
-for (const mode of ['auto', 'header']) test(mode + ': current-month bookkeeping precedes its single render', async () => {
+for (const mode of ['auto', 'header']) test(mode + ': current-month bookkeeping precedes every header render', async () => {
   const root = reset(), title = el('#monthTitle'); let html = title.innerHTML, renders = 0;
   Object.defineProperty(title, 'innerHTML', { configurable: true, get: () => html, set(value) {
     renders++;
@@ -103,10 +103,41 @@ for (const mode of ['auto', 'header']) test(mode + ': current-month bookkeeping 
   } });
   try {
     const result = await (mode === 'auto' ? A.autosaveJson() : entry(mode));
-    assert.strictEqual(result, 'saved'); assert.strictEqual(renders, 1, 'ordinary save renders after commit only once');
-    assert.strictEqual(A.isDirty(), false); assert.doesNotMatch(option('202611'), /未保存/);
+    // How often the header is drawn is an implementation detail (a manual save also lists the folder again).
+    // What matters: it is never drawn from a half-committed save (the setter above throws), and the result is right.
+    assert.strictEqual(result, 'saved'); assert.ok(renders >= 1, 'the header was drawn after the commit');
+    assert.strictEqual(A.isDirty(), false); assert.strictEqual(el('#saveState').className, 'saved'); assert.doesNotMatch(option('202611'), /未保存/); assert.deepStrictEqual(A.monthDirs, ['202611']);
     assert.strictEqual(savedFile(root).month.notes, 'synthetic saved content');
   } finally { Object.defineProperty(title, 'innerHTML', { configurable: true, writable: true, value: html }); }
+});
+// A manual save lists the folder again, so that months saved by another window or PC show up (as before 5a2ef07).
+const otherWindowSaves = async (root, tag) => { const d = await root.getDirectoryHandle(tag, { create: true }); d.files.set(tag + '_data.json', JSON.stringify({ rules: A.state.rules, month: { year: +tag.slice(0, 4), month: +tag.slice(4), notes: 'synthetic other window' }, result: null, saved_at: '2026-10-02T00:00:00.000Z' })); };
+// The kept failed-save record lives in the module; earlier cases in this file leave records behind, so dismiss them first.
+const failureRecord = () => el('#saveFail').innerHTML, dismissFailureRecords = () => { const ok = el('#saveFailOk').listeners.click; if (failureRecord() && ok) ok(); assert.strictEqual(failureRecord(), ''); };
+test('header: a month saved by another window appears after a manual save; an autosave alone does not list', async () => {
+  const root = reset(); assert.strictEqual(await entry('header'), 'saved'); assert.deepStrictEqual(A.monthDirs, ['202611']);
+  await otherWindowSaves(root, '202612'); A.state.month.notes = 'synthetic edit after the other window saved'; A.renderHeader();
+  assert.strictEqual(await timerSave(), 'saved'); assert.deepStrictEqual(A.monthDirs, ['202611'], 'the JSON-only autosave keeps the list as it was');
+  A.state.month.notes = 'synthetic edit before the manual save'; A.renderHeader(); assert.strictEqual(await entry('header'), 'saved');
+  assert.deepStrictEqual(A.monthDirs, ['202611', '202612']); assert.doesNotMatch(option('202612'), /未保存|作成/, 'December is listed as a saved month');
+  assert.doesNotMatch(option('202611'), /未保存/); assert.strictEqual(el('#saveState').className, 'saved'); assert.strictEqual(A.isDirty(), false);
+  assert.strictEqual(savedFile(root).month.notes, 'synthetic edit before the manual save'); assert.strictEqual(savedFile(root, '202612').month.notes, 'synthetic other window', 'the other month is untouched');
+});
+test('header: a listing that fails after the month data was written is not a save failure', async () => {
+  const root = reset(); A.monthDirs = ['202610']; A.renderHeader(); toasts.length = 0; dismissFailureRecords();
+  root.entries = async function* () { throw denied(); };
+  assert.strictEqual(await entry('header'), 'saved', 'the save itself succeeded');
+  assert.strictEqual(savedFile(root).month.notes, 'synthetic saved content'); assert.strictEqual(A.isDirty(), false); assert.strictEqual(el('#saveState').className, 'saved');
+  assert.deepStrictEqual(A.monthDirs, ['202610', '202611'], 'the previous list stays, with the month just saved'); assert.doesNotMatch(option('202611'), /未保存/);
+  assert.strictEqual(failureRecord(), '', 'no failed-save record'); assert.ok(!toasts.some(x => /保存できませんでした|失敗/.test(x)), 'no failure is announced: ' + toasts.join(' | ')); assert.ok(toasts.some(x => /フォルダに保存しました/.test(x)));
+});
+test('header: an older scan still running cannot replace the list made by the save, and the save keeps its own month', async () => {
+  const root = reset(), entered = gate(), release = gate(); await otherWindowSaves(root, '202612');
+  const listAll = root.entries.bind(root);
+  root.entries = async function* () { yield ['202608', { kind: 'directory' }]; entered.resolve(); await release.promise; yield ['202609', { kind: 'directory' }]; };
+  const scan = A.refreshMonths(); await entered.promise; root.entries = listAll;
+  assert.strictEqual(await entry('header'), 'saved'); assert.deepStrictEqual(A.monthDirs, ['202611', '202612']);
+  release.resolve(); await scan; assert.deepStrictEqual(A.monthDirs, ['202611', '202612'], 'the older scan is discarded'); assert.doesNotMatch(option('202611'), /未保存/);
 });
 test('stale folder enumeration cannot replace the new folder catalog', async () => {
   const root = reset(), entered = gate(), release = gate();
@@ -144,6 +175,13 @@ test('failed enumeration preserves the complete previous catalog', async () => {
   root.entries = async function* () { yield ['202610', { kind: 'directory' }]; throw denied(); };
   await assert.rejects(A.refreshMonths(), /synthetic denied/); assert.deepStrictEqual(A.monthDirs, ['202609']);
 });
-(async () => { let failed = 0; for (const [name, fn] of tests) { try { await fn(); console.log('PASS ' + name); } catch (e) { failed++; console.error('FAIL ' + name + ': ' + e.message); } }
-  clearTimeout(A.autosaveTimer); if (failed) process.exitCode = 1; console.log(`${tests.length - failed}/${tests.length} save/catalog cases passed`);
+// The run must reach its end: if a step never settles Node simply drains the event loop and would exit 0.
+// The exit hook turns "not every case ran", "the list of cases shrank" and "any case failed" into a non-zero status.
+const EXPECTED_CASES = 30; let ran = 0, failed = 0, finished = false;
+process.on('exit', () => {
+  if (!finished || ran !== tests.length || tests.length !== EXPECTED_CASES) { console.error(`NOT COMPLETED: ${ran}/${tests.length} cases ran (expected ${EXPECTED_CASES}), ${failed} failed, finished=${finished}`); process.exitCode = 1; }
+  else if (failed) process.exitCode = 1;
+});
+(async () => { for (const [name, fn] of tests) { try { await fn(); console.log('PASS ' + name); } catch (e) { failed++; console.error('FAIL ' + name + ': ' + e.message); } ran++; }
+  clearTimeout(A.autosaveTimer); console.log(`${tests.length - failed}/${tests.length} save/catalog cases passed`); finished = true;
 })();

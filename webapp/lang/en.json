@@ -291,6 +291,7 @@
     "今すぐ保存": "Save now",
     "保存できていません": "Not saved",
     "帳票の出力が完了していません": "Document output is not complete",
+    "{name} を書き込みましたが、内容を確かめられませんでした": "{name} was written, but its content could not be confirmed",
     "未解決 {n} 件（{list}）。下に続きます": "{n} unresolved ({list}). Details follow below",
     "月データの保存 {n} 件": "month data: {n}",
     "帳票の出力 {n} 件": "document output: {n}",

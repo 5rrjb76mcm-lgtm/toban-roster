@@ -41,14 +41,16 @@ table.calendar select{font-size:12px;padding:0 1px;max-width:5.2em} table.calend
 /* 通知と、保存できなかった記録: ヘッダーのすぐ下に専用の欄を常に確保し、本文には重ねない。
    通知が無いときも同じ高さなので、通知の出入りや文の長さで本文の位置が変わらない。収まらない文は欄の中でスクロールして読む。
    欄はヘッダーと違って上部に固定しない（スクロールすると本文と一緒に流れる） */
-#toastRow{box-sizing:content-box;height:calc(3em + 10px);padding:0 16px 6px;background:#1f3a5f;box-shadow:0 2px 3px -1px rgba(0,0,0,.3)}
-#toast,#saveFail{box-sizing:border-box;height:100%;border:1px solid rgba(255,255,255,.5);border-radius:6px;color:#fff;line-height:1.5;overflow-wrap:anywhere}
+#toastRow{box-sizing:content-box;height:calc(3em + 10px);padding:0 16px 6px;background:#1f3a5f;box-shadow:0 2px 3px -1px rgba(0,0,0,.3);display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr)}
+#toast,#saveFail{grid-area:1/1;box-sizing:border-box;min-width:0;height:100%;border:1px solid rgba(255,255,255,.5);border-radius:6px;color:#fff;line-height:1.5;overflow-wrap:anywhere}
 #toast{padding:4px 10px;background:#1f3a5f;overflow-x:hidden;overflow-y:auto}
 /* 保存できなかった記録: 通知と同じ欄に、確認するか同じ保存先・月の保存が成功するまで残す。通知が出ている間は通知を見せ、通知が消えると戻る */
-#saveFail{display:flex;align-items:flex-start;gap:10px;padding:4px 6px 4px 10px;background:#8c1d18;border-color:rgba(255,255,255,.6)}
-#saveFailMsg{flex:1 1 auto;min-width:0;height:100%;overflow-y:auto} #saveFailMsg p{margin:0} #saveFailMsg .sum{font-weight:bold}
-#saveFail button{flex:0 0 auto;font-size:12px;padding:2px 8px}
-#toast:not([hidden])+#saveFail{display:none}
+#saveFail{padding:4px 10px;background:#8c1d18;border-color:rgba(255,255,255,.6)}
+#saveFailMsg{height:100%;overflow-y:auto} #saveFailMsg p{margin:0} #saveFailMsg .sum{font-weight:bold}
+/* 「確認しました」のボタンは記録の文の右に、文とは別の要素として置く。記録がある間は、通知が出ても隠さず作り直しもしない（キーボードのフォーカスや押しかけの操作を、無関係な通知で途切れさせない） */
+#saveFailOk{grid-area:1/2;align-self:start;margin:4px 0 0 8px;font-size:12px;padding:2px 8px}
+/* 通知が出ている間、記録の文は同じ場所に置いたまま見えなくして通知を読ませる（消さない: 文の欄にあるフォーカスとスクロール位置を保つ。ポインタの操作は下の通知へ通す） */
+#toast:not([hidden])+#saveFail{opacity:0;pointer-events:none}
 /* 続きがあることが分かるように、収まらないときはスクロールバーを常に見せる（重ねて隠れる種類のスクロールバーにしない） */
 #toast::-webkit-scrollbar,#saveFailMsg::-webkit-scrollbar{width:8px} #toast::-webkit-scrollbar-thumb,#saveFailMsg::-webkit-scrollbar-thumb{background:rgba(255,255,255,.65);border-radius:4px}
 @media (max-width:1080px){#toastRow{padding-left:10px;padding-right:10px}}
@@ -83,8 +85,13 @@ details.box summary{cursor:pointer;font-weight:bold}
 #modalBtns button.primary{background:#1f3a5f;color:#fff} #modalBtns button.cancel{border-color:#999;color:#444} #modalBtns button small{display:block;color:#666;font-size:12px} #modalBtns button.primary small{color:#dde}
 
 #modal[hidden],#toast[hidden],#startGate[hidden],[hidden]{display:none!important}
-#startGate{position:fixed;inset:0;background:#1f3a5f;z-index:30;display:flex;align-items:center;justify-content:center}
-#startBox{background:#fff;border-radius:10px;padding:24px 28px;max-width:600px;width:92%;box-shadow:0 6px 24px rgba(0,0,0,.4)} #startBox h2{margin:0 0 10px;font-size:20px;color:#1f3a5f}
+/* 開始画面は、狭い・低い画面で中身が収まらないときにスクロールできる（中央寄せは箱の margin:auto。収まらないときは上端から並ぶ） */
+#startGate{position:fixed;inset:0;box-sizing:border-box;padding:12px 0;background:#1f3a5f;z-index:30;display:flex;overflow:auto}
+#startBox{margin:auto;background:#fff;border-radius:10px;padding:24px 28px;max-width:600px;width:92%;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+/* 開始画面が出ている間の知らせ（接続できなかった理由など）は、開始画面の中のこの欄に出す（通知欄は不透明な開始画面の下になって見えない）。
+   高さは固定で、空のときも場所を確保する（出入りや文の長さでボタンの位置が動かない）。収まらない文は欄の中でスクロールして読む */
+#startNote{box-sizing:border-box;height:calc(4.5em + 10px);margin:10px 0 0;padding:4px 8px;border:1px solid transparent;border-radius:6px;line-height:1.5;overflow-y:auto;overflow-wrap:anywhere;white-space:pre-wrap}
+#startNote:not(:empty){background:#fdecea;border-color:#e0a39e;color:#7a1712} #startBox h2{margin:0 0 10px;font-size:20px;color:#1f3a5f}
 #startMsg{white-space:pre-wrap;line-height:1.6;margin-bottom:14px}
 #startBtns{display:flex;flex-direction:column;gap:8px;margin-bottom:12px} #startBtns button{text-align:left;padding:12px 16px;font-size:15px;border:1px solid #1f3a5f;background:#fff;border-radius:6px;cursor:pointer}
 #startBtns button.primary{background:#1f3a5f;color:#fff;font-weight:bold} #startBtns button.cancel{border-color:#999;color:#444;font-size:13px}

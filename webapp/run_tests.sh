@@ -61,6 +61,7 @@ run test_save_catalog_node.js
 run test_save_catalog_dom_node.js
 run test_save_failure_record_dom_node.js
 run test_save_doc_failure_record_node.js
+run test_start_note_dom_node.js
 run test_import_previous_node.js
 run test_import_previous_oc_conflict_node.js "$HP"
 run test_editing_month_header_node.js

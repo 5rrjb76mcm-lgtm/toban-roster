@@ -50,7 +50,8 @@ async function makeApp(){
   const auto=async()=>{assert(scheduled,'bound edit schedules autosave');const fn=scheduled;scheduled=null;const r=await fn();await settle();return r;};
   const manual=async()=>{const b=q('#btnHeaderSave');assert(b,'header save button');b.click();await settle();};
   const answer=async re=>{for(let i=0;i<400;i++){const b=!q('#modal').hidden&&[...w.document.querySelectorAll('#modalBtns button')].find(b=>re.test(b.textContent));if(b){b.click();return;}await tick(5);}throw new Error('modal choice not offered: '+re+' / '+q('#modalMsg').textContent);};
-  const rec=()=>{const el=q('#saveFail');return {shown:!el.hidden,text:el.textContent,items:[...el.querySelectorAll('#saveFailMsg p')].map(p=>p.textContent),button:!!q('#saveFailOk')};};
+  // 記録の文（#saveFail）と、文とは別の要素の確認ボタン（#saveFailOk。記録がある間だけ表示）
+  const rec=()=>{const el=q('#saveFail');return {shown:!el.hidden,text:el.textContent,items:[...el.querySelectorAll('#saveFailMsg p')].map(p=>p.textContent),button:!q('#saveFailOk').hidden};};
   return {dom,w,A,T:w.T,root,q,change,auto,manual,answer,rec,connect,settle,errors,hide:()=>{assert(hideToast,'toast armed its hide timer');const fn=hideToast;hideToast=null;fn();}};
 }
 let cases=0;
@@ -69,8 +70,10 @@ async function plantOtherFacility({root,change,auto}){change('Synthetic first sa
     assert.match(r.items[0],/保存できていません/);assert.match(r.items[0],/202611/);assert.match(r.items[0],/Synthetic folder/);assert.match(r.items[0],/自動保存に失敗しました: Synthetic close denied/);
     assert.strictEqual(q('#toast').hidden,false);assert.match(q('#toast').textContent,/Synthetic close denied/,'the failure is also announced as a normal toast');
     assert.strictEqual(w.document.activeElement,notes,'recording a failure does not move focus');assert.strictEqual(notes.value,'Synthetic draft 1');
+    const ack=q('#saveFailOk');ack.focus();assert.strictEqual(w.document.activeElement,ack);
     A.toast('架空の別の通知');assert.strictEqual(q('#toast').textContent,'架空の別の通知');
     assert.deepStrictEqual(rec().items,r.items,'another toast does not replace the record');
+    assert.strictEqual(q('#saveFailOk'),ack,'an unrelated toast does not recreate the acknowledge button');assert.strictEqual(ack.hidden,false);assert.strictEqual(q('#saveFail').hidden,false,'nor remove the record');assert.strictEqual(w.document.activeElement,ack,'keyboard focus stays on the button');notes.focus();
     hide();assert.strictEqual(q('#toast').hidden,true);assert.deepStrictEqual(rec().items,r.items,'the record outlives the toast');assert.strictEqual(rec().shown,true);
     assert.strictEqual(q('#saveState').className,'dirty');assert.strictEqual(A.isDirty(),true);
     root.fail=null;change('Synthetic draft 2');assert.strictEqual(await auto(),'saved');
@@ -137,10 +140,10 @@ async function plantOtherFacility({root,change,auto}){change('Synthetic first sa
     assert.strictEqual(dir.files.get('202611_data.json'),'{ synthetic broken json','the unreadable file is not overwritten');
     dir.files.delete('202611_data.json');await manual();assert.strictEqual(rec().shown,false);
   });
-  await scenario('表示言語を切り替えると記録の文面も切り替わる', async({A,T,root,change,auto,rec})=>{
+  await scenario('表示言語を切り替えると記録の文面も切り替わる', async({A,T,root,q,change,auto,rec})=>{
     root.fail='Synthetic close denied';change('Synthetic draft');assert.strictEqual(await auto(),'failed');
     T.setLang('en');A.renderHeader();const r=rec();
-    assert.match(r.items[0],/Not saved/);assert.match(r.items[0],/Autosave failed: Synthetic close denied/);assert.match(r.text,/Got it/);assert.doesNotMatch(r.text,/保存できていません|確認しました/);
+    assert.match(r.items[0],/Not saved/);assert.match(r.items[0],/Autosave failed: Synthetic close denied/);assert.strictEqual(q('#saveFailOk').textContent,'Got it');assert.doesNotMatch(r.text,/保存できていません/);
   });
   // ---- 「確認しました」は記録の確認だけで、未保存のデータを保存済みにせず、再保存や未保存の保護を妨げない
   await scenario('確認しても未保存のまま: 保存表示・保存ボタン・ページを離れるときの警告が残る', async({A,root,q,change,auto,rec,w})=>{

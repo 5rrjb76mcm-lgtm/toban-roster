@@ -30,7 +30,7 @@
     </nav>
   </div>
 </header>
-<div id="toastRow"><div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div><div id="saveFail" hidden></div></div>
+<div id="toastRow"><div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div><div id="saveFail" hidden></div><button id="saveFailOk" type="button" hidden></button></div>
 <main>
   <section class="pane" id="input">
     <div class="subnav"><button class="sub active" data-sub="monthSettings">月の設定（暦・目標・固定・前月末・履歴）</button><button class="sub" data-sub="doctorPane">{person}別カレンダー（業務・不可・希望）</button><button class="sub" data-sub="fixedPane">固定配置（決定済みの入力）</button></div>
@@ -177,7 +177,7 @@ jloup@gzip.org          madler@alumni.caltech.edu</pre></details>
     </div>
 </section>
 </main>
-<div id="startGate" hidden><div id="startBox"><div class="startLang"><select id="startLang" aria-label="Language / 言語"></select></div><h2>勤務表の作成</h2><p id="startMsg"></p><div id="startBtns"></div><p class="note">フォルダへの保存にはブラウザの許可が必要で、許可はページを開いた直後には求められません。開始ボタンを押した操作をきっかけに許可を求めます。</p></div></div>
+<div id="startGate" hidden><div id="startBox"><div class="startLang"><select id="startLang" aria-label="Language / 言語"></select></div><h2>勤務表の作成</h2><p id="startMsg"></p><div id="startBtns"></div><p id="startNote" role="status" aria-live="polite"></p><p class="note">フォルダへの保存にはブラウザの許可が必要で、許可はページを開いた直後には求められません。開始ボタンを押した操作をきっかけに許可を求めます。</p></div></div>
 <div id="modal" hidden><div id="modalBox"><div id="modalMsg"></div><div id="modalBtns"></div></div></div>
 <script>/*__JSZIP__*/</script>
 <script id="highsSrc">/*__HIGHS__*/</script>

@@ -42,15 +42,22 @@ async function makeApp(){
   const change=value=>{const notes=q('#monthSettings [data-path="notes"]');assert(notes);notes.value=value;notes.dispatchEvent(new w.Event('change',{bubbles:true}));};
   return {dom,w,A,root,q,change,errors,runTimer:()=>{assert(scheduled,'bound edit schedules autosave');const fn=scheduled;scheduled=null;return fn();}};
 }
-(async()=>{let cases=0;
+// The run must reach its end: an awaited step that never settles would otherwise end the process with status 0.
+const EXPECTED_CASES=5;let cases=0,finished=false;
+process.on('exit',()=>{if((!finished||cases!==EXPECTED_CASES)&&!process.exitCode){console.error('NOT COMPLETED: '+cases+'/'+EXPECTED_CASES+' cases passed, finished='+finished);process.exitCode=1;}});
+(async()=>{
   for(const mode of ['auto','header']){
     const app=await makeApp(),{dom,A,root,q,change,errors}=app;
     try{
       assert.strictEqual(root.dirs.size,0);assert.match(q('#monthSel').selectedOptions[0].textContent,/未保存/);
       change('Synthetic edited through real textarea');assert.strictEqual(A.state.month.notes,'Synthetic edited through real textarea');assert.strictEqual(q('#saveState').className,'dirty');
+      // The header is published after the write (how many times is an implementation detail: a manual save also lists the folder again).
+      // What must hold: the list and the save state are right, and the field being edited keeps its focus and its text.
+      const notes=q('#monthSettings [data-path="notes"]');notes.focus();assert.strictEqual(dom.window.document.activeElement,notes);
       let renders=0;const observer=new dom.window.MutationObserver(records=>{renders+=records.length;});root.beforeClose=async()=>observer.observe(q('#monthTitle'),{childList:true});
       if(mode==='auto')assert.strictEqual(await app.runTimer(),'saved');else{q('#btnHeaderSave').click();await A.awaitSaves();}
-      await Promise.resolve();observer.disconnect();root.beforeClose=null;assert.strictEqual(renders,1,'successful current-month write publishes header once');
+      await Promise.resolve();observer.disconnect();root.beforeClose=null;assert.ok(renders>=1,'successful current-month write publishes the header');
+      assert.strictEqual(dom.window.document.activeElement,notes,'the edited field keeps focus through the save');assert.strictEqual(notes.value,'Synthetic edited through real textarea');assert.deepStrictEqual([...A.monthDirs],['202611']);
       assert.strictEqual(q('#monthSel').value,'202611');assert.doesNotMatch(q('#monthSel').selectedOptions[0].textContent,/未保存/);
       assert.strictEqual(q('#saveState').className,'saved');assert.strictEqual(A.isDirty(),false);
       assert.strictEqual([...q('#monthSel').options].filter(o=>o.value==='202611').length,1);
@@ -75,5 +82,18 @@ async function makeApp(){
     assert.strictEqual(A.isDirty(),true);assert.strictEqual(q('#saveState').className,'dirty');assert.doesNotMatch(q('#monthSel').selectedOptions[0].textContent,/未保存/);assert.deepStrictEqual(errors,[]);
     cases++;console.log('PASS real textarea edit during close stays dirty while saved month enters selector');
   }finally{dom.window.close();}}
-  console.log(cases+'/4 full-entry DOM save cases passed');
+  {const app=await makeApp(),{dom,A,root,q,change,errors}=app;try{
+    change('Synthetic first save');q('#btnHeaderSave').click();await A.awaitSaves();assert.deepStrictEqual([...A.monthDirs],['202611']);
+    // Another window (or PC) saves December into the same folder.
+    const dec=await root.getDirectoryHandle('202612',{create:true});dec.files.set('202612_data.json',JSON.stringify({rules:A.state.rules,month:{year:2026,month:12,notes:'Synthetic other window'},result:null,saved_at:'2026-10-02T00:00:00.000Z'}));
+    const notes=q('#monthSettings [data-path="notes"]');notes.focus();change('Synthetic edit while another window saved December');
+    q('#btnHeaderSave').click();await A.awaitSaves();
+    assert.deepStrictEqual([...A.monthDirs],['202611','202612'],'the manual save lists the folder again');
+    const decOption=[...q('#monthSel').options].filter(o=>o.value==='202612');assert.strictEqual(decOption.length,1);assert.doesNotMatch(decOption[0].textContent,/未保存|作成/,'December is offered as a saved month');
+    assert.strictEqual(q('#monthSel').value,'202611');assert.doesNotMatch(q('#monthSel').selectedOptions[0].textContent,/未保存/);assert.strictEqual(q('#saveState').className,'saved');assert.strictEqual(A.isDirty(),false);
+    assert.strictEqual(dom.window.document.activeElement,notes,'the edited field keeps focus');assert.strictEqual(notes.value,'Synthetic edit while another window saved December');
+    assert.strictEqual(JSON.parse(root.dirs.get('202611').files.get('202611_data.json')).month.notes,'Synthetic edit while another window saved December');assert.deepStrictEqual(errors,[]);
+    cases++;console.log('PASS manual save lists a month saved by another window; focus and text of the edited field are kept');
+  }finally{dom.window.close();}}
+  console.log(cases+'/'+EXPECTED_CASES+' full-entry DOM save cases passed');finished=true;
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

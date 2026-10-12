@@ -37,7 +37,9 @@ function declared(selector, width, height) {
   }
   visit(w.document.styleSheets[0].cssRules); return out;
 }
-let cases = 0;
+let cases = 0, completed = false;
+const EXPECTED_CASES = 24; // 12 viewports x 2 languages
+process.on('exit', () => { if ((!completed || cases !== EXPECTED_CASES) && !process.exitCode) { console.error(`NOT COMPLETED: reached ${cases}/${EXPECTED_CASES} viewport policies, completed=${completed}`); process.exitCode = 1; } });
 try {
   for (const lang of ['ja','en']) {
     T.setLang(lang); T.applyI18n(w.document.body); A.renderHeader(); A.clearUndo();
@@ -58,10 +60,15 @@ try {
     // pinned with the header on large viewports) and before the content.
     const row=q('#toastRow');
     // It shares the row with the kept save-failure record, which shows only while no toast is visible.
-    const kept=q('#saveFail');
-    assert.equal(toast.parentElement,row); assert.equal(kept.parentElement,row); assert.equal(row.children.length,2); assert.equal(row.hidden,false);
-    assert.equal(toast.nextElementSibling,kept); assert.equal(kept.hidden,true,'no record unless a save failed'); assert.equal(kept.children.length,0);
-    assert.equal(declared('#toast:not([hidden])+#saveFail',1280,960).display,'none','a visible toast takes the place of the record');
+    // The acknowledge button is a third, permanent element: a notification neither hides nor recreates it.
+    const kept=q('#saveFail'), ack=q('#saveFailOk');
+    assert.equal(toast.parentElement,row); assert.equal(kept.parentElement,row); assert.equal(ack.parentElement,row); assert.equal(row.children.length,3); assert.equal(row.hidden,false);
+    assert.equal(toast.nextElementSibling,kept); assert.equal(kept.nextElementSibling,ack); assert.equal(ack.tagName,'BUTTON'); assert.equal(ack.getAttribute('type'),'button');
+    assert.equal(kept.hidden,true,'no record unless a save failed'); assert.equal(kept.children.length,0); assert.equal(ack.hidden,true,'no acknowledge button without a record');
+    // While a toast is visible the record text stays in place but unseen (not removed, so focus and scroll position inside it survive) and lets the pointer through to the toast.
+    const under=declared('#toast:not([hidden])+#saveFail',1280,960);
+    assert.equal(under.opacity,'0','a visible toast is read in the place of the record text'); assert.equal(under['pointer-events'],'none'); assert(!under.display && !under.visibility,'the record is not removed while a toast is shown');
+    assert.equal(w.document.querySelectorAll('#saveFail button, #toast button').length,0,'the button is not inside an element that a toast covers');
     assert.equal(row.previousElementSibling,q('header')); assert.equal(row.nextElementSibling,q('main'));
     assert.equal(toast.closest('header'),null);
     assert(q('nav').compareDocumentPosition(toast) & w.Node.DOCUMENT_POSITION_FOLLOWING);
@@ -74,8 +81,12 @@ try {
       // Reserved row on every viewport: the same height with or without a message, whatever its
       // length; never an overlay on top of the content, and not pinned like the header.
       assert.equal(statusRow.height,width<=480 ? 'calc(4.5em + 10px)' : 'calc(3em + 10px)','reserved status row height');
-      assert.equal(statusRow['box-sizing'],'content-box'); assert(!statusRow.display,'reserved row must stay rendered');
+      assert.equal(statusRow['box-sizing'],'content-box');
       assert(!statusRow.position && !statusRow.top,'the row scrolls with the content');
+      // One cell for the toast and the record text (same place, same size), a second column for the acknowledge button.
+      assert.equal(statusRow.display,'grid'); const ackBtn=declared('#saveFailOk',width,height);
+      const cell=x=>String(x['grid-area']||'').replace(/\s+/g,'');
+      assert.equal(cell(status),'1/1'); assert.equal(cell(declared('#saveFail',width,height)),'1/1'); assert.equal(cell(ackBtn),'1/2'); assert(!ackBtn.position && !ackBtn.display);
       for (const box of [status, declared('#saveFail',width,height)]) {
         assert(!box.position && !box.transform && !box.bottom && !box['z-index'],'no overlay');
         assert(!box['pointer-events'] && !box['max-width']); assert.equal(box.height,'100%'); assert.equal(box['overflow-wrap'],'anywhere');
@@ -84,7 +95,7 @@ try {
       assert(!status['overscroll-behavior'],'the wheel over a short status still scrolls the page');
       // The kept record fills the same row: its text scrolls inside, the button stays beside it.
       const record=declared('#saveFail',width,height), recordText=declared('#saveFailMsg',width,height);
-      assert.equal(record.display,'flex'); assert.equal(recordText.height,'100%'); assert(!recordText['max-height']);
+      assert(!record.display,'the record box is an ordinary block in the shared cell'); assert.equal(recordText.height,'100%'); assert(!recordText['max-height']);
       assert.equal(recordText['overflow-y'],'auto'); assert(!recordText['overscroll-behavior']);
       const select=declared('#monthTitle select',width,height);
       assert.equal(select['font-size'],width<=1080 ? '16px' : width<=1200 ? '17px' : '18px');
@@ -118,8 +129,14 @@ try {
   assert.equal(q('#doctorPane').dataset.doctor,'Synthetic Beta');
   const field=q('#doctorPane [data-cal="unavail"][data-d="10"]');
   assert(field); field.value='night'; field.focus();
-  const snapshot=JSON.stringify(A.state.month), setTimer=w.setTimeout;
-  let hideToast; w.setTimeout=fn=>{hideToast=fn;return 0;};
+  const snapshot=JSON.stringify(A.state.month), setTimer=w.setTimeout, clearTimer=w.clearTimeout;
+  // Deterministic timers: every setTimeout is recorded with its delay; clearTimeout marks it cancelled.
+  // pending() lists timers that are neither cancelled nor fired; fire() runs one as its deadline passing.
+  const timers=[]; let timerId=0;
+  w.setTimeout=(fn,delay)=>{ const t={id:++timerId,fn,delay,cancelled:false,fired:false}; timers.push(t); return t.id; };
+  w.clearTimeout=id=>{ const t=timers.find(x=>x.id===id); if (t) t.cancelled=true; };
+  const pending=()=>timers.filter(t=>!t.cancelled && !t.fired), fire=t=>{ assert(!t.cancelled && !t.fired,'timer is still armed'); t.fired=true; t.fn(); };
+  const hideToast=()=>{ const p=pending(); assert.equal(p.length,1,'exactly one armed notification timer'); fire(p[0]); };
   try {
     for (const lang of ['ja','en']) {
       T.setLang(lang); A.toast(T.t('保存を見送りました'));
@@ -137,12 +154,26 @@ try {
     const el=q('#toast'), matches=el.matches; let reading=true, asked='';
     el.matches=sel=>{ asked=sel; return reading; };
     try {
-      A.toast('Synthetic long status'); hideToast(); const again=hideToast;
+      assert.equal(pending().length,0,'no notification timer left over');
+      A.toast('Synthetic long status'); let p=pending();
+      assert.equal(p.length,1); assert.equal(p[0].delay,4000,'a notification is shown for four seconds');
+      // The four seconds pass while it is being read: it stays, and a fresh, shorter timer is armed.
+      const first=p[0]; fire(first);
       assert.equal(el.hidden,false,'not hidden while being read'); assert(asked.includes(':hover') && asked.includes(':focus'));
-      reading=false; again(); assert.equal(el.hidden,true,'hidden once no longer being read');
-      el.scrollTop=30; A.toast('Synthetic next status'); assert.equal(el.scrollTop,0,'next status starts from the top');
-      assert.equal(el.hidden,false); hideToast(); assert.equal(el.hidden,true);
+      p=pending(); assert.equal(p.length,1,'the hide timer was armed again'); assert.notEqual(p[0],first); assert.equal(p[0].delay,1000,'it looks again after one second');
+      // Still being read at the next deadline: kept again, armed again.
+      const second=p[0]; fire(second); assert.equal(el.hidden,false,'kept across a second deadline');
+      p=pending(); assert.equal(p.length,1); assert.notEqual(p[0],second); assert.equal(p[0].delay,1000);
+      // Reading ends: the next deadline hides it and nothing stays armed.
+      reading=false; fire(p[0]); assert.equal(el.hidden,true,'hidden once no longer being read'); assert.equal(pending().length,0,'no timer after hiding');
+      // After that the normal four-second timer works again, and a newer message replaces the timer of the older one.
+      el.scrollTop=30; A.toast('Synthetic next status'); assert.equal(el.scrollTop,0,'next status starts from the top'); assert.equal(el.hidden,false);
+      p=pending(); assert.equal(p.length,1); assert.equal(p[0].delay,4000); const older=p[0];
+      A.toast('Synthetic newer status'); assert.equal(older.cancelled,true,'the older timer is cancelled, so it cannot hide the newer message early');
+      p=pending(); assert.equal(p.length,1); assert.equal(p[0].delay,4000); assert.equal(el.textContent,'Synthetic newer status');
+      fire(p[0]); assert.equal(el.hidden,true); assert.equal(pending().length,0);
     } finally { el.matches=matches; }
-  } finally { w.setTimeout=setTimer; }
+  } finally { w.setTimeout=setTimer; w.clearTimeout=clearTimer; }
   console.log(`PASS header/status DOM and responsive CSS contracts (${cases} JP/EN viewport policies; reserved fixed-height status row on every viewport, no overlay; visible/hidden notification preserves calendar focus/input/person; no browser geometry measured)`);
+  completed = true;
 } finally { dom.window.close(); }

@@ -60,7 +60,11 @@ async function delayedSave(f, mode, during, generation = 1) {
   await entered.promise; during(); release.resolve();
   return saving;
 }
-let passed = 0, failed = 0;
+let passed = 0, failed = 0, finished = false;
+// The run must reach its end: several cases wait for a gate inside the save (the document generator); if a change to the save code
+// makes that gate unreachable, Node would simply drain the event loop and exit 0 without running the remaining cases.
+const EXPECTED_CASES = 10;
+process.on('exit', () => { if (!finished || passed + failed !== EXPECTED_CASES) { console.error(`NOT COMPLETED: ${passed + failed}/${EXPECTED_CASES} cases ran, finished=${finished}`); process.exitCode = 1; } else if (failed) process.exitCode = 1; });
 async function test(label, fn) { try { await fn(); passed++; console.log('ok ' + label); } catch (e) { failed++; console.error('FAIL ' + label + ': ' + e.message.split('\n')[0]); } }
 (async () => {
   for (const mode of ['manual', 'auto']) {
@@ -102,13 +106,17 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
     assert.strictEqual(status, 'saved'); assert.strictEqual(JSON.parse(f.files.get(dataName)).month.notes, 'synthetic local change');
     assert.strictEqual(A.state.month.notes, 'synthetic later local edit'); assert.strictEqual(A.isDirty(), true);
   });
-  for (const phase of ['renumber', 'reuse-renumber', 'missing-document']) await test('manual: peer update during ' + phase + ' preserves its JSON and documents', async () => {
+  for (const phase of ['renumber', 'reuse-renumber', 'missing-document', 'missing-roster']) await test('manual: peer update during ' + phase + ' preserves its JSON and documents', async () => {
     const f = setup(); let generation = 1, ver = 1;
     if (phase === 'renumber') { f.files.set(A.FILES.roster('202611', 1, '確認版'), 'synthetic orphan'); generation = 2; ver = 2; }
     else {
       assert.strictEqual(await A.saveToFolder(), 'saved');
+      // These phases are about re-using version 1: make sure it was recorded with its completion info, so the gated save below is on that path.
+      assert.strictEqual(A.state.month.doc_versions.length, 1); assert.ok(Array.isArray(A.state.month.doc_versions[0].fp), 'version 1 carries completion info');
       A.state.result.seconds = 2; // the JSON needs saving; the existing document signature is unchanged
-      if (phase === 'missing-document') f.files.delete(A.FILES.report('202611', 1, '確認版'));
+      assert.ok((await A.prepareSave()).reuse, 'the next save re-uses version 1');
+      if (phase === 'missing-document') f.files.delete(A.FILES.report('202611', 1, '確認版')); // only the missing report is written again, but both documents are generated first (the gate below)
+      else if (phase === 'missing-roster') f.files.delete(A.FILES.roster('202611', 1, '確認版'));
       else {
         const old = JSON.parse(f.files.get(dataName)); old.month.doc_versions[0].sig = 'synthetic-other-document';
         f.files.set(dataName, JSON.stringify(old)); // forces the reuse path to allocate another version
@@ -133,5 +141,5 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
     assert.strictEqual(f.writes.length, 0); assert.strictEqual(JSON.stringify(A.state), before);
   });
   clearTimeout(A.autosaveTimer);
-  console.log(`peer update saves: ${passed} passed, ${failed} failed`); if (failed) process.exitCode = 1;
+  console.log(`peer update saves: ${passed} passed, ${failed} failed`); finished = true;
 })().catch(e => { clearTimeout(A.autosaveTimer); console.error(e.stack || e); process.exitCode = 1; });

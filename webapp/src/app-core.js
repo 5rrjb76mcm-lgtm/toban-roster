@@ -143,7 +143,11 @@
   }
   // 通知欄の高さは固定で、長い文は欄の中でスクロールして読む。読んでいる間（ポインタが乗っている・フォーカスがある）は消さない
   const toastHide = () => { const el = $("#toast"); if (el.matches && el.matches(":hover,:focus")) { toast.t = setTimeout(toastHide, 1000); return; } el.hidden = true; };
-  const toast = msg => { const el = $("#toast"); el.textContent = msg; el.hidden = false; el.scrollTop = 0; clearTimeout(toast.t); toast.t = setTimeout(toastHide, 4000); };
+  // 開始画面（不透明で画面全体を覆う）が出ている間の知らせは、開始画面の中の欄（#startNote）に出す。通知欄は開始画面の下になって見えないため。
+  // 次の知らせか、開始画面のボタンを押すまで残す。開始画面を閉じるときに残っている知らせは、通常の通知欄へ移す（app-folder.js の closeStartGate）
+  const startNote = () => { const g = $("#startGate"), n = $("#startNote"); return g && n && !g.hidden ? n : null; };
+  const toast = msg => { const note = startNote(); if (note) { note.textContent = msg; note.scrollTop = 0; if (note.scrollIntoView) note.scrollIntoView({ block: "nearest" }); return; } // 低い画面で欄が開始画面のスクロールの外にあれば、見える位置まで送る
+    const el = $("#toast"); el.textContent = msg; el.hidden = false; el.scrollTop = 0; clearTimeout(toast.t); toast.t = setTimeout(toastHide, 4000); };
 
   // 施設の識別（設定の profile.id と月の profile_id）。相手（フォルダ・前月）のデータが別の施設のものかは、手元と相手の id の集合が 1 つでないことで判定する
   // 読み取りを待つ操作の見張り: 始めるときの年月と接続の世代を覚え、読み終えた後・当てる直前に変わっていないかを見る（変わっていたら古い読取結果を捨てる）。
