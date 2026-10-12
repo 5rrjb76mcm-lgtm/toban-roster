@@ -30,12 +30,12 @@ function remembered(name, answer, onList) { const f = readable(name); return Obj
 // 架空の IndexedDB（フォルダの参照を覚える kv だけ）
 function fakeIndexedDB(store) { const req = fn => { const r = {}; setTimeout(() => { try { r.result = fn(); if (r.onsuccess) r.onsuccess(); } catch (e) { r.error = e; if (r.onerror) r.onerror(); } }, 0); return r; };
   const db = { createObjectStore() {}, transaction() { return { objectStore() { return { get: k => req(() => store.get(k)), put: (v, k) => req(() => { store.set(k, v); }) }; } }; } }; return { open() { return req(() => db); } }; }
-// 要素に当たる全ての規則（印刷用を除く。詳細度・書かれた順・画面幅の条件は区別しない）が宣言している値を、性質ごとに全部集める。
-// 値を確かめる性質は「宣言が 1 通りで、その値」であること（only）、あってはならない性質は「どの規則も宣言していない」こと（none）で見る。
+// 要素に当たる全ての規則（印刷だけの @media print を除く。詳細度・書かれた順・画面幅などの条件は区別しない）が宣言している値を、性質ごとに全部集める。
+// 値を確かめる性質は「宣言されている値が 1 通りで、その値」であること（only）、あってはならない性質は「どの規則も宣言していない」こと（none）で見る。
 // どの規則が勝つかを計算しないので、前に置いた詳細度の高い打ち消し・!important・画面幅ごとの打ち消しも、宣言が 2 通りになって拾える
-function declared(w, el) { const out = {}; const visit = rules => { for (const r of rules) { if (!r.selectorText) { if (r.cssRules && !/print/.test(r.conditionText || '')) visit(r.cssRules); continue; }
+function declared(w, el) { const out = {}; const visit = rules => { for (const r of rules) { if (!r.selectorText) { if (r.cssRules && !/^\s*print\s*$/.test(r.conditionText || '')) visit(r.cssRules); continue; }
   let hit = false; try { hit = el.matches(r.selectorText); } catch (e) { } if (hit) for (let i = 0; i < r.style.length; i++) { const k = r.style[i], v = r.style.getPropertyValue(k); (out[k] ||= []).includes(v) || out[k].push(v); } } }; for (const sheet of w.document.styleSheets) visit(sheet.cssRules); return out; }
-const only = (d, prop, value, why) => assert.deepStrictEqual(d[prop] || [], [value], why + ': ' + prop + ' is declared once, as ' + value);
+const only = (d, prop, value, why) => assert.deepStrictEqual(d[prop] || [], [value], why + ': ' + prop + ' has one declared value, ' + value);
 const none = (d, props, why) => { for (const prop of props) assert.deepStrictEqual(d[prop] || [], [], why + ': ' + prop + ' is not declared by any rule'); };
 // 開始画面が出るところまで本体を動かす。before(A, w) は、開始画面を出す処理（restoreFolder）の前に行うこと。stored は覚えているフォルダの参照
 async function makeApp(before, stored) {

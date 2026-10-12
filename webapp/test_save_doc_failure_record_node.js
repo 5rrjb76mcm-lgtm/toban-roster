@@ -32,12 +32,14 @@ const isDoc = name => /\.(docx|html)$/.test(name), isData = name => /_data\.json
 //   refuse(name) が文を返すと、そのファイルの書込みが close でその文の失敗になる
 //   mangle(name, text) は書き込まれる中身を差し替える（書いたはずの内容がフォルダに無い、を作る）
 //   unreadable(name) が文を返すと、そのファイルは「あるのに読めない」（getFile が失敗する）
+//   blocked(name) が文を返すと、そのファイルが「あるかどうかを確かめられない」（作成を指定しない getFileHandle が、無い以外の理由で失敗する）
 function folder(name) {
   const files = new Map(), writes = [];
-  const dir = { name, files, writes, refuse: () => null, mangle: (n, text) => text, unreadable: () => null,
+  const dir = { name, files, writes, refuse: () => null, mangle: (n, text) => text, unreadable: () => null, blocked: () => null,
     async *entries() { for (const t of new Set([...files.keys()].map(n => n.slice(0, 6)))) yield [t, { kind: 'directory' }]; },
     async getDirectoryHandle(n) { if (n === 'plugins') throw missing(); return dir; },
     async getFileHandle(n, options = {}) {
+      if (!options.create) { const why = dir.blocked(n); if (why) throw Object.assign(new Error(why), { name: 'NotAllowedError' }); }
       if (!options.create && !files.has(n)) throw missing();
       if (options.create && !files.has(n)) files.set(n, '');
       return { getFile: async () => { const why = dir.unreadable(n); if (why) throw Object.assign(new Error(why), { name: 'NotReadableError' }); return { text: async () => files.get(n) }; },
@@ -84,7 +86,7 @@ async function withV1(name = 'synthetic-folder') { const dir = folder(name), tag
 const prepKind = prep => prep.reuse ? 'reuse' : prep.docs.length ? 'new' : 'none'; // 試験の場面が、狙った経路（同じ版の再利用）に届いていることを確かめる
 const DOCS = /^帳票の出力が完了していません 202611・フォルダ synthetic-folder・.* — 勤務表・説明資料の書き出しが完了しませんでした: /, DATA = /^保存できていません 202611・フォルダ synthetic-folder・/;
 
-let cases = 0; const total = 35;
+let cases = 0; const total = 36;
 process.on('exit', () => { if (cases !== total && !process.exitCode) { console.error('NOT COMPLETED: ' + cases + '/' + total); process.exitCode = 1; } });
 const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' + name); };
 (async () => {
@@ -244,6 +246,18 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
       assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before, 'the existing documents are not overwritten'); assert.match(lastToast(), /v1 は別の内容の可能性があるので上書きしていません/); assert.deepStrictEqual(records(), []); };
     await proceeds(1, (dir, tag, pair) => dir.files.set(pair[0], dir.files.get(pair[0]) + ' (edited)')); // 勤務表が記録と合わない時点で確かめられない。読めない説明資料は読まない
     await proceeds(0, (dir, tag) => { const o = JSON.parse(dir.files.get(A.FILES.data(tag))); delete o.month.doc_versions[0].fp; dir.files.set(A.FILES.data(tag), JSON.stringify(o)); }); // 記録に完了情報が無い。帳票は読まない
+  });
+  await scenario('同じ名前の帳票があるかどうかを確かめられないとき: 書こうとした番号なら保存を止め、空いている番号を探す途中なら月データだけを保存して帳票の出力の失敗を記録する（どちらも上書きしない）', async () => {
+    const edited = (dir, docx1) => dir.files.set(docx1, dir.files.get(docx1) + ' (remarks typed in a word processor)');
+    { const { dir, tag } = await withV1(), pair = V1(tag); edited(dir, pair[0]); const before = pair.map(n => dir.files.get(n)); forgetVersions(dir, tag); const data = dir.files.get(A.FILES.data(tag)); A.state.result.seconds = 2;
+      dir.blocked = n => n === pair[0] ? 'synthetic existence check failed' : null; const w = dir.writes.length; assert.strictEqual(await manual(), 'failed', 'the number about to be used'); // 書こうとした番号（v1）の勤務表
+      assert.deepStrictEqual(docWritesSince(dir, w), []); assert.strictEqual(dir.files.get(A.FILES.data(tag)), data, 'the month data is not written'); assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before);
+      const r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DATA); assert.match(r[0], /synthetic existence check failed/); acknowledge(); }
+    { const { dir, tag } = await withV1(), pair = V1(tag), next = A.FILES.roster(tag, 2, '確認版'); edited(dir, pair[0]); const before = pair.map(n => dir.files.get(n)); forgetVersions(dir, tag); A.state.result.seconds = 2;
+      dir.blocked = n => n === next ? 'synthetic existence check failed' : null; let w = dir.writes.length; assert.strictEqual(await manual(), 'saved', 'while looking for a free number'); // v1 は使えないので次の番号を探す。その勤務表があるかどうかを確かめられない
+      assert.deepStrictEqual(docWritesSince(dir, w), [], 'no document is output'); assert.strictEqual(JSON.parse(dir.files.get(A.FILES.data(tag))).result.seconds, 2, 'the month data is saved'); assert.deepStrictEqual(versions(), [], 'no version is recorded'); assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before);
+      let r = records(); assert.strictEqual(r.length, 1); assert.match(r[0], DOCS); assert.match(r[0], /synthetic existence check failed$/); assert.match(lastToast(), /勤務表と説明資料は書き出せませんでした: synthetic existence check failed。月データは保存しました/);
+      dir.blocked = () => null; w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [2]); assert.strictEqual(docWritesSince(dir, w).length, 2); assert.deepStrictEqual(records(), [], 'the output completed under the free number'); assert.deepStrictEqual(pair.map(n => dir.files.get(n)), before); }
   });
   await scenario('書いた直後に読み直して確かめる: フォルダにある中身が書いた内容と違えば完了とせず、版の記録にも入れない', async () => {
     const dir = folder('synthetic-folder'), tag = open(dir); dir.mangle = (n, text) => /\.html$/.test(n) ? text.slice(0, 5) : text; edit('synthetic edit');

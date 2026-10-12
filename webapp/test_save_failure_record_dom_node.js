@@ -33,20 +33,20 @@ function memoryFolder(name, place, store) {
 }
 const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
 // スタイルシート込みで、要素が見えていて押せるか。自身と祖先の算出値が display:none・visibility:hidden でなく、
-// 自身か祖先に当たる規則（印刷用を除く。画面幅の条件は区別せず全部）が、表示を消す・透明にする・ポインタを通す宣言をしていない
+// 自身か祖先に当たる規則（印刷だけの @media print を除く。それ以外の条件付きの規則は、画面幅の条件も区別せず全部見る）が、表示を消す・透明にする・ポインタを通す宣言をしていない
 function usable(w, el) {
   const chain=[];for(let x=el;x&&x.nodeType===1;x=x.parentElement)chain.push(x);
   for(const x of chain){const cs=w.getComputedStyle(x);if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse')return false;}
-  let ok=true;const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/print/.test(r.conditionText||''))visit(r.cssRules);continue;}
+  let ok=true;const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/^\s*print\s*$/.test(r.conditionText||''))visit(r.cssRules);continue;}
     let hit=false;try{hit=chain.some(x=>x.matches(r.selectorText));}catch(e){}if(!hit)continue;
     const v=n=>r.style.getPropertyValue(n);if(v('display')==='none'||/hidden|collapse/.test(v('visibility'))||v('opacity')==='0'||v('pointer-events')==='none')ok=false;}};
   for(const sheet of w.document.styleSheets)visit(sheet.cssRules);return ok;
 }
-// 要素とその祖先に当たる規則（印刷用を除く）の一覧。通知が出ているときと出ていないときで同じなら、どんな宣言であれ「通知が出ている間だけ」ボタンに効く規則は無い
+// 要素とその祖先に当たる規則（印刷だけの @media print を除く）の一覧。通知が出ているときと出ていないときで同じなら、どんな宣言であれ「通知が出ている間だけ」ボタンに効く規則は無い
 // （大きさを 0 にする・画面の外へ出す・切り抜くなど、上の usable が見ていない消し方も、通知を条件にしていれば拾う）
 function rulesFor(w, el) {
   const chain=[];for(let x=el;x&&x.nodeType===1;x=x.parentElement)chain.push(x);
-  const out=[];const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/print/.test(r.conditionText||''))visit(r.cssRules);continue;}let hit=false;try{hit=chain.some(x=>x.matches(r.selectorText));}catch(e){}if(hit)out.push(r.cssText);}};
+  const out=[];const visit=rules=>{for(const r of rules){if(!r.selectorText){if(r.cssRules&&!/^\s*print\s*$/.test(r.conditionText||''))visit(r.cssRules);continue;}let hit=false;try{hit=chain.some(x=>x.matches(r.selectorText));}catch(e){}if(hit)out.push(r.cssText);}};
   for(const sheet of w.document.styleSheets)visit(sheet.cssRules);return out;
 }
 async function makeApp(){
