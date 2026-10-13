@@ -57,6 +57,7 @@ run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
 run test_save_local_input_node.js
+run test_save_fallback_input_dom_node.js
 run test_save_catalog_node.js
 run test_save_catalog_dom_node.js
 run test_save_failure_record_dom_node.js
@@ -77,6 +78,7 @@ run test_rule_diagnostic_rows_node.js "$HP"
 run test_rule_diagnose_node.js "$HP"
 run test_rule_diagnose_nonmonotone_node.js "$HP"
 run test_rule_diagnostic_ui_node.js
+run test_diagnostic_role_label_dom_node.js
 echo "== 公開前点検のパス判定（tools/test_private_paths.py）"; python3 ../tools/test_private_paths.py || fail=1
 echo "== 公開前点検のメタデータ判定（tools/test_prepublish_check.py）"; python3 ../tools/test_prepublish_check.py || fail=1
 run test_report_rule_state_node.js "$HP"
