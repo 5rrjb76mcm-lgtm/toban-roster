@@ -175,7 +175,7 @@
         log(T.t("規則の日付・勤務帯の候補は、その日付・勤務帯に対応づけられた条件行をすべて解除します。複数日にまたがる行も含み、その日の勤務入力だけを消す意味ではありません。"));
         log(T.t("規則別の診断は limit() で登録された条件行を対象にします。直接追加された制約や条件行のない規則は、自動では解除しません。"));
         const uncovered = coverage.filter(c => c.status === "direct-only-or-no-rows");
-        if (uncovered.length) log(T.t("自動解除の対象外（直接制約のみ、または条件行なし）: {rules}", { rules: uncovered.map(c => T.t(c.label || c.ruleId) + " [" + c.ruleId + "]").join(T.listSep()) }));
+        if (uncovered.length) log(T.t("自動解除の対象外（直接制約のみ、または条件行なし）: {rules}", { rules: uncovered.map(c => P.term(T.t(c.label || c.ruleId)) + " [" + c.ruleId + "]").join(T.listSep()) }));
       }
       if ((diag.slotExplanations || []).length) {
         log(T.t("枠ごとの候補除外（静的な部分証拠）: 以下は対応する規則が示した除外理由です。原因全体の説明ではなく、残った候補も他の条件で配置できない場合があります。"));

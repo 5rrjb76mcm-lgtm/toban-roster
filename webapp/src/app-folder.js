@@ -239,10 +239,10 @@
     opts.push({ label: f.roleConsent ? T.t("相手の月を現在の役割として読み込む") : T.t("相手の保存データを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。このブラウザの未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "load", primary: true });
     opts.push({ label: T.t("このブラウザの状態で上書きする"), sub: T.t("相手の変更は消えます。例: 相手の保存が誤操作や古い試作と分かっていて、こちらの入力が最新のとき"), value: "overwrite" });
     opts.push({ label: T.t("何もしない（後で判断）"), sub: T.t("自動保存は止まります。ヘッダーの保存で再確認できます"), value: null, cancel: true });
-    const choiceMark = f.mergeBlockedReason ? roleLoadMark(f.data) : null;
+    const choiceMark = roleLoadMark(f.data); // 元なし・別施設でも、確認を出した時点の入力だけに選択を適用する。先に始まった取り込みなどが終われば、古い選択は使わない。
     const v = await A.choose(f.mergeBlockedReason || T.t("別のPC（または別のウィンドウ）で {tag} が保存されています（保存 {at}）。このブラウザの状態はそれより前のもので、自動統合の元になる版がありません。", { tag: A.tag(), at: new Date(fileAt).toLocaleString(T.dateLocale()) }), opts);
     if (guard.stale()) return false;
-    if (choiceMark && !roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return false; }
+    if (!roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return false; }
     if (v === "load") { applyLoaded(f.data, T.t("{where} を読み込みました", { where: f.where }), { roleConsent: f.roleConsent }); return false; }
     return v === "overwrite";
   }
@@ -383,9 +383,9 @@
         if (m === true) { A.save(); return; } // 統合結果は自動保存の予約で書く（ここが保存の待ち行列の中から呼ばれることがあり、同じ行列を待つと止まる）
         if (m === false) return;
         const atTxt = fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明");
-        const choiceMark = f.mergeBlockedReason ? roleLoadMark(f.data) : null;
+        const choiceMark = roleLoadMark(f.data); // 元なし・別施設でも、確認を出した時点の入力だけに選択を適用する。先に始まった取り込みなどが終われば、古い選択は使わない。
         const v = await A.choose((f.mergeBlockedReason || "") + (A.otherFacility(f) ? T.t("このフォルダの {tag} は別の施設（{id}）のデータです。", { tag: A.tag(), id: ((f.data.rules || {}).profile || {}).id || (f.data.month || {}).profile_id }) : "") + T.t("フォルダにある {tag} のデータ（保存 {at}）は、このブラウザ内の状態より新しいか別のものです。ブラウザ内には未保存の変更があります。", { tag: A.tag(), at: atTxt }), [{ label: f.roleConsent ? T.t("相手の月を現在の役割として読み込む") : T.t("フォルダのデータを読み込む（推奨）"), sub: T.t("通常はフォルダのファイル側が最新です。ブラウザ内の未保存の変更は捨てます（必要なら読み込んだあとで入れ直す）"), value: "file", primary: true }, { label: T.t("ブラウザ内の状態を保持する"), sub: T.t("次に保存するとフォルダ側を上書きします。例: フォルダの版が誤って保存された古い内容と分かっていて、このブラウザの入力が最新のとき"), value: null, cancel: true }]); if (v !== "file") return;
-        if (choiceMark && !roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return; }
+        if (!roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return; }
         roleConsent = f.roleConsent;
       }
       if (stale()) return;
