@@ -351,7 +351,17 @@
       if (Object.keys(d).length) R.docx = d; else delete R.docx;
     }
     { const rn = k => roleRen.get(k) || k; // 役割の識別子を変えた回は、画面の行・列の旧い識別子を新しい識別子に読み替える（直した表を旧い識別子で上書きしない）
-      if (el("#ocReqTbl")) { const oc = {}; document.querySelectorAll("#ocReqTbl tr[data-t]").forEach(tr => { const row = {}; tr.querySelectorAll("[data-oc]").forEach(x => { x.dataset.oc = rn(x.dataset.oc); row[x.dataset.oc] = +x.value || 0; }); tr.dataset.t = rn(tr.dataset.t); oc[tr.dataset.t] = row; }); R.oncall_requirement = oc; } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
+      if (el("#ocReqTbl")) {
+        const roles = new Set(T.normalizeRolesOf(R).map(r => r.id));
+        // 待機の資格を外した役割は列が隠れるだけ。既存の人数を残し、画面にある欄だけ上書きする。
+        // 役割自体を削除した列は残さない。改名は上の renameRoles で既に反映済み。
+        R.oncall_requirement = Object.fromEntries([...document.querySelectorAll("#ocReqTbl tr[data-t]")].map(tr => {
+          tr.dataset.t = rn(tr.dataset.t);
+          const table = R.oncall_requirement || {}, old = Object.prototype.hasOwnProperty.call(table, tr.dataset.t) ? table[tr.dataset.t] : {};
+          const cells = [...tr.querySelectorAll("[data-oc]")].map(x => { x.dataset.oc = rn(x.dataset.oc); return [x.dataset.oc, +x.value || 0]; });
+          return [tr.dataset.t, Object.fromEntries([...Object.entries(old || {}).filter(([id]) => roles.has(id)), ...cells])];
+        }));
+      } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
   }
   function readSettings(undoLabel) {
     const R = state.rules; let roleEdit;
@@ -695,12 +705,24 @@
       if (mod) { mod.ui.act(R, act, b); A.save(); renderSettings(); return; }
       if (b.dataset.act === "roleAdd" || b.dataset.act === "roleDel") { // 役割の追加・削除
         const roles = T.normalizeRolesOf(R).map(x => ({ id: x.id, label: x.labelRaw ?? x.label, refs: [...x.refs], standby: x.standby }));
-        if (b.dataset.act === "roleAdd") { let i = roles.length + 1, id = `R${i}`; while (roles.some(r => r.id === id)) id = `R${++i}`; roles.push({ id, label: id, refs: [], standby: false }); }
+        if (b.dataset.act === "roleAdd") {
+          let i = roles.length + 1, id = `R${i}`; while (roles.some(r => r.id === id)) id = `R${++i}`;
+          roles.push({ id, label: id, refs: [], standby: false });
+          // 新しい役割は OC 資格が無い間も行・列を明示的な 0 で持つ。後の改名で既定 ID を再使用しても
+          // 古い保存データ向けの欠損補完（Problem の既定人数）を新規入力として復活させない。
+          const oc = R.oncall_requirement || {};
+          R.oncall_requirement = Object.fromEntries(roles.map(r => [r.id, r.id === id
+            ? Object.fromEntries(roles.map(c => [c.id, 0]))
+            : Object.fromEntries([...Object.entries(Object.prototype.hasOwnProperty.call(oc, r.id) ? oc[r.id] || {} : {}), [id, 0]])]));
+        }
         else { const i = +b.closest("tr").dataset.ri; const gone = roles[i]; if (!gone) return;
           const used = R.doctors.filter(d => d.team === gone.id).map(d => d.name);
           if (used.length && !confirm(T.t("役割「{role}」は {n} 名（{who}）が使っています。削除すると名簿の役割が空欄になります。よろしいですか", { role: gone.label, n: used.length, who: used.slice(0, 3).join(T.nameSep()) + (used.length > 3 ? T.t(" ほか") : "") }))) return;
           for (const d of R.doctors) if (d.team === gone.id) d.team = ""; // 確認で案内したとおり未指定へ。別の役割は利用者が明示的に選ぶ。
-          roles.splice(i, 1); }
+          roles.splice(i, 1);
+          // 資格の切替とは違い、役割自体の削除では潜在している OC 人数も行・列とも削除する。
+          if (R.oncall_requirement) R.oncall_requirement = Object.fromEntries(Object.entries(R.oncall_requirement).filter(([id]) => id !== gone.id)
+            .map(([id, row]) => [id, Object.fromEntries(Object.entries(row || {}).filter(([col]) => col !== gone.id))])); }
         (R.profile ||= {}).roles = roles;
         T.fillDefaultRules(R); A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); return;
       }
