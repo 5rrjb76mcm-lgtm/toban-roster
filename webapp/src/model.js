@@ -924,8 +924,13 @@
     // 施設が意図して 0 にした行は残す。オンコールを置かない施設は規則 oncall を「なし」にする）
     const allZeroTable = R.oncall_requirement && typeof R.oncall_requirement === "object" &&
       Object.values(R.oncall_requirement).every(v => v && typeof v === "object" && Object.values(v).every(x => !(+x)));
-    for (const tbl of ["oncall_requirement", "cath_requirement"]) { if (!D[tbl]) continue; if (tbl === "oncall_requirement" && (ruleState(R, "oncall") === "off" || !roleIdsNow.has("I"))) continue; if (!R[tbl] || typeof R[tbl] !== "object") R[tbl] = {}; for (const [row, v] of Object.entries(D[tbl])) { const cur = R[tbl][row]; const allZero = tbl === "oncall_requirement" && allZeroTable && cur && typeof cur === "object" && Object.values(cur).every(x => !(+x)); if (cur === undefined || cur === null || allZero) R[tbl][row] = JSON.parse(JSON.stringify(v)); } } // OC構成の全部 0 の行は、以前の設定画面が欠けた行を 0 で書き込んだもの（2026-09-17 修正）なので既定に戻す
+    for (const tbl of ["oncall_requirement", "cath_requirement"]) { if (!D[tbl]) continue; if (tbl === "oncall_requirement" && (ruleState(R, "oncall") === "off" || !roleIdsNow.has("I"))) continue; if (!R[tbl] || typeof R[tbl] !== "object") R[tbl] = {}; for (const [row, v] of Object.entries(D[tbl])) { if (tbl === "oncall_requirement" && !roleIdsNow.has(row)) continue; const cur = R[tbl][row]; const allZero = tbl === "oncall_requirement" && allZeroTable && cur && typeof cur === "object" && Object.values(cur).every(x => !(+x)); if (cur === undefined || cur === null || allZero) R[tbl][row] = JSON.parse(JSON.stringify(v)); } } // OC構成の全部 0 の行は、以前の設定画面が欠けた行を 0 で書き込んだもの（2026-09-17 修正）なので既定に戻す
     for (const k of ["cath_requirement", "oncall_requirement", "quota_tolerance", "weekend_balance_max_diff", "arrhythmia_pre_workday_night", "arrhythmia_responsible_night", "friday_night_min", "pm_clinic_arrhythmia_candidates", "max_same_weekday_shifts", "exclude_post_night_from_cath", "rest_day_required", "pm_external_night", "same_day_IA"]) if (R[k] === undefined && D[k] !== undefined) R[k] = JSON.parse(JSON.stringify(D[k]));
+    // 既定表の補完でも、削除済みの役割を行・列に戻さない。資格 OFF の既存役割は残す。
+    // 欠損セルと表全体 0 の旧データ復旧は上記のまま（新規役割の 0 は設定画面で明示する）。
+    if (R.oncall_requirement && typeof R.oncall_requirement === "object") R.oncall_requirement = Object.fromEntries(
+      Object.entries(R.oncall_requirement).filter(([id]) => roleIdsNow.has(id)).map(([id, row]) =>
+        [id, Object.fromEntries(Object.entries(row || {}).filter(([col]) => roleIdsNow.has(col)))]));
     // 施設プロファイルの識別子（どの施設の設定か）。月データにも記録して取り違えを防ぐ
     const dp = D.profile || { id: "cardiology", label: { ja: "週 5 日勤＋夜勤（勤務医の見本）", en: "Weekday days + night duty (physician sample)" } }; // id は保存データとの互換のため cardiology のまま
     if (!R.profile || typeof R.profile !== "object") R.profile = { id: dp.id, label: dp.label };

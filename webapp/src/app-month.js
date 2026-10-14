@@ -182,6 +182,8 @@
     // 状態を置き換える直前にもう一度、未保存の入力を確かめる（フォルダの読み取りや選択を待つ間の入力を、無確認で失わない）。待つ間に別の月へ替わっていたら中止
     // 年月に加えて接続の世代も見る（読み取りの間に保存フォルダが替わっていたら、前のフォルダのデータを今のフォルダのものとして開かない）
     const g = A.switchMark(), stale = () => { if (!A.switchStale(g)) return false; A.toast(T.t("月の切替を中止しました（読み取りの間に月か保存フォルダが切り替わりました）。もう一度選んでください")); A.renderSettingsMonth(); A.renderHeader(); return true; };
+    // 最初の保存以降（一覧・対象月・前月の読取・選択・再保存）に増えた入力を見張る。
+    const sourceMonth = state.month, sourceRules = state.rules, sourceInput = A.inputSig();
     const again = async () => { if (!(await A.saveBeforeSwitch())) { A.renderSettingsMonth(); return false; } return !stale(); };
     if (A.dirHandle) {
       await A.refreshMonths();
@@ -191,6 +193,9 @@
       const cands = [...new Set(A.monthDirs.map(x => x.slice(0, 6)))].filter(x => x < t).sort().reverse();
       let triedMsg = T.t("{y}年{m}月 の保存データは見つかりません（探した場所: {tried}）。", { y: ny, m: nm, tried: f.tried.join(T.listSep()) });
       for (const c of cands) {
+        // 現在の月を引き継ぐ場合、読取後の再保存で元ファイルが新しくなることがある。
+        // 保存が成功しても、先に読んだ古い写しで新しい入力を巻き戻さない。
+        const fromCurrent = c === A.tag();
         const f2 = await A.findMonthData(c); const o2 = f2.data; if (stale()) return;
         if (!o2) continue;
         const v = await A.choose(T.t("{y}年{m}月 の保存データはありません。どのように作りますか。", { y: ny, m: nm }), [
@@ -198,7 +203,9 @@
           { label: T.t("空の月として作成"), sub: T.t("外来・病棟番・外勤・履歴もすべて空。名簿は現在の設定"), value: "empty" },
           { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]);
         if (v && !(await again())) return;
-        if (v === "prev") { const b = A.buildFromPrevious(o2, ny, nm); if (b.error) { alert(T.t("{y}年{m}月 のデータから作れません: {err}", { y: c.slice(0, 4), m: +c.slice(4), err: b.error })); A.renderSettingsMonth(); return; } A.adoptNewMonth(b); return; } // 検査 → 複製上で変換 → 成功時だけ一括採用（ファイル選択の経路と同じ）
+        if (v === "prev") { if (fromCurrent && (state.month !== sourceMonth || state.rules !== sourceRules || A.inputSig() !== sourceInput)) {
+          A.toast(T.t("読み込みを中止しました（確認中に月・設定・保存先が変わりました）。もう一度操作してください")); return; }
+          const b = A.buildFromPrevious(o2, ny, nm); if (b.error) { alert(T.t("{y}年{m}月 のデータから作れません: {err}", { y: c.slice(0, 4), m: +c.slice(4), err: b.error })); A.renderSettingsMonth(); return; } A.adoptNewMonth(b); return; } // 検査 → 複製上で変換 → 成功時だけ一括採用（ファイル選択の経路と同じ）
         if (v === "empty") { state.meta = null; state.base = null; state.month = blankMonth(ny, nm); state.result = null; state.ui.doctor = 0; A.clearUndo(); A.save(); A.renderAll(); A.showTab("input"); A.toast(T.t("{y}年{m}月 を空の月として作成しました", { y: ny, m: nm })); return; }
         A.renderSettingsMonth(); return;
       }

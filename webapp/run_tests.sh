@@ -36,6 +36,7 @@ run test_roster_cleanup_collision_node.js "$HP"
 run test_settings_import_node.js
 run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
+run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
 run test_calendar_person_selection_dom_node.js
@@ -63,6 +64,7 @@ run test_save_catalog_dom_node.js
 run test_save_failure_record_dom_node.js
 run test_save_doc_failure_record_node.js
 run test_start_note_dom_node.js
+run test_month_source_freshness_dom_node.js
 run test_import_previous_node.js
 run test_import_previous_oc_conflict_node.js "$HP"
 run test_editing_month_header_node.js
