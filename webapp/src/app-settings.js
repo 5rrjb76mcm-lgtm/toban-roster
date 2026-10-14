@@ -115,6 +115,7 @@
     return list;
   }
   // 施設の構成を作る（作成モード）: 出発点 → 1日の区分 → 役割 → 出力。施設を使い始めるときに一度決めるもの
+  const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
   function renderBuilder(R) {
     const h = [], step = (n, title, body) => h.push(`<div class="builder-step"><h4>${n}. ${esc(tx(title))}</h4>${body}</div>`);
     { const cur = R.profile || {}; const pl = x => T.pickLabel((x || {}).label, (x || {}).id);
@@ -146,7 +147,7 @@
       const ON = { day: [["none", tx("計算しない")], ["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]],
         night: [["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]] };
       const PART = { day: tx("日中"), night: tx("夜") };
-      { const pf = R.profile || {}, tags = [].concat(pf.fixed_tags || []).map(x => typeof x === "string" ? x : x.label).filter(Boolean), flags = [].concat(pf.day_flags || []).map(x => typeof x === "string" ? x : (x.label || x.id)).filter(Boolean);
+      { const pf = R.profile || {}, tags = [].concat(pf.fixed_tags || []).map(x => typeof x === "string" ? x : x.label).filter(Boolean), flags = [].concat(pf.day_flags || []).map(profileFlagLabel).filter(Boolean);
         h.push(`<div class="builder-step"><h4>2b. ${esc(tx("固定の印と日ごとの区分"))}</h4><p><label>${esc(tx("固定の印の選択肢（・区切り。例: 研修・会議・出張）"))} <input id="setFixedTags" value="${esc(tags.join("・"))}" style="width:22em"></label></p>
 <p><label>${esc(tx("日ごとの区分（・区切り。例: 行事）"))} <input id="setDayFlags" value="${esc(flags.join("・"))}" style="width:22em"></label></p>
 <p class="note">${esc(tx("固定の印は、職員別カレンダーの固定欄の横に選択肢として出て、勤務表に名前(印)で出ます。日ごとの区分は、月別条件の「日ごとの区分・予定」と職員別カレンダーの日付の見出しでチェックでき、構成の規則の「日」の選択肢（「○○」の日）に使えます。"))}</p></div>`); }
@@ -292,7 +293,13 @@
     { const ft = document.querySelector("#setFixedTags"), df = document.querySelector("#setDayFlags"); // 固定の印と日ごとの区分（施設の構成）
       const split = v => [...new Set(String(v || "").split(/[・,、\n]+/).map(x => x.trim()).filter(Boolean))];
       if (ft) { const v = split(ft.value); const old = [].concat(R.profile.fixed_tags || []); R.profile.fixed_tags = v.map(l => old.find(o => typeof o === "object" && o.label === l) || l); if (!v.length) delete R.profile.fixed_tags; }
-      if (df) { const v = split(df.value); const old = [].concat(R.profile.day_flags || []); R.profile.day_flags = v.map(l => old.find(o => typeof o === "object" && (o.label === l || o.id === l)) || l); if (!v.length) delete R.profile.day_flags; } }
+      if (df) { const old = [].concat(R.profile.day_flags || []);
+        // The list is a display projection: unchanged localized labels must retain IDs, translations,
+        // short labels, and even labels containing the list separator or sharing the same text.
+        if (df.value !== old.map(profileFlagLabel).filter(Boolean).join("・")) {
+          const v = split(df.value); R.profile.day_flags = [...new Set(v.flatMap(l => { const shown = old.filter(o => profileFlagLabel(o) === l), keep = shown.length ? shown : old.filter(o => typeof o === "object" && o.id === l); return keep.length ? keep : [l]; }))];
+          if (!v.length) delete R.profile.day_flags;
+        } } }
     const roleRen = roleEdit.renames; // 検査済みの旧 → 新。画面の表はまだ旧い識別子なので、読むときに同じ変換を当てる
     { if (roleEdit.roles) { renameRoles(roleRen); R.profile.roles = roleEdit.roles; }
       { const old = T.normalizeShiftsOf(R), shifts = [];
@@ -605,12 +612,22 @@
     T.fillDefaultRules(rules); T.normalizeMonth(month, rules);
     return { rules, month };
   }
-  const importProfile = file => A.transition("data", () => importProfileCore(file));
-  async function importProfileCore(file) {
+  async function importProfile(file) {
+    // 読み取り中の未確定の入力も守る。change 前の文字を再描画で捨てない。
+    let edited = false; const markEdited = () => { edited = true; };
+    for (const event of ["input", "change"]) document.addEventListener?.(event, markEdited, true);
+    try { return await A.transition("data", () => importProfileCore(file, () => edited)); }
+    finally { for (const event of ["input", "change"]) document.removeEventListener?.(event, markEdited, true); }
+  }
+  async function importProfileCore(file, edited) {
+    const stopEdited = () => { if (!edited()) return false; A.toast(T.t("プロファイルの読み込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度読み込んでください")); return true; };
+    if (stopEdited()) return;
     let R; try { R = JSON.parse(await file.text()); } catch (e) { return alert(tx("プロファイルのファイルを読めませんでした（JSON の形式ではありません）")); }
+    if (stopEdited()) return;
     if (!R || typeof R !== "object" || (!R.profile && !Array.isArray(R.doctors))) return alert(tx("施設プロファイルのファイルではありません（profile も doctors もありません）"));
     const label = T.pickLabel((R.profile || {}).label, (R.profile || {}).id || file.name);
     if (!confirm(T.t("施設プロファイル「{name}」を読み込みます。施設の構成・規則・規則の状態が置き換わります（「元に戻す」で取り消せます）。", { name: label }))) return;
+    if (stopEdited()) return;
     delete R.toban_profile;
     let prepared; try { prepared = prepareRulesImport(R, true); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     pushUndo("施設プロファイルの読み込み");
