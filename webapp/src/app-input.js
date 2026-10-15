@@ -77,7 +77,7 @@ ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人
     // 保存値だけは選択肢に残す（空欄を選んだときにだけ消す）。当月の配置候補は広げない。
     const historicalNameSel = (v, attrs, list = A.names()) => { const name = v == null ? "" : String(v); return A.nameSel(v, attrs, name && !list.includes(name) ? list.concat(name) : list); };
     const who = (v, f) => multi ? listInput(v, f, true) : historicalNameSel(v, `data-f="${f}"`);
-    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(e.date ?? "")}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
+    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-record="${esc(JSON.stringify(e))}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(e.date ?? "")}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
       (ocOn ? `<td>${listInput(e.day_oc, "day_oc")}</td>` : "") + `<td>${who(e.night, "night")}</td>` +
       (ocOn ? `<td>${listInput(e.night_oc, "night_oc")}</td>` : "") + `</tr>`; };
     h.push(`<div class="box"><h3>${esc(T.t("前月末の接続（前月の最後の{n}日）", { n: LB }))}</h3><table class="grid"><tr><th>${esc(T.t("前月の日付"))}</th><th>${esc(shiftLabel(R, "day"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("日勤OC（・区切り）"))}</th>` : ""}<th>${esc(shiftLabel(R, "night"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("夜間OC（・区切り）"))}</th>` : ""}</tr>${Array.from({ length: LB }, (_, i) => ldRow(i)).join("")}</table>
@@ -134,11 +134,18 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
           const input = el(f); if (input && input.dataset.prevNames !== undefined && input.value === input.dataset.shown) { try { const ns = JSON.parse(input.dataset.prevNames); if (Array.isArray(ns)) return ns; } catch (e) { } }
           const ns = g(f).split(/[・,、|\n]+/).filter(Boolean); if (input) { input.dataset.prevNames = JSON.stringify(ns); input.dataset.shown = input.value; } return ns; };
         const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
-        const date = g("date"); if (!date) return; const e = { date: +date }; let old = oldByDate[+date] || {};
-        if (tr.dataset && tr.dataset.prevOc !== undefined) { try { old = JSON.parse(tr.dataset.prevOc) || {}; } catch (e) { } } // 非表示の OC も、変更後の日付ではなく描画した行から引き継ぐ
-        const dw = w("day"), nw = w("night");
-        if (dw.length) { e.day = dw; e.day_oc = el("day_oc") ? list("day_oc") : (old.day_oc || []); } if (nw.length) { e.night = nw; e.night_oc = el("night_oc") ? list("night_oc") : (old.night_oc || []); } // OC の欄が無い（オンコールを使わない設定）ときは前の値を残す
-        if (tr.dataset) tr.dataset.prevOc = JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }); // 勤務を消した行の非表示 OC は、後で勤務を入れ直しても復活させない
+        const date = g("date"); if (!date) return; let old = oldByDate[+date] || {};
+        if (tr.dataset && tr.dataset.prevRecord !== undefined) { try { old = JSON.parse(tr.dataset.prevRecord) || {}; } catch (e) { } }
+        else if (tr.dataset && tr.dataset.prevOc !== undefined) { try { old = { ...old, ...JSON.parse(tr.dataset.prevOc) }; } catch (e) { } }
+        const e = { ...old, date: +date }, sameNames = (a, b) => JSON.stringify([].concat(a || [])) === JSON.stringify([].concat(b || []));
+        for (const k of ["day", "night"]) {
+          const work = w(k), oc = k + "_oc", had = Object.prototype.hasOwnProperty.call(old, k);
+          if (work.length) { e[k] = had && sameNames(work, old[k]) ? old[k] : work; const ns = el(oc) ? list(oc) : (old[oc] || []); if (ns.length || Object.prototype.hasOwnProperty.call(old, oc) || !sameNames(work, old[k])) e[oc] = Object.prototype.hasOwnProperty.call(old, oc) && sameNames(ns, old[oc]) ? old[oc] : ns; }
+          else if ([].concat(old[k] || []).length) { delete e[k]; delete e[oc]; const input = el(oc); if (input) { input.value = ""; input.dataset.prevNames = "[]"; input.dataset.shown = ""; } } // 勤務者を明示的に空欄へ変えたときは従来どおり OC も消す
+          else if (el(oc)) { const ns = list(oc); if (ns.length || Object.prototype.hasOwnProperty.call(old, oc)) e[oc] = sameNames(ns, old[oc]) ? old[oc] : ns; }
+          // 最初から勤務者が空の行は、履歴整理で他の人の OC だけ残った可能性がある。空の勤務欄を「削除指示」と解釈しない。
+        }
+        if (tr.dataset) { tr.dataset.prevRecord = JSON.stringify(e); tr.dataset.prevOc = JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }); } // 日付変更も元の行に追随。明示削除した非表示 OC は復活させない
         m.prev_month.last_days.push(e); }); }
     if (root.querySelector("[data-hist]")) { const els = [...root.querySelectorAll("[data-hist]")].map(el => { const [kind, ...ns] = el.dataset.hist.split(":"); return [el, kind, ns.join(":")]; }); // 種別の後ろは ':' を含めて氏名
       for (const k of ["weekend_charge", "holiday_charge"]) { const mineEls = els.filter(x => x[1] === k); if (!mineEls.length) continue; const h = keepHidden(m.history[k], new Set(mineEls.map(x => x[2]))); for (const [el, , n] of mineEls) if (el.value !== "") h[n] = +el.value; m.history[k] = h; } }

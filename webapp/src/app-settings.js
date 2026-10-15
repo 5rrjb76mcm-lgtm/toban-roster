@@ -76,7 +76,7 @@
     const rest = Object.keys(WEIGHT_LABELS).filter(k => !owned.has(k));
     $("#weightsTable").innerHTML = `<table class="grid"><tr><th>${esc(tx("調整目標"))}</th><th>${esc(tx("重み"))}</th></tr>${rest.map(k => `<tr><td>${esc(L(tx(WEIGHT_LABELS[k])))}<br><small class="note">${esc(k)}</small></td><td><input type="number" data-w="${esc(k)}" value="${esc(W[k] ?? "")}" style="width:5em"></td></tr>`).join("")}</table>
 <p class="note">${esc(tx("ここに無い重みは、上の規則の表で規則ごとに並んでいます。"))}</p>`;
-    renderBuilder(R); renderHardRules(R); renderUndo();
+    renderBuilder(R); renderHardRules(R); renderUndo(); renderHistoryCleanup();
     { const el = $("#pluginsInfo"), pl = T.PLUGINS || [], fl = (T.plugins && T.plugins.loaded) || []; if (el) { const lines = [];
         if (pl.length) lines.push(T.t("組み立て時に取り込んだ施設のプラグイン: {list}", { list: pl.map(p => `${p.dir}（${Object.entries(p.files).map(([k, v]) => `${k} ${v.length}`).join(", ")}）`).join(T.listSep()) }));
         if (fl.length) lines.push(T.t("保存フォルダから読み込んだプラグイン: {list}", { list: fl.map(x => x.ok ? `${x.name}（${x.ids.join("・") || "—"}）` : T.t("{name}（読めません: {err}）", { name: x.name, err: x.error })).join(T.listSep()) }));
@@ -384,6 +384,93 @@
     const contains = value => Array.isArray(value) ? value.includes(name) : value === name;
     return (pm.last_days || []).some(day => ["day", "night", "day_oc", "night_oc"].some(k => contains(day[k]))) ||
       ["last_weekend_charge", "prev_weekend_charge"].some(k => pm[k] === name);
+  }
+  // 履歴の整理はこの既知のスキーマだけを扱う。氏名と構造キーが同じでも、再帰的なキー削除はしない。
+  const HISTORY_MAP_LABELS = { weekend_charge: "週末担当の累計", holiday_charge: "休日担当の累計", work_balance: "勤務回数の累積過不足" };
+  const PREVIOUS_SLOT_LABELS = { day: "日勤", night: "夜勤", day_oc: "日勤OC", night_oc: "夜間OC" };
+  const PREVIOUS_CHARGE_LABELS = { last_weekend_charge: "前月最後の週末担当", prev_weekend_charge: "その1つ前の週末担当" };
+  const cleanupOwn = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
+  const cleanupContains = (v, name) => Array.isArray(v) ? v.includes(name) : v === name;
+  function historicalReferences(m, name) {
+    const refs = [], pm = m.prev_month || {};
+    for (const [key, label] of Object.entries(HISTORY_MAP_LABELS)) if (cleanupOwn(m.history?.[key], name)) refs.push({ path: `history.${key}[${JSON.stringify(name)}]`, label: tx(label), value: m.history[key][name] });
+    for (const [i, day] of (pm.last_days || []).entries()) for (const [key, label] of Object.entries(PREVIOUS_SLOT_LABELS)) {
+      if (cleanupOwn(day, key) && cleanupContains(day[key], name)) refs.push({ path: `prev_month.last_days[${i}].${key}`, label: tx("前月末 {d}日・{slot}", { d: day.date, slot: tx(label) }), value: day[key] });
+    }
+    for (const [key, label] of Object.entries(PREVIOUS_CHARGE_LABELS)) if (cleanupOwn(pm, key) && pm[key] === name) refs.push({ path: `prev_month.${key}`, label: tx(label), value: pm[key] });
+    return refs;
+  }
+  function hasCurrentCleanupReference(m, name) {
+    // 空・0・不正値でも、氏名キーが残る入力は削除候補にしない。非表示の欄と翌月1日も同じ扱い。
+    if (["duty_days", "regular_duties", "unavailable_night", "targets", "count_min", "count_max"].some(k => cleanupOwn(m[k], name))) return true;
+    if (["night_on", "day_on"].some(k => cleanupOwn(m.wishes?.[k], name)) || cleanupContains(m.wishes?.weekend_dayshift, name)) return true;
+    if (["unavailable_other", "avoid", "confirmed_pm_external_night"].some(k => (m[k] || []).some(x => x?.name === name))) return true;
+    if (Object.values(m.person_days || {}).some(byName => cleanupOwn(byName, name))) return true;
+    if (Object.keys(m.fixed_tags || {}).some(k => k.split("|").slice(1).join("|") === name)) return true;
+    if (["day", "night", "weekend_charge", "day_oc", "night_oc"].some(k => Object.values(m.fixed?.[k] || {}).some(v => cleanupContains(v, name)))) return true;
+    // 独自入力の意味を推測して消さない。正確に同じ氏名のキー・値があるときは安全側で候補から外す。
+    const mentions = v => v === name || Array.isArray(v) && v.some(mentions) || v && typeof v === "object" && Object.entries(v).some(([k, x]) => k === name || mentions(x));
+    return Object.entries(m).some(([k, v]) => /^local[_.]/.test(k) && mentions(v));
+  }
+  function historyCleanupCandidates() {
+    const m = state.month, foundNames = new Set(), roster = new Set(state.rules.doctors.map(d => d.name));
+    for (const key of Object.keys(HISTORY_MAP_LABELS)) for (const name of Object.keys(m.history?.[key] || {})) foundNames.add(name);
+    const pm = m.prev_month || {};
+    for (const day of pm.last_days || []) for (const key of Object.keys(PREVIOUS_SLOT_LABELS)) for (const name of [].concat(day[key] || [])) foundNames.add(name);
+    for (const key of Object.keys(PREVIOUS_CHARGE_LABELS)) if (pm[key]) foundNames.add(pm[key]);
+    return [...foundNames].filter(name => typeof name === "string" && name && !roster.has(name) && !hasCurrentCleanupReference(m, name)).map(name => ({ name, refs: historicalReferences(m, name) })).filter(x => x.refs.length);
+  }
+  function monthWithoutHistoricalName(source, name) {
+    // 複写するのは編集する枝だけ。JSON の往復で無関係な値や未知の項目を整形し直さない。
+    const m = { ...source };
+    if (source.history) { m.history = { ...source.history }; for (const key of Object.keys(HISTORY_MAP_LABELS)) if (cleanupOwn(source.history[key], name)) m.history[key] = { ...source.history[key] }; }
+    if (source.prev_month) { m.prev_month = { ...source.prev_month }; if (Array.isArray(source.prev_month.last_days)) m.prev_month.last_days = source.prev_month.last_days.map(day => ({ ...day })); }
+    for (const key of Object.keys(HISTORY_MAP_LABELS)) if (cleanupOwn(m.history?.[key], name)) delete m.history[key][name];
+    const pm = m.prev_month || {};
+    for (const day of pm.last_days || []) for (const key of Object.keys(PREVIOUS_SLOT_LABELS)) if (cleanupOwn(day, key) && cleanupContains(day[key], name)) {
+      day[key] = Array.isArray(day[key]) ? day[key].filter(n => n !== name) : null;
+    }
+    for (const key of Object.keys(PREVIOUS_CHARGE_LABELS)) if (cleanupOwn(pm, key) && pm[key] === name) pm[key] = null;
+    return m;
+  }
+  let historyCleanupView = null;
+  const historyCleanupSignature = () => JSON.stringify([state.rules, state.month, state.result]);
+  function renderHistoryCleanup() {
+    const panel = $("#historyCleanup"), body = $("#historyCleanupBody"); if (!panel || !body) return;
+    historyCleanupView = null; body.innerHTML = ""; if (!panel.open) return;
+    const m = state.month, candidates = historyCleanupCandidates();
+    historyCleanupView = { month: m, rules: state.rules, dir: A.dirHandle, dirGen: A.dirGen, signature: historyCleanupSignature(), candidates };
+    const refText = ref => `${ref.label} (${ref.path}): ${JSON.stringify(ref.value)}`;
+    body.innerHTML = `<p><strong>${esc(tx("対象: {y}年{m}月", { y: m.year, m: m.month }))}</strong></p>
+<p>${esc(tx("この画面で開いている月の履歴・前月末の接続だけが対象です。保存済みの過去月ファイルは変更しません。"))}</p>
+<p class="note">${esc(tx("名簿全体と当月の入力・固定指定に氏名がない職員だけを表示します。1名ずつ選び、残っている記録を確認してください。"))}</p>
+<p class="note">${esc(tx("各欄から選んだ氏名の記録だけを取り除きます。同じ欄にある他の氏名・日付・独自項目は残します。"))}</p>
+<p class="warn">${esc(tx("この削除は取り消せません。この操作より前の編集にも『元に戻す』で戻れなくなります。"))}</p>
+${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="radio" name="historyCleanupPerson" value="${i}"> ${esc(c.name)}</label><ul>${c.refs.map(ref => `<li>${esc(refText(ref))}</li>`).join("")}</ul></li>`).join("")}</ul><button id="btnHistoryCleanup" type="button" disabled>${esc(tx("選んだ1名の当月の履歴を削除"))}</button>` : `<p>${esc(tx("整理できる職員はいません。"))}</p>`}
+<p class="note">${esc(tx("削除すると月境界の条件・累計の計算に影響します。前月を再取り込みすると記録が復活することがあります。"))}</p>`;
+  }
+  function historyCleanupIsCurrent(view, name) {
+    const pendingName = [...document.querySelectorAll('#doctorTable tr[data-i]')].some(tr => tr.querySelector('[data-f="name"]').value.trim() !== state.rules.doctors[+tr.dataset.i]?.name);
+    const selected = $('#historyCleanup input[name="historyCleanupPerson"]:checked');
+    return !pendingName && view && view === historyCleanupView && selected && view.candidates[+selected.value]?.name === name && $("#historyCleanup").open && view.month === state.month && view.rules === state.rules && view.dir === A.dirHandle && view.dirGen === A.dirGen && view.signature === historyCleanupSignature() && historyCleanupCandidates().some(c => c.name === name);
+  }
+  async function cleanSelectedHistory() {
+    const view = historyCleanupView, selected = $('#historyCleanup input[name="historyCleanupPerson"]:checked');
+    const candidate = selected && view?.candidates[+selected.value]; if (!candidate) return;
+    return A.transition("data", () => {
+      const stale = () => { if (historyCleanupIsCurrent(view, candidate.name)) return false; A.toast(tx("履歴の整理を中止しました。月・名簿・入力が変わったか、未確定の氏名があります。入力を確定し、この欄を開き直して確認してください。")); return true; };
+      if (stale()) return;
+      const fields = candidate.refs.map(ref => `${ref.label} (${ref.path}): ${JSON.stringify(ref.value)}`).join("\n");
+      if (!confirm(tx("{y}年{m}月の「{name}」について、次の欄から本人の記録だけを削除します。同じ欄の他の氏名・日付・独自項目は残します。\n{fields}\n\nこの削除は取り消せません。この操作より前の編集にも『元に戻す』で戻れなくなります。\n月境界の条件・累計の計算に影響します。前月の再取り込みで復活することがあります。保存済みの過去月ファイルは変更しません。\n削除しますか。", { y: view.month.year, m: view.month.month, name: candidate.name, fields }))) return;
+      if (stale()) return;
+      let nextMonth;
+      try { nextMonth = monthWithoutHistoricalName(state.month, candidate.name); }
+      catch (e) { A.toast(tx("履歴の整理に失敗しました。記録と取り消し履歴は変更していません。")); return; }
+      if (stale()) return;
+      // 既存の Undo は完全な月の写しを持つ。採用した後だけ履歴を破棄し、過去の写しからの復活を防ぐ。
+      state.month = nextMonth; clearUndo(); A.save(); renderHistoryCleanup();
+      A.toast(tx("{y}年{m}月の「{name}」の履歴を削除しました。必要に応じて再計算してください。", { y: nextMonth.year, m: nextMonth.month, name: candidate.name }));
+    });
   }
   const historicalRenameMessage = name => T.t("氏名「{name}」は履歴・前月の記録で使われているため、改名できません。別の氏名にしてください", { name });
   function historicalImportNames(rules) {
@@ -756,6 +843,12 @@
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
+    const cleanupPanel = $("#historyCleanup");
+    if (cleanupPanel) {
+      cleanupPanel.addEventListener("toggle", renderHistoryCleanup);
+      cleanupPanel.addEventListener("change", ev => { if (ev.target.name === "historyCleanupPerson") $("#btnHistoryCleanup").disabled = false; });
+      cleanupPanel.addEventListener("click", ev => { if (ev.target.id === "btnHistoryCleanup") cleanSelectedHistory(); });
+    }
     $("#btnReloadPlugins").addEventListener("click", () => A.transition("plugins", async () => { if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); }));
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
