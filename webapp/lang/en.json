@@ -1218,7 +1218,15 @@
     "編集する{person}を選んでください": "Choose the {person} to edit",
     "カレンダーに入るたびに、編集する{person}を選び直してください。": "Choose the person you want to edit each time you enter this calendar.",
     "編集中: {who}": "Editing: {who}",
-    "前月の取り込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度押してください": "Previous-month import was canceled because input changed during the read. Finish the edit, then try again."
+    "前月の取り込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度押してください": "Previous-month import was canceled because input changed during the read. Finish the edit, then try again.",
+    "氏名「{name}」は履歴・前月の記録で使われているため、改名できません。別の氏名にしてください": "Cannot rename to “{name}”: this name is used in history or previous-month records. Choose a distinct name.",
+    "履歴・前月の記録にある氏名を新たに含むため、設定を読み込みませんでした: {who}。同じ本人なら、先に名簿の「追加」で確認してから、もう一度読み込んでください。別人なら、読み込む設定で別の氏名にしてください": "Settings were not imported because they introduce names used in history or previous-month records: {who}. For returning people, use Add in the roster and confirm their identity first, then retry the import. For different people, use distinct names in the imported settings.",
+    "追加する{person}の氏名を入力してください": "Enter the name of the {person} to add.",
+    "氏名を入力してください": "Enter a name.",
+    "氏名「{name}」は名簿にあります。別の氏名にしてください": "“{name}” is already in the roster. Choose a distinct name.",
+    "氏名「{name}」は履歴・前月の記録にあります。同じ本人を再び追加しますか。履歴は引き継ぎますが、削除した当月の入力や個人設定は復元せず、初期値で追加します。別人ならキャンセルして別の氏名にしてください": "“{name}” appears in history or previous-month records. Is this the same person returning? Their history will be retained, but deleted current-month inputs and personal settings will not be restored. They will be added with defaults. For a different person, cancel and choose a distinct name.",
+    "追加を中止しました。別人を追加する場合は別の氏名にしてください": "Addition canceled. Use a distinct name when adding a different person.",
+    "編集中の氏名の変更を確定してから、名簿に追加してください": "Finish the pending name changes before adding someone to the roster."
   },
   "msg": {
     "SLOT_NOT_EXISTS": "{slot}: assigned to a slot absent from this month's shift settings ({who}). Recalculate the roster",

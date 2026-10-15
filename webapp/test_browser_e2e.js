@@ -530,7 +530,7 @@ async function test(name, fn) { try { await fn(); ok(name); } catch (e) { fail(`
       await page.reload(); await page.waitForSelector('#startGate:not([hidden])'); await start(page, "フォルダなしで続ける");
       assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 0);
       assert.ok((await page.locator('#doctorPane').textContent()).includes("名簿が空"));
-      await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); await page.click('#settings [data-act="add"]');
+      await page.click('.tab[data-tab="settings"]'); await page.click('[data-setmode="daily"]'); await page.evaluate(() => { window.prompt = () => 'Synthetic New'; }); await page.click('#settings [data-act="add"]');
       assert.strictEqual(await page.evaluate(() => T.app.state.rules.doctors.length), 1);
       // 再追加した人も、職員別カレンダーでは明示的に選んでから編集する（追加しただけでは入力欄を出さない）
       await page.click('.tab[data-tab="input"]'); await page.click('.subnav .sub[data-sub="doctorPane"]');
