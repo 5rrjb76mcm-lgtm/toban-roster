@@ -118,6 +118,8 @@
   // Match workerCount: explicit count (including null) wins; otherwise work itself is the count.
   const profileWorkCount = work => work != null && work.count !== undefined ? work.count : work;
   const profileCountOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null;
+  // Text inputs remove line breaks; compare the displayed projection before normalizing edits.
+  const profileInputText = value => String(value ?? "").replace(/[\r\n]/g, "");
   const profileTagLabel = x => String(typeof x === "string" ? x : x.label || "").replace(/[\r\n]/g, "");
   const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
   function renderBuilder(R) {
@@ -269,7 +271,7 @@
       const prev = oldRoles[+tr.dataset.ri];
       // 空欄も検査に渡す。行を読み飛ばして役割を削除してしまわない。
       // 表示名・役目を変えていなければ、多言語の表記と欄に出せない2つ目以降の役目も残す。
-      const r = { id, label: prev && label === prev.label ? (prev.labelRaw ?? prev.label) : label.trim() || id,
+      const r = { id, label: prev && label === profileInputText(prev.label) ? (prev.labelRaw ?? prev.label) : label.trim() || id,
         refs: prev && ref === (prev.refs[0] || "") ? [...prev.refs] : ref ? [ref] : [] };
       if (g("rstandby").checked) r.standby = true;
       if (prev && prev.id !== id) renames.set(prev.id, id);
@@ -287,8 +289,8 @@
     R.profile ||= {};
     { const lab = document.querySelector("#setProfLabel"), pid = document.querySelector("#setProfId");
       const shown = T.pickLabel((R.profile || {}).label, (R.profile || {}).id);
-      if (lab && lab.value.trim() && lab.value.trim() !== shown) R.profile.label = lab.value.trim(); // 名前を変えていなければ元の表記（{ja, en} など）のまま
-      if (pid && pid.value.trim()) R.profile.id = pid.value.trim().replace(/[^\w.-]+/g, "-"); }
+      if (lab && lab.value.trim() && lab.value !== profileInputText(shown)) R.profile.label = lab.value.trim(); // 名前を変えていなければ元の表記（{ja, en} など）のまま
+      if (pid && pid.value.trim() && pid.value !== profileInputText(R.profile.id)) R.profile.id = pid.value.trim().replace(/[^\w.-]+/g, "-"); }
     { const hol = document.querySelector("#setCalHol"), clo = document.querySelector("#setCalClosure"); // 暦（祝日の出どころと施設の休日）
       if (hol) { const closure = {};
         for (const tok of String(clo ? clo.value : "").split(/[,、\s]+/).filter(Boolean)) { const m = tok.match(/^(\d{1,2})\/(\d{1,2})$/); if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) (closure[+m[1]] ||= []).push(+m[2]); }
@@ -313,10 +315,10 @@
     { if (roleEdit.roles) { renameRoles(roleRen); R.profile.roles = roleEdit.roles; }
       { const old = T.normalizeShiftsOf(R), shifts = [];
         document.querySelectorAll("#shiftTbl tr[data-shift]").forEach(tr => {
-          const id = tr.dataset.shift, o = old.find(x => x.id === id) || {}, lab = tr.querySelector("[data-slabel]").value.trim();
+          const id = tr.dataset.shift, o = old.find(x => x.id === id) || {}, lab = tr.querySelector("[data-slabel]").value;
           // 名前を変えていなければ元の表記（{ja, en} など）のまま残す
           const soc = document.querySelector(`#profileBuilder [data-soc="${id}"]`); // オンコールを使わない間は欄が無いので、前の値のまま
-          const sh = { id, label: !lab || lab === o.label ? (o.labelRaw ?? o.label) : lab, on: tr.querySelector("[data-son]").value };
+          const sh = { id, label: !lab.trim() || lab === profileInputText(o.label) ? (o.labelRaw ?? o.label) : lab.trim(), on: tr.querySelector("[data-son]").value };
           if ((soc ? soc.checked : o.oncall !== false) === false) sh.oncall = false;
           shifts.push(sh);
         });
@@ -925,30 +927,32 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); // 名簿が変わったので他の画面も描き直す
     });
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnExportProfile") exportProfile(); });
-    const settings = $("#settings"), isRunLimit = el => ["setRunMax", "setRunMin"].includes(el.id), committedRunValues = new WeakMap();
-    let committingRunLimit = false;
-    const commitRunLimit = input => {
-      if (committingRunLimit || !settings.contains(input) || $("#" + input.id) !== input || input.dataset.numericEdited !== "1") return;
-      committingRunLimit = true;
+    const settings = $("#settings"), isRuleNumber = el => ["setRunMax", "setRunMin", "setHrWeek", "setHrDay", "setOffMin"].includes(el.id), committedRuleValues = new WeakMap();
+    let committingRuleNumber = false;
+    const commitRuleNumber = input => {
+      if (committingRuleNumber || !settings.contains(input) || $("#" + input.id) !== input || input.dataset.numericEdited !== "1") return;
+      committingRuleNumber = true;
       try {
         if (readSettings("規則・重みの変更") === false) return;
-        // 設定DOMを残し、Tabやクリックで移った先の欄を失わない。確定済みの編集印は両欄から除く。
-        for (const [id, key, fallback] of [["setRunMax", "max", 5], ["setRunMin", "min", 3]]) {
+        // 設定DOMを残し、Tabやクリックで移った先の欄を失わない。確定済みの編集印は各欄から除く。
+        const rest = state.rules.days_off || {}, restText = v => typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : String(v).replace(/\r\n?/g, "\n").replace(/\0/g, "\uFFFD");
+        for (const [id, shown] of [["setRunMax", (state.rules.run_length || {}).max ?? 5], ["setRunMin", (state.rules.run_length || {}).min ?? 3],
+          ["setHrWeek", restText(rest.hours_per_week ?? 40)], ["setHrDay", restText(rest.hours_per_day ?? 8)], ["setOffMin", restText(rest.min != null && rest.min !== "auto" ? rest.min : "")]]) {
           const el = $("#" + id); if (!el) continue;
-          const value = String((state.rules.run_length || {})[key] ?? fallback).replace(/[\r\n]/g, "");
-          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRunValues.set(el, value);
+          const value = ["setRunMax", "setRunMin"].includes(id) ? String(shown).replace(/[\r\n]/g, "") : String(shown);
+          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, value);
         }
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor();
-      } finally { committingRunLimit = false; }
+      } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.dataset?.f === "quota" || isRunLimit(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.dataset?.f === "quota" || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
-    settings.addEventListener("focusout", ev => { if (isRunLimit(ev.target)) commitRunLimit(ev.target); });
+    settings.addEventListener("focusout", ev => { if (isRuleNumber(ev.target)) commitRuleNumber(ev.target); });
     $("#settings").addEventListener("change", ev => {
-      if (isRunLimit(ev.target)) {
-        if (ev.target.dataset.numericEdited !== "1" && committedRunValues.get(ev.target) === ev.target.value) return;
-        ev.target.dataset.numericEdited = "1"; commitRunLimit(ev.target); return;
+      if (isRuleNumber(ev.target)) {
+        if (ev.target.dataset.numericEdited !== "1" && committedRuleValues.get(ev.target) === ev.target.value) return;
+        ev.target.dataset.numericEdited = "1"; commitRuleNumber(ev.target); return;
       }
       if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1";
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
