@@ -40,10 +40,12 @@ run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_profile_day_flags_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
+run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js
 run test_calendar_day_readback_node.js
+run test_calendar_clear_confirmation_dom_node.js
 run test_calendar_person_selection_dom_node.js
 run test_calendar_boundary_count_node.js
 run test_previous_selection_preservation_node.js
@@ -107,6 +109,7 @@ run test_charge_day_split_node.js "$HP"
 if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
+run test_composition_inactive_flag_dom_node.js "$HP"
 run test_rule_setting_preservation_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
 if [ -x "$PY" ]; then
@@ -152,6 +155,7 @@ if [ -x "$PY" ]; then
   "$PY" ../tools/test_quota_candidate_scope.py || fail=1
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
 run test_count_limits_edges_node.js "$PY"
+run test_month_count_limits_dom_node.js
 run test_dayoff_weekday_node.js "$HP"
 run test_dayoff_work_node.js "$HP"
 run test_dayoff_work_edges_node.js "$HP"
