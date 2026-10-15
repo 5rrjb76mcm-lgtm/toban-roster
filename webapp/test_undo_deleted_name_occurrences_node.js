@@ -4,6 +4,7 @@ const fs = require("fs"), path = require("path"), vm = require("vm"), assert = r
 const root = process.argv[2] || __dirname, elements = new Map();
 const element = s => { if (!elements.has(s)) elements.set(s, { value: "", innerHTML: "", textContent: "", hidden: false, className: "", listeners: {}, querySelectorAll: () => [], querySelector: () => null, addEventListener(k, fn) { (this.listeners[k] ||= []).push(fn); } }); return elements.get(s); };
 globalThis.document = { querySelector: element, querySelectorAll: () => [], addEventListener() {} };
+globalThis.prompt = () => T.t("新規");
 globalThis.confirm = () => true;
 globalThis.alert = text => { throw new Error(String(text)); };
 globalThis.window = globalThis;

@@ -34,9 +34,11 @@ run test_profile_export_node.js
 run test_profile_export_collision_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_settings_import_node.js
+run test_historical_name_guard_dom_node.js
 run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_profile_day_flags_preservation_dom_node.js
+run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js

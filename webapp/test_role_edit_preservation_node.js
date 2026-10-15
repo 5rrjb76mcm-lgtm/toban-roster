@@ -15,6 +15,7 @@ globalThis.document = {
   querySelector(sel) { return sel === "#ocReqTbl" ? (showOC ? {} : null) : elements.get(sel) || null; },
   querySelectorAll(sel) { return ({ "#doctorTable tr[data-i]": doctors, "#roleTbl tr[data-ri]": roles, "#ocReqTbl tr[data-t]": ocRows, "#weightsTable [data-w]": weights })[sel] || []; }
 };
+globalThis.prompt = () => "Synthetic New";
 globalThis.confirm = () => { throw new Error("Unexpected confirmation for role edit"); };
 globalThis.T = {};
 for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "plugins.js", "app-core.js", "app-settings.js"])

@@ -115,6 +115,7 @@
     return list;
   }
   // 施設の構成を作る（作成モード）: 出発点 → 1日の区分 → 役割 → 出力。施設を使い始めるときに一度決めるもの
+  const profileTagLabel = x => String(typeof x === "string" ? x : x.label || "").replace(/[\r\n]/g, "");
   const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
   function renderBuilder(R) {
     const h = [], step = (n, title, body) => h.push(`<div class="builder-step"><h4>${n}. ${esc(tx(title))}</h4>${body}</div>`);
@@ -147,7 +148,7 @@
       const ON = { day: [["none", tx("計算しない")], ["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]],
         night: [["off_days", tx("土日祝だけ")], ["weekdays", tx("平日だけ")], ["all", tx("毎日")]] };
       const PART = { day: tx("日中"), night: tx("夜") };
-      { const pf = R.profile || {}, tags = [].concat(pf.fixed_tags || []).map(x => typeof x === "string" ? x : x.label).filter(Boolean), flags = [].concat(pf.day_flags || []).map(profileFlagLabel).filter(Boolean);
+      { const pf = R.profile || {}, tags = [].concat(pf.fixed_tags || []).map(profileTagLabel).filter(Boolean), flags = [].concat(pf.day_flags || []).map(profileFlagLabel).filter(Boolean);
         h.push(`<div class="builder-step"><h4>2b. ${esc(tx("固定の印と日ごとの区分"))}</h4><p><label>${esc(tx("固定の印の選択肢（・区切り。例: 研修・会議・出張）"))} <input id="setFixedTags" value="${esc(tags.join("・"))}" style="width:22em"></label></p>
 <p><label>${esc(tx("日ごとの区分（・区切り。例: 行事）"))} <input id="setDayFlags" value="${esc(flags.join("・"))}" style="width:22em"></label></p>
 <p class="note">${esc(tx("固定の印は、職員別カレンダーの固定欄の横に選択肢として出て、勤務表に名前(印)で出ます。日ごとの区分は、月別条件の「日ごとの区分・予定」と職員別カレンダーの日付の見出しでチェックでき、構成の規則の「日」の選択肢（「○○」の日）に使えます。"))}</p></div>`); }
@@ -157,7 +158,7 @@
           `<td>${A.sel(ON[x.id] || ON.night, x.on, "data-son")}</td>` +
           `<td>${cntCell("countmin", x.id, cntMin(x.id), `min="0" max="40" placeholder="${esc(tx("固定"))}" style="width:4.5em"`, x.on === "none")}</td>` +
           `<td>${cntCell("countideal", x.id, cntIdeal(x.id), `min="0" max="40" placeholder="―" style="width:4.5em"`, x.on === "none")}</td>` +
-          `<td>${cntCell("count", x.id, cnt(x.id), `min="1" max="40" style="width:4em"`, x.on === "none")}</td></tr>`).join("") + `</table>
+          `<td>${cntCell("count", x.id, cnt(x.id), `min="0" max="40" style="width:4em"`, x.on === "none")}</td></tr>`).join("") + `</table>
 <p class="note">${esc(tx("人数を決まった数にするなら上限だけを書きます。幅を持たせるなら下限も書き、なるべく近づけたい人数があれば理想に書きます（理想からずれた人数は減点。重みは日々の設定の「1枠の人数を理想値に近づける」）。下限と上限は必ず守ります。"))}</p>
 <p class="note">${esc(tx("1 日を日中と夜の 2 つに分け、それぞれに名前を付けて、計算で当番を決める日を選びます。日中を「計算しない」にすると夜だけの当直になります。夜は必ず計算で決めます。日中の予定（午前・午後の外来・外勤など）は計算の対象ではなく、人ごとの予定の入力に使います。3 つ以上の区分（3 交代など）はこの版では使えません。"))}</p>
 <p><label>${esc(tx("勤務回数の目安の決め方"))}: ${A.sel([["absolute", tx("絶対値（名簿に月◯回を書く）")], ["share", tx("相対（名簿に比重を書き、その月の枠数を按分する）")]], (R.profile || {}).quota_mode === "share" ? "share" : "absolute", 'id="setQuotaMode"')}</label></p>
@@ -292,7 +293,13 @@
         R.profile.calendar = { holidays: hol.value, closure: Object.keys(closure).map(Number).sort((a, b) => a - b).map(mo => ({ month: mo, days: [...new Set(closure[mo])].sort((a, b) => a - b) })) }; } }
     { const ft = document.querySelector("#setFixedTags"), df = document.querySelector("#setDayFlags"); // 固定の印と日ごとの区分（施設の構成）
       const split = v => [...new Set(String(v || "").split(/[・,、\n]+/).map(x => x.trim()).filter(Boolean))];
-      if (ft) { const v = split(ft.value); const old = [].concat(R.profile.fixed_tags || []); R.profile.fixed_tags = v.map(l => old.find(o => typeof o === "object" && o.label === l) || l); if (!v.length) delete R.profile.fixed_tags; }
+      if (ft) { const old = [].concat(R.profile.fixed_tags || []);
+        // The input is a display projection, not the stored list. Unchanged tags retain
+        // separator/newline labels and their shift restrictions, including duplicate labels.
+        if (ft.value !== old.map(profileTagLabel).filter(Boolean).join("・")) {
+          const v = split(ft.value); R.profile.fixed_tags = v.map(l => old.find(o => typeof o === "object" && profileTagLabel(o) === l) || l);
+          if (!v.length) delete R.profile.fixed_tags;
+        } }
       if (df) { const old = [].concat(R.profile.day_flags || []);
         // The list is a display projection: unchanged localized labels must retain IDs, translations,
         // short labels, and even labels containing the list separator or sharing the same text.
@@ -315,12 +322,12 @@
       // 1 枠の人数: 入力欄に出した数だけを読む。日の種別ごとの人数（欄に出せず、値だけ見せているもの）は前の値をそのまま残す
       const posOld = (((R.profile || {}).positions || {}).work) || {}, isObj = v => !!v && typeof v === "object", rawOld = (c, k) => c == null ? undefined : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : undefined)) : undefined;
       const kept = {}; document.querySelectorAll("#shiftTbl [data-countkeep]").forEach(x => { const [attr, k] = x.dataset.countkeep.split(":"), field = { count: "count", countmin: "min", countideal: "ideal" }[attr], v = rawOld(posOld[field], k); if (isObj(v)) (kept[field] ||= {})[k] = JSON.parse(JSON.stringify(v)); });
-      const maxOf = v => isObj(v) ? Math.max(+v.weekday || 0, +v.off_days || 0, 1) : (v || 1);
+      const maxOf = v => isObj(v) ? Math.max(v.weekday == null ? 1 : +v.weekday || 0, v.off_days == null ? 1 : +v.off_days || 0) : (v ?? 1);
       const count = Object.assign({}, kept.count); let multi = Object.values(count).some(v => maxOf(v) > 1);
-      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { const v = Math.max(1, Math.min(40, +x.value || 1)); count[x.dataset.count] = v; if (v > 1) multi = true; });
+      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { const v = Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0)); count[x.dataset.count] = v; if (v > 1) multi = true; });
       const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
       const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
-      const hadIdeal = !!posOld.ideal;
+      const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;
       if (Object.keys(count).length) (R.profile.positions ||= {}).work = Object.assign({ count }, Object.keys(mins).length ? { min: mins } : {}, Object.keys(ideals).length ? { ideal: ideals } : {});
       { const qm = document.querySelector("#setQuotaMode"); if (qm) { if (qm.value === "share") R.profile.quota_mode = "share"; else delete R.profile.quota_mode; } } // 目安の決め方
       R._idealAdded = !hadIdeal && Object.keys(ideals).length > 0; // 理想値を新しく書いたら、それに近づける規則を使う（規則の状態を読んだ後で入れる）
@@ -370,8 +377,42 @@
         }));
       } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
   }
+  // Only retained records in the open month reserve a historical identity. Zero is a record too.
+  function hasHistoricalName(name) {
+    const m = state.month || {}, pm = m.prev_month || {}, own = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
+    if (["weekend_charge", "holiday_charge", "work_balance"].some(k => own((m.history || {})[k], name))) return true;
+    const contains = value => Array.isArray(value) ? value.includes(name) : value === name;
+    return (pm.last_days || []).some(day => ["day", "night", "day_oc", "night_oc"].some(k => contains(day[k]))) ||
+      ["last_weekend_charge", "prev_weekend_charge"].some(k => pm[k] === name);
+  }
+  const historicalRenameMessage = name => T.t("氏名「{name}」は履歴・前月の記録で使われているため、改名できません。別の氏名にしてください", { name });
+  function historicalImportNames(rules) {
+    const current = new Set(state.rules.doctors.map(d => d.name));
+    return [...new Set(rules.doctors.map(d => d.name).filter(name => !current.has(name) && hasHistoricalName(name)))];
+  }
+  function resolveRosterName(old, name, taken) {
+    if (!taken.has(name)) return name;
+    if (old && !taken.has(old)) return old;
+    let k = 2; while (taken.has(`${name} ${k}`)) k++;
+    return `${name} ${k}`;
+  }
   function readSettings(undoLabel) {
     const R = state.rules; let roleEdit;
+    // Reject before any readback, plug-in hook, save or Undo entry. Keep unrelated pending inputs.
+    const planned = [...document.querySelectorAll("#doctorTable tr[data-i]")].map(tr => ({ tr,
+      old: R.doctors[+tr.dataset.i]?.name, name: tr.querySelector('[data-f="name"]').value.trim() || R.doctors[+tr.dataset.i]?.name }));
+    const plannedTaken = new Set(planned.filter(r => r.old && r.old === r.name).map(r => r.name));
+    const blocked = [];
+    for (const r of planned) {
+      if (r.old === r.name) continue;
+      const resolved = resolveRosterName(r.old, r.name, plannedTaken); plannedTaken.add(resolved);
+      if (r.old && (hasHistoricalName(r.name) || resolved !== r.old && hasHistoricalName(resolved))) blocked.push({ ...r, resolved });
+    }
+    if (blocked.length) {
+      A.toast(blocked.map(r => historicalRenameMessage(hasHistoricalName(r.name) ? r.name : r.resolved)).join("\n"));
+      for (const r of blocked) r.tr.querySelector('[data-f="name"]').value = r.old;
+      return false;
+    }
     try { roleEdit = stageRoles(R); }
     catch (e) { A.toast(T.t("役割の変更を取り消しました: {err}", { err: e && e.message || e })); A.renderSettings(); return false; }
     if (undoLabel) pushUndo(undoLabel); // 不正な役割の編集は、既存の取り消し履歴にも触れない
@@ -391,7 +432,7 @@
     const broken = pluginsIncomplete(R, state.month);
     if (broken && rows.some(r => r.old && r.old !== r.name)) { A.toast(T.t("施設のプラグインが欠けている・読めない間は氏名を変えられません（独自データの追随ができないため）。プラグインを揃えてから変えてください")); for (const r of rows) if (r.old && r.old !== r.name) r.name = r.old; }
     for (const r of rows) { if (r.old === r.name) continue;
-      if (taken.has(r.name)) { if (r.old && !taken.has(r.old)) { A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); r.name = r.old; } else { let k = 2; while (taken.has(`${r.name} ${k}`)) k++; A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k })); r.name = `${r.name} ${k}`; } }
+      if (taken.has(r.name)) { const resolved = resolveRosterName(r.old, r.name, taken); if (resolved === r.old) A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); else A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k: resolved.slice(r.name.length + 1) })); r.name = resolved; }
       taken.add(r.name); }
     for (const r of rows) if (r.old && r.old !== r.name && !renameTrial(r.old, r.name)) { taken.delete(r.name); r.name = r.old; } // 追随に失敗する改名は取り消す（知らせは renameTrial）
     const cur = Object.fromEntries(R.doctors.map(d => [d.name, d])); const docs = [];
@@ -465,6 +506,7 @@
     replaceInto(state.rules, trial.R2); replaceInto(state.month, trial.m2); noteRename(trial.nm, removalName(trial.nm)); return true;
   }
   function renameDoctor(oldN, newN) {
+    if (oldN !== newN && hasHistoricalName(newN)) { A.toast(historicalRenameMessage(newN)); return false; }
     const t = renameTrialOn(state.rules, state.month, oldN, newN); if (!t) return false; const { R2, m2 } = t;
     T.renameMonthName(m2, oldN, newN);
     const ren1 = w => Array.isArray(w) ? w.map(x => x === oldN ? newN : x) : (w === oldN ? newN : w);
@@ -609,6 +651,8 @@
     if (keepRoster && (rules.doctors == null || Array.isArray(rules.doctors) && !rules.doctors.length)) { rules.doctors = clone(state.rules.doctors); rules.name_order = clone(state.rules.name_order || []); }
     if (!Array.isArray(rules.doctors)) throw new Error(T.t("doctors（{person}一覧）がありません"));
     if (!rules.doctors.every(d => d && typeof d === "object" && !Array.isArray(d) && typeof d.name === "string" && d.name.trim())) throw new Error(T.t("勤務表データの設定（rules）の{person}一覧に、氏名の無い要素があります"));
+    const historical = historicalImportNames(rules);
+    if (historical.length) throw new Error(T.t("履歴・前月の記録にある氏名を新たに含むため、設定を読み込みませんでした: {who}。同じ本人なら、先に名簿の「追加」で確認してから、もう一度読み込んでください。別人なら、読み込む設定で別の氏名にしてください", { who: historical.join(T.nameSep()) }));
     T.fillDefaultRules(rules); T.normalizeMonth(month, rules);
     return { rules, month };
   }
@@ -716,6 +760,21 @@
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）
+      let addedName;
+      if (!mod && act === "add") {
+        if ([...document.querySelectorAll('#doctorTable tr[data-i]')].some(tr => tr.querySelector('[data-f="name"]').value.trim() !== state.rules.doctors[+tr.dataset.i]?.name)) {
+          A.toast(T.t("編集中の氏名の変更を確定してから、名簿に追加してください")); return;
+        }
+        const raw = prompt(T.t("追加する{person}の氏名を入力してください"));
+        if (raw === null) return;
+        addedName = raw.trim();
+        if (!addedName) { A.toast(T.t("氏名を入力してください")); return; }
+        const pendingNames = [...document.querySelectorAll('#doctorTable tr[data-i]')].map(tr => tr.querySelector('[data-f="name"]').value.trim());
+        if (state.rules.doctors.some(d => d.name === addedName) || pendingNames.includes(addedName)) { A.toast(T.t("氏名「{name}」は名簿にあります。別の氏名にしてください", { name: addedName })); return; }
+        if (hasHistoricalName(addedName) && !confirm(T.t("氏名「{name}」は履歴・前月の記録にあります。同じ本人を再び追加しますか。履歴は引き継ぎますが、削除した当月の入力や個人設定は復元せず、初期値で追加します。別人ならキャンセルして別の氏名にしてください", { name: addedName }))) {
+          A.toast(T.t("追加を中止しました。別人を追加する場合は別の氏名にしてください")); return;
+        }
+      }
       if (!mod && act === "del" && !removalTrial(+(b.closest("tr") || { dataset: {} }).dataset.i)) return; // 読み戻し・Undo 記録の前に失敗を検出
       if (readSettings(mod ? mod.ui.acts[act] : { add: "名簿に追加", del: "名簿から削除", up: "名簿の並べ替え", down: "名簿の並べ替え", roleAdd: "役割を追加", roleDel: "役割を削除" }[act] || "設定の変更") === false) return;
       const R = state.rules, tr = b.closest("tr"), i = tr ? +tr.dataset.i : -1;
@@ -744,8 +803,8 @@
         T.fillDefaultRules(R); A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); return;
       }
       if (b.dataset.act === "add") {
-        const d = { name: (() => { const base = T.t("新規"), used = new Set(R.doctors.map(d => d.name)); if (!used.has(base)) return base; let k = 2; while (used.has(`${base} ${k}`)) k++; return `${base} ${k}`; })(), team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null };
-        R.doctors.push(d); noteRename(removalName(d.name), d.name); // 削除した人の空いた初期名でも、追加した人は別人。Undo と共有統合へその対応を残す。
+        const d = { name: addedName, team: (T.normalizeRolesOf(R).find(x => x.refs.includes("junior")) || T.normalizeRolesOf(R)[0] || {}).id || "Y", years: 0, quota: 5, cath: null };
+        R.doctors.push(d); noteRename(removalName(d.name), d.name); // 当月の入力は新しい追加として記録し、削除した入力を復活させない。履歴の本人への接続だけは、追加前の明示的な確認で認める。
       }
       else if (b.dataset.act === "del") { const nm = R.doctors[i].name, refs = T.monthNameRefs(state.month)[nm];
         if (!confirm(refs ? T.t("{who} を名簿から外します。この月の {who} の入力（{kinds}）も消します", { who: nm, kinds: refs.join(T.listSep()) }) : T.t("{who} を名簿から外します", { who: nm }))) return;
