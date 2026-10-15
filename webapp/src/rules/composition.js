@@ -42,8 +42,12 @@ T.rules.register({
     render(R, h) {
       const { esc, tx, sel } = h, rows = [].concat(R.composition || []), sh = [["all", tx("すべての勤務帯")], ...h.shifts];
       const dy = [["all", tx("すべての日")], ["weekdays", tx("平日だけ")], ["off_days", tx("土日祝だけ")]].concat((T.dayFlags ? T.dayFlags.activeFor(R) : []).map(f => [`flag:${f.id}`, tx("「{f}」の日", { f: T.pickLabel ? T.pickLabel(f.short || f.label, f.id) : f.label })])); // 日ごとの区分が付いた日
+      // Temporarily disabling a flag's plug-in must not make the select fall back to "all".
+      // Retain this row's saved reference until the user explicitly chooses another scope.
+      const dayOpts = c => typeof c.days === "string" && /^flag:.+/.test(c.days) && !dy.some(([id]) => id === c.days)
+        ? dy.concat([[c.days, tx("「{f}」の日", { f: T.dayFlags ? T.dayFlags.labelOf(R, c.days.slice(5)) : c.days.slice(5) }) + tx("（現在は使わない値）")]]) : dy;
       return `<table class="grid" id="compTbl"><tr><th>${esc(tx("勤務帯"))}</th><th>${esc(tx("日"))}</th><th>${esc(tx("名前"))}</th><th>${esc(tx("何年目以上"))}</th><th>${esc(tx("何年目以下"))}</th><th>${esc(tx("資格あり"))}</th><th>${esc(tx("資格なし"))}</th><th>${esc(tx("最低（人）"))}</th><th>${esc(tx("最大（人）"))}</th><th></th></tr>` +
-        rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${sel(dy, c.days || "all", "data-cdays")}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
+        rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${sel(dayOpts(c), c.days || "all", "data-cdays")}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
           ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${h.esc(c[k] ?? "")}" style="width:4em"></td>`).join("") +
           `<td><input data-cqual value="${esc(c.qual || "")}" style="width:6em"></td><td><input data-cnot value="${esc(c.not_qual || "")}" style="width:6em"></td>` +
           `<td><input type="number" min="0" data-cmin value="${h.esc(c.min ?? "")}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${h.esc(c.max ?? "")}" style="width:4em"></td>` +

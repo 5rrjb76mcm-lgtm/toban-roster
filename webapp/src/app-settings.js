@@ -115,6 +115,9 @@
     return list;
   }
   // 施設の構成を作る（作成モード）: 出発点 → 1日の区分 → 役割 → 出力。施設を使い始めるときに一度決めるもの
+  // Match workerCount: explicit count (including null) wins; otherwise work itself is the count.
+  const profileWorkCount = work => work != null && work.count !== undefined ? work.count : work;
+  const profileCountOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null;
   const profileTagLabel = x => String(typeof x === "string" ? x : x.label || "").replace(/[\r\n]/g, "");
   const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
   function renderBuilder(R) {
@@ -138,9 +141,8 @@
       step(2, "暦（祝日と施設の休日）", `<p><label>${esc(tx("祝日の出どころ"))}: ${A.sel(srcs, cal.holidays, 'id="setCalHol"')}</label>
 　<label>${esc(tx("施設の休日（毎年同じ月日。月/日をカンマ区切り）"))} <input id="setCalClosure" value="${esc(closureText)}" placeholder="12/29, 12/30, 12/31, 1/2, 1/3" style="width:22em"></label></p>
 <p class="note">${esc(tx("月を作るときに、ここで決めた祝日と施設の休日が月の設定の「祝日・施設の休日」に入ります（月ごとに手で直せます）。祝日のない地域や、土日だけを休日にする施設は「祝日なし」を選びます。国の祝日を足すには src/calendars/ にファイルを 1 つ足します。"))}</p>`); }
-    { const pos = ((R.profile || {}).positions || {}).work || {};
-      const rawOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null; // 数、または日の種別ごと { weekday, off_days }
-      const cnt = k => rawOf(pos.count, k) ?? 1, cntMin = k => rawOf(pos.min, k), cntIdeal = k => rawOf(pos.ideal, k);
+    { const pos = ((R.profile || {}).positions || {}).work ?? {};
+      const cnt = k => profileCountOf(profileWorkCount(pos), k) ?? 1, cntMin = k => profileCountOf(pos.min, k), cntIdeal = k => profileCountOf(pos.ideal, k);
       // 人数の欄: 数なら入力欄。日の種別ごとの人数（平日と休日で違う）はこの画面では編集できないので、値をそのまま見せて保持する（読み戻しで 1 名に書き換えない）
       const byDayTxt = v => T.t("平日 {w}・休日 {h}", { w: v.weekday ?? "―", h: v.off_days ?? "―" });
       const cntCell = (attr, k, v, extra, off) => v && typeof v === "object" ? `<span data-countkeep="${attr}:${esc(k)}" title="${esc(tx("日の種別ごとの人数です。変えるときは管理者向けの設定（JSON）で編集します"))}">${esc(byDayTxt(v))}</span>` : `<input type="number" ${extra} data-${attr}="${esc(k)}" value="${esc(v ?? "")}"${off ? " disabled" : ""}>`;
@@ -320,15 +322,30 @@
         });
         if (shifts.length) R.profile.shifts = shifts; }
       // 1 枠の人数: 入力欄に出した数だけを読む。日の種別ごとの人数（欄に出せず、値だけ見せているもの）は前の値をそのまま残す
-      const posOld = (((R.profile || {}).positions || {}).work) || {}, isObj = v => !!v && typeof v === "object", rawOld = (c, k) => c == null ? undefined : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : undefined)) : undefined;
-      const kept = {}; document.querySelectorAll("#shiftTbl [data-countkeep]").forEach(x => { const [attr, k] = x.dataset.countkeep.split(":"), field = { count: "count", countmin: "min", countideal: "ideal" }[attr], v = rawOld(posOld[field], k); if (isObj(v)) (kept[field] ||= {})[k] = JSON.parse(JSON.stringify(v)); });
+      const workOld = ((R.profile || {}).positions || {}).work, posOld = workOld ?? {}, isObj = v => !!v && typeof v === "object";
+      const kept = {}; document.querySelectorAll("#shiftTbl [data-countkeep]").forEach(x => {
+        const [attr, k] = x.dataset.countkeep.split(":"), field = { count: "count", countmin: "min", countideal: "ideal" }[attr];
+        let v = profileCountOf(field === "count" ? profileWorkCount(posOld) : posOld[field], k);
+        // Direct day-type work may also contain min/ideal or metadata. Only count keys
+        // belong inside a new canonical count; other fields remain work siblings.
+        if (field === "count" && posOld.count === undefined && v === posOld) v = Object.fromEntries(["weekday", "off_days"].filter(key => posOld[key] !== undefined).map(key => [key, posOld[key]]));
+        if (isObj(v)) (kept[field] ||= {})[k] = JSON.parse(JSON.stringify(v));
+      });
       const maxOf = v => isObj(v) ? Math.max(v.weekday == null ? 1 : +v.weekday || 0, v.off_days == null ? 1 : +v.off_days || 0) : (v ?? 1);
-      const count = Object.assign({}, kept.count); let multi = Object.values(count).some(v => maxOf(v) > 1);
-      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { const v = Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0)); count[x.dataset.count] = v; if (v > 1) multi = true; });
-      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
-      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
+      const count = Object.assign({}, kept.count); let multi = Object.values(count).some(v => maxOf(v) > 1), staffingEdited = false;
+      const noteStaffingEdit = x => { if (x.value !== x.getAttribute?.("value")) staffingEdited = true; };
+      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { noteStaffingEdit(x); const v = Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0)); count[x.dataset.count] = v; if (v > 1) multi = true; });
+      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
+      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
       const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;
-      if (Object.keys(count).length) (R.profile.positions ||= {}).work = Object.assign({ count }, Object.keys(mins).length ? { min: mins } : {}, Object.keys(ideals).length ? { ideal: ideals } : {});
+      // An unchanged shorthand is accepted storage, not an implicit request to flatten it.
+      // Explicit staffing edits use the existing count/min/ideal form, keeping hidden day-type
+      // branches and other metadata. Clearing a bound must remove that owned field.
+      if (Object.keys(count).length && !(workOld != null && posOld.count === undefined && !staffingEdited)) {
+        const next = Object.assign({}, isObj(posOld) ? posOld : {}, { count }); delete next.min; delete next.ideal;
+        if (Object.keys(mins).length) next.min = mins; if (Object.keys(ideals).length) next.ideal = ideals;
+        (R.profile.positions ||= {}).work = next;
+      }
       { const qm = document.querySelector("#setQuotaMode"); if (qm) { if (qm.value === "share") R.profile.quota_mode = "share"; else delete R.profile.quota_mode; } } // 目安の決め方
       R._idealAdded = !hadIdeal && Object.keys(ideals).length > 0; // 理想値を新しく書いたら、それに近づける規則を使う（規則の状態を読んだ後で入れる）
       R._multiWork = multi; // 複数名かどうか（規則の状態を読んだあとで併用できない規則を外す）

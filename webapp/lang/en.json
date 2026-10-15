@@ -988,7 +988,7 @@
     "{d}日 {slot}は {who} が固定済み": "{slot} on the {d}th is already fixed to {who}",
     "{d}日 {charge}担当は {who} が固定済み": "{charge} in charge on the {d}th is already fixed to {who}",
     "固定できません: {list}": "Cannot fix: {list}",
-    "{who} の当月の業務をすべて消します": "Clear all of {who}'s duties for this month",
+    "{who} の当月の業務と、画面に表示されている翌月1日の業務をすべて消します。別に保存した翌月のデータは変更しません。": "Clear all of {who}'s duties for this month and the displayed 1st of next month. Separately saved next-month data will not be changed.",
     "1 枠に複数名を置く設定では {list} を「なし」にしてください（勤務者が 1 名である前提の規則です）": "With several people per slot, set {list} to None (these rules assume one person per slot)",
     "日曜日": "Sun",
     "月曜日": "Mon",
