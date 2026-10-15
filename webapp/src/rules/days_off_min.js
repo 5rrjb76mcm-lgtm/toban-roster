@@ -1,6 +1,9 @@
 // 規則のプラグイン: 月の休みの日数（days_off_min）。休みでない日（勤務した日。明けを休みに数えない施設では明けも）が「暦 − 基準」日以下（ちょうどの設定なら等しい）。
 // 基準は労働時間から（暦の日数 − 所定労働日数）か、その月の土日祝の数（rules.days_off.basis）。有給の日はその人の基準に足す（P.offTarget）。docs/rule-modules.md
 // 人数が合わないときの入力チェック（LINT_BUSY_DAYS_*）は本体の人数の見積もりの中にある。
+// JSON numeric strings can be valid for the model but invalid in a number input (e.g. "+35").
+// Show their numeric value so an unrelated settings read cannot mistake them for an empty field.
+const daysOffNumberText = v => typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : String(v).replace(/\r\n?/g, "\n").replace(/\0/g, "\uFFFD");
 T.rules.register({
   id: "days_off_min", api: 1, order: 730, group: "rest",
   label: "月の休みの日数を確保する（暦の日数から決まる）", states: ["hard", "soft", "off"], def: "off",
@@ -37,15 +40,19 @@ T.rules.register({
 　<label><input type="checkbox" id="setAkeOff" ${d.ake_is_off !== false ? "checked" : ""}> ${esc(tx("夜勤の翌日（明け）も休みに数える"))}</label></p>
 <p class="note">${esc(tx("その人がカレンダーで「有給」を付けた日は、その日数だけ休みに加わります。2 交代の病棟では、明けは休みに数えないのが普通です。"))}</p>`;
       if (d.basis === "holidays") return head + `<p class="note">${esc(T.t("いまの月では土日祝が {n} 日です。", { n: hol ?? "?" }))}</p>`;
-      return head + `<label>${esc(tx("1 週の所定労働時間"))} <input type="number" min="1" max="80" step="0.5" id="setHrWeek" value="${h.esc(d.hours_per_week ?? 40)}" style="width:4.5em"> ${esc(tx("時間"))}</label>
-　<label>${esc(tx("1 日"))} <input type="number" min="1" max="24" step="0.5" id="setHrDay" value="${h.esc(d.hours_per_day ?? 8)}" style="width:4em"> ${esc(tx("時間"))}</label>
-　<label>${esc(tx("最低日数を直接指定"))} <input type="number" min="0" max="31" id="setOffMin" value="${h.esc(d.min != null && d.min !== "auto" ? d.min : "")}" placeholder="${esc(tx("暦から自動"))}" style="width:5.5em"></label>
+      return head + `<label>${esc(tx("1 週の所定労働時間"))} <input type="number" min="1" max="80" step="0.5" id="setHrWeek" value="${h.esc(daysOffNumberText(d.hours_per_week ?? 40))}" style="width:4.5em"> ${esc(tx("時間"))}</label>
+　<label>${esc(tx("1 日"))} <input type="number" min="1" max="24" step="0.5" id="setHrDay" value="${h.esc(daysOffNumberText(d.hours_per_day ?? 8))}" style="width:4em"> ${esc(tx("時間"))}</label>
+　<label>${esc(tx("最低日数を直接指定"))} <input type="number" min="0" max="31" id="setOffMin" value="${h.esc(daysOffNumberText(d.min != null && d.min !== "auto" ? d.min : ""))}" placeholder="${esc(tx("暦から自動"))}" style="width:5.5em"></label>
 <p class="note">空欄なら暦の日数から決めます（暦日数 − 所定労働日数。所定労働日数は 暦日数 × 週の時間 ÷ 7 ÷ 1日の時間 の切り捨て）。
 いまの月（${N} 日）では <b>${T.minDaysOff(R, N)} 日</b>。勤務の枠に入らない日を休みとして数えます（日中の業務は見ません）。</p>`; },
     read(R, el) { const d = Object.assign({}, R.days_off);
-      if (el("#setHrWeek")) d.hours_per_week = +el("#setHrWeek").value || 40;
-      if (el("#setHrDay")) d.hours_per_day = +el("#setHrDay").value || 8;
-      if (el("#setOffMin")) { if (el("#setOffMin").value === "") delete d.min; else d.min = +el("#setOffMin").value; }
+      // Number controls may sanitize invalid saved text to empty. Only an explicit edit
+      // applies the empty-field default; otherwise preserve the original JSON value.
+      const changed = (input, shown) => input && (input.dataset?.numericEdited === "1" ||
+        input.value !== shown && !(input.value === "" && input.getAttribute?.("value") === shown));
+      if (changed(el("#setHrWeek"), daysOffNumberText(d.hours_per_week ?? 40))) d.hours_per_week = +el("#setHrWeek").value || 40;
+      if (changed(el("#setHrDay"), daysOffNumberText(d.hours_per_day ?? 8))) d.hours_per_day = +el("#setHrDay").value || 8;
+      if (changed(el("#setOffMin"), daysOffNumberText(d.min != null && d.min !== "auto" ? d.min : ""))) { if (el("#setOffMin").value === "") delete d.min; else d.min = +el("#setOffMin").value; }
       if (el("#setOffBasis")) d.basis = el("#setOffBasis").value;
       if (el("#setOffMode")) d.mode = el("#setOffMode").value;
       if (el("#setAkeOff")) { if (el("#setAkeOff").checked) delete d.ake_is_off; else d.ake_is_off = false; }

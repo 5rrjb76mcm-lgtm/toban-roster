@@ -52,13 +52,15 @@ ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.a
     let at = null, P0 = null; try { at = T.autoTargets(R, m); P0 = new T.Problem(R, m); } catch (e) { }
     const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share", workerNames = A.workNames();
     const quotaOf = n => P0 ? P0.quota(n) : (R.doctors.find(d => d.name === n) || {}).quota;
+    // 履歴の数値文字列も number 欄が空にしない表記で見せる（無関係な変更で累計を消さない）。
+    const historyValue = v => { const x = typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isFinite(x) ? x : (v ?? 0); };
     // モデルが受け付ける整数表記（例 " 0 "）は number 欄でも見える形にする。保存値は未編集の間は保持する。
     const countValue = v => { const x = typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN; return Number.isInteger(x) && x >= 0 ? x : (v ?? ""); };
     h.push(`<div class="box"><h3>${esc(T.t("当月の勤務目標"))}</h3>
 <p class="note">${at ? esc(at.lines[0]) : ""}　${share ? esc(T.t("目安は相対: 必要な延べ人数 {need} を名簿の比重（合計 {w}）で按分した値です（端数は累計の過不足が少ない人から）。", { need: P0.shareInfo.need, w: P0.shareInfo.W })) + " " : ""}${esc(T.t("目安±{tol} の範囲で当月の目標を決めます。「自動調整」は目安の大きい人から順に（同じ目安なら累計の過不足が少ない人、次に年数の長い人から）最大1ずつ増減し、残りが1未満ならその分だけ調整します。目安・目標は小数も使えます。空欄＝目安どおり。", { tol: R.quota_tolerance ?? 1 }))}</p>
 <table class="grid"><tr><th></th>${workerNames.map(n => `<th>${esc(n)}</th>`).join("")}</tr>
 <tr><th>${esc(T.t(share ? "目安（比重から）" : "目安"))}</th>${workerNames.map(n => `<td>${esc(quotaOf(n))}</td>`).join("")}</tr>
-<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${esc(bal[n] ?? 0)}" style="width:3.5em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("累計の過不足（前月まで、実績−目安）"))}</th>${workerNames.map(n => `<td><input type="number" data-bal="${esc(n)}" value="${esc(historyValue(bal[n]))}" style="width:3.5em"></td>`).join("")}</tr>
 <tr><th>${esc(T.t("当月の目標"))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="any" data-target="${esc(n)}" value="${esc(m.targets?.[n] ?? "")}" style="width:3.5em"></td>`).join("")}</tr>${on("quota_range") ? `
 <tr><th>${esc(T.t("当月の下限（必須。空欄＝目安−{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmin="${esc(n)}" value="${esc(countValue(m.count_min?.[n]))}" style="width:3.5em"></td>`).join("")}</tr>
 <tr><th>${esc(T.t("当月の上限（必須。空欄＝目安＋{tol}）", { tol: R.quota_tolerance ?? 1 }))}</th>${workerNames.map(n => `<td><input type="number" min="0" step="1" data-cmax="${esc(n)}" value="${esc(countValue(m.count_max?.[n]))}" style="width:3.5em"></td>`).join("")}</tr>` : ""}</table>
@@ -88,8 +90,8 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 <p><button id="btnImportPrev">${esc(T.t("前月の保存データから接続・履歴・累計を取り込む"))}</button> <span class="note">${esc(T.t("翌月作成時にも自動で入ります。前月を後から計算し直したときはこのボタンで更新してください（月またぎの担当も自動で固定します）。"))}</span></p></div>`);
     const hs = m.history || {};
     if (on("period_charge")) h.push(`<div class="box"><h3>${esc(L(T.t("前月までの履歴（{charge}）")))}</h3><table class="grid"><tr><th></th>${A.iNames().map(n => `<th>${esc(n)}</th>`).join("")}</tr>
-<tr><th>${esc(T.t("土日担当の累計（組。分割は0.5、月またぎは当月側で数える）"))}</th>${A.iNames().map(n => `<td><input type="number" step="0.5" data-hist="weekend_charge:${esc(n)}" value="${esc(hs.weekend_charge?.[n] ?? 0)}" style="width:4em"></td>`).join("")}</tr>
-<tr><th>${esc(T.t("祝日担当の累計"))}</th>${A.iNames().map(n => `<td><input type="number" data-hist="holiday_charge:${esc(n)}" value="${esc(hs.holiday_charge?.[n] ?? 0)}" style="width:4em"></td>`).join("")}</tr></table></div>`);
+<tr><th>${esc(T.t("土日担当の累計（組。分割は0.5、月またぎは当月側で数える）"))}</th>${A.iNames().map(n => `<td><input type="number" step="0.5" data-hist="weekend_charge:${esc(n)}" value="${esc(historyValue(hs.weekend_charge?.[n]))}" style="width:4em"></td>`).join("")}</tr>
+<tr><th>${esc(T.t("祝日担当の累計"))}</th>${A.iNames().map(n => `<td><input type="number" data-hist="holiday_charge:${esc(n)}" value="${esc(historyValue(hs.holiday_charge?.[n]))}" style="width:4em"></td>`).join("")}</tr></table></div>`);
     { const flags = T.dayFlags ? T.dayFlags.activeFor(R) : [], N = A.daysIn(+m.year, +m.month), hol = new Set((m.holidays || []).map(Number)), hasData = Object.values(m.day_flags || {}).some(v => [].concat(v || []).length) || Object.values(m.day_notes || {}).some(v => v); // 日ごとの区分（プラグインが登録）と予定
       const hdr = `<tr><th>${esc(T.t("日付"))}</th>${flags.map(f => `<th>${f.source ? `<span class="plug">${esc(T.t("プラグイン"))}</span> ` : ""}${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : String(f.label))}</th>`).join("")}<th>${esc(T.t("予定（行事など）"))}</th></tr>`;
       const rowsH = []; for (let d = 1; d <= N; d++) { const w = A.dowOf(+m.year, +m.month, d), holiday = w >= 5 || hol.has(d), fl = [].concat((m.day_flags || {})[d] || []);
@@ -132,8 +134,12 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
       root.querySelectorAll("[data-dflag]").forEach(el => { if (el.checked) (m.day_flags[+el.dataset.d] ||= []).push(el.dataset.dflag); });
       root.querySelectorAll("[data-dnote]").forEach(el => { const v = el.value.trim(); if (v) m.day_notes[+el.dataset.dnote] = v; }); }
+    // 未編集の履歴は元の値を残す。空に見える不正値も黙って消さず、明示編集だけ数値化する。
+    const historyInput = (el, previous) => { const initial = el.getAttribute?.("value"), edited = el.dataset.numericEdited === "1";
+      if (!edited && initial != null && (el.value === initial || el.value === "" && initial !== "")) return previous;
+      return T.numberInputValue(el.value, previous, { initial, edited }); };
     // 履歴・前月末の接続は、画面に出ている欄だけ書き換える（規則を「なし」にして隠している欄の値は残す。出ている欄を空にしたときだけ消える）
-    m.history ||= {}; if (root.querySelector("[data-bal]")) { const els = [...root.querySelectorAll("[data-bal]")], b = keepHidden(m.history.work_balance, new Set(els.map(el => el.dataset.bal))); for (const el of els) if (el.value !== "" && +el.value !== 0) b[el.dataset.bal] = +el.value; m.history.work_balance = b; }
+    m.history ||= {}; if (root.querySelector("[data-bal]")) { const els = [...root.querySelectorAll("[data-bal]")], b = keepHidden(m.history.work_balance, new Set(els.map(el => el.dataset.bal))); for (const el of els) { const v = historyInput(el, m.history.work_balance?.[el.dataset.bal]); if (v != null && v !== "" && v !== 0) b[el.dataset.bal] = v; } m.history.work_balance = b; }
     m.prev_month = m.prev_month || {};
     if (root.querySelector("tr[data-ld]")) { const oldByDate = {}; for (const e of m.prev_month.last_days || []) oldByDate[+e.date] = e; m.prev_month.last_days = [];
       root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => {
@@ -154,15 +160,15 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
         if (tr.dataset) { tr.dataset.prevRecord = JSON.stringify(e); tr.dataset.prevOc = JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }); } // 日付変更も元の行に追随。明示削除した非表示 OC は復活させない
         m.prev_month.last_days.push(e); }); }
     if (root.querySelector("[data-hist]")) { const els = [...root.querySelectorAll("[data-hist]")].map(el => { const [kind, ...ns] = el.dataset.hist.split(":"); return [el, kind, ns.join(":")]; }); // 種別の後ろは ':' を含めて氏名
-      for (const k of ["weekend_charge", "holiday_charge"]) { const mineEls = els.filter(x => x[1] === k); if (!mineEls.length) continue; const h = keepHidden(m.history[k], new Set(mineEls.map(x => x[2]))); for (const [el, , n] of mineEls) if (el.value !== "") h[n] = +el.value; m.history[k] = h; } }
+      for (const k of ["weekend_charge", "holiday_charge"]) { const mineEls = els.filter(x => x[1] === k); if (!mineEls.length) continue; const h = keepHidden(m.history[k], new Set(mineEls.map(x => x[2]))); for (const [el, , n] of mineEls) { const v = historyInput(el, m.history[k]?.[n]); if (v != null && v !== "") h[n] = v; } m.history[k] = h; } }
     root.querySelectorAll("[data-rmonth]").forEach(box => { const mu = ((T.RULE_BY_ID[box.dataset.rmonth] || {}).ui || {}).month; if (mu && mu.read) try { mu.read(m, box); } catch (e) { /* プラグインの欄の読み戻しの失敗は、その欄の分だけ前の値のまま */ } }); // 規則（プラグイン）の月ごとの欄
     A.save();
   }
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    root.addEventListener("input", ev => { if (["target", "cmin", "cmax"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
-    root.addEventListener("change", ev => { if (["target", "cmin", "cmax"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
+    root.addEventListener("input", ev => { if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
+    root.addEventListener("change", ev => { if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
       if (b.id === "btnImportPrev") { A.importPrevious(); return; } // 読込の取消・失敗では読み戻し・保存・Undo を作らない。通常の入力は change で確定する。

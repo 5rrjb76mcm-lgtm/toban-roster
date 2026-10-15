@@ -39,6 +39,7 @@ run test_history_cleanup_dom_node.js
 run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_profile_day_flags_preservation_dom_node.js
+run test_profile_text_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_pending_input_dom_node.js
@@ -155,7 +156,9 @@ if [ -x "$PY" ]; then
   "$PY" ../tools/test_quota_candidate_scope.py || fail=1
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
 run test_count_limits_edges_node.js "$PY"
+run test_days_off_numeric_preservation_dom_node.js "$HP"
 run test_month_count_limits_dom_node.js
+run test_month_history_readback_dom_node.js
 run test_dayoff_weekday_node.js "$HP"
 run test_dayoff_work_node.js "$HP"
 run test_dayoff_work_edges_node.js "$HP"
