@@ -69,8 +69,21 @@ async function test(name,fn){try{await fn();passed++;console.log('PASS '+name);}
    const b=await makeApp(a.w.localStorage.getItem(key),r);try{assert.strictEqual(b.A.state.rules.profile.id,r.profile.id);assert.strictEqual(b.A.state.rules.profile.id,b.A.state.month.profile_id);assert(!b.w.T.lint(new b.w.T.Problem(b.A.state.rules,b.A.state.month)).some(x=>x.code==='LINT_PROFILE_MISMATCH'));}finally{b.dom.window.close();}
   }finally{a.dom.window.close();}
  });
+ for (const lang of ['en','ja']) for (const field of ['profile','shift','role','id']) await test(field+' '+lang+' NUL projection preserves imported values through edit and reload',async()=>{
+  const r=clone(rawRules), label={en:' Synthetic\u0000\r\nfacility ',ja:' 架空\u0000\r\n施設 '};
+  if(field==='profile')r.profile.label=label;else if(field==='shift')r.profile.shifts[0].label=label;else if(field==='role')r.profile.roles[0].label=label;else r.profile.id='架空\u0000\r\n施設';
+  const selector=field==='profile'?'#setProfLabel':field==='shift'?'[data-slabel]':field==='role'?'[data-rlabel]':'#setProfId';
+  const a=await makeApp(null,r,r);try{a.w.T.setLang(lang);a.enter();await importFile(a,r);a.enter();const before=projection(a);
+   assert.strictEqual(a.q(selector).value,(field==='id'?r.profile.id:label[lang]).replace(/[\r\n]/g,'').replace(/\0/g,'\uFFFD'));
+   a.change('#doctorTable tr[data-i="0"] [data-f="years"]','12');a.A.readSettings();a.A.readSettings();assert.deepStrictEqual(projection(a),before);
+   const b=await makeApp(a.w.localStorage.getItem(key),r,r);try{b.w.T.setLang(lang);b.enter();b.A.readSettings();assert.deepStrictEqual(projection(b),before);assert.strictEqual(b.A.state.rules.profile.id,b.A.state.month.profile_id);assert.deepStrictEqual(b.errors,[]);}finally{b.dom.window.close();}
+   a.change(selector,'');const afterClear=projection(a);if(field==='role')assert.strictEqual(afterClear.roles[0],'S');else assert.deepStrictEqual(afterClear,before);
+   a.change(selector,' New value ');const edited=projection(a);assert.strictEqual(field==='profile'?edited.label:field==='shift'?edited.shifts[0]:field==='role'?edited.roles[0]:edited.id,field==='id'?'New-value':'New value');
+   assert.deepStrictEqual(a.errors,[]);
+  }finally{a.dom.window.close();}
+ });
  await test('explicit edits retain existing trimming and ID sanitization',async()=>{
   const a=await makeApp();try{a.enter();a.change('#setProfLabel',' New facility ');assert.strictEqual(a.A.state.rules.profile.label,'New facility');a.change('[data-slabel]',' New shift ');assert.strictEqual(a.A.state.rules.profile.shifts[0].label,'New shift');a.change('[data-rlabel]',' New role ');assert.strictEqual(a.A.state.rules.profile.roles[0].label,'New role');a.change('#setProfId',' new facility ');assert.strictEqual(a.A.state.rules.profile.id,'new-facility');}finally{a.dom.window.close();}
  });
- assert.strictEqual(passed+failures,11);completed=true;clearTimeout(watchdog);console.log('profile text preservation: '+passed+' passed, '+failures+' failed');if(failures)process.exitCode=1;
+ assert.strictEqual(passed+failures,19);completed=true;clearTimeout(watchdog);console.log('profile text preservation: '+passed+' passed, '+failures+' failed');if(failures)process.exitCode=1;
 })().catch(e=>{clearTimeout(watchdog);console.error(e);process.exitCode=1;});

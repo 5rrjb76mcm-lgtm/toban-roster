@@ -119,7 +119,7 @@
   const profileWorkCount = work => work != null && work.count !== undefined ? work.count : work;
   const profileCountOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null;
   // Text inputs remove line breaks; compare the displayed projection before normalizing edits.
-  const profileInputText = value => String(value ?? "").replace(/[\r\n]/g, "");
+  const profileInputText = value => String(value ?? "").replace(/[\r\n]/g, "").replace(/\0/g, "\uFFFD");
   const profileTagLabel = x => String(typeof x === "string" ? x : x.label || "").replace(/[\r\n]/g, "");
   const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
   function renderBuilder(R) {
