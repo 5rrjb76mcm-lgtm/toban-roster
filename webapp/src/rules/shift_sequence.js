@@ -48,7 +48,9 @@ T.rules.register({
       return `<table class="grid" id="seqTbl"><tr><th>${esc(tx("この勤務帯の翌日は"))}</th><th>${esc(tx("これに入れない"))}</th><th></th></tr>` +
         seq.map((x, i) => `<tr data-si="${i}"><td>${sel(shifts, x.from || "night", "data-sfrom")}</td><td>${sel([["any", tx("すべての勤務帯（明け休み）")], ...shifts], x.to || "any", "data-sto")}</td><td><button data-act="seqDel">${esc(tx("削除"))}</button></td></tr>`).join("") + `</table>
 <p><button data-act="seqAdd">${esc(tx("つながりの禁止を追加"))}</button> <span class="note">${esc(tx("2交代制の「夜勤の翌日は休み（明け休み）」がこれです。"))}</span></p>`; },
-    read(R, el) { if (!el("#seqTbl")) return; const seq = []; el("#seqTbl").querySelectorAll("tr[data-si]").forEach(tr => seq.push({ from: tr.querySelector("[data-sfrom]").value, to: tr.querySelector("[data-sto]").value }));
+    // Row indices identify the rendered records; add/delete re-renders before the next read.
+    // Preserve plug-in fields without transferring them between otherwise identical rows.
+    read(R, el) { if (!el("#seqTbl")) return; const seq = []; el("#seqTbl").querySelectorAll("tr[data-si]").forEach(tr => seq.push(Object.assign({}, [].concat(R.forbid_sequence || [])[+tr.dataset.si], { from: tr.querySelector("[data-sfrom]").value, to: tr.querySelector("[data-sto]").value })));
       if (seq.length) R.forbid_sequence = seq; else delete R.forbid_sequence; },
   },
   summary(P, prm, tv) { return prm.rules.map(r => tv("{from}の翌日は{to}に入らない", { from: P.shiftLabel(r.from), to: r.to === "any" ? tv("どの勤務帯") : P.shiftLabel(r.to) })).join(T.listSep()); },

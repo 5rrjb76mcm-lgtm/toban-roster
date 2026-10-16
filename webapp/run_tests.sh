@@ -33,6 +33,7 @@ run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
 run test_profile_nested_config_dom_node.js
+run test_rule_field_ownership_dom_node.js
 run test_profile_edge_preservation_dom_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_settings_import_node.js
@@ -114,6 +115,7 @@ run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
 run test_rule_setting_preservation_node.js "$HP"
+run test_rule_param_numeric_preservation_dom_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_friday_night_off_node.js "$HP" "$PY"
@@ -163,6 +165,8 @@ run test_roster_share_preservation_dom_node.js "$HP"
 run test_month_count_limits_dom_node.js
 run test_month_history_readback_dom_node.js
 run test_month_text_preservation_dom_node.js
+run test_month_day_list_preservation_dom_node.js
+run test_weekend_wish_ownership_dom_node.js
 run test_dayoff_weekday_node.js "$HP"
 run test_dayoff_work_node.js "$HP"
 run test_dayoff_work_edges_node.js "$HP"

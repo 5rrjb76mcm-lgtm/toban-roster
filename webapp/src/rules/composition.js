@@ -58,7 +58,10 @@ T.rules.register({
       if (!el("#compTbl")) return;
       const rows = [];
       for (const tr of el("#compTbl").querySelectorAll("tr[data-ci]")) { const g = k => tr.querySelector(`[data-${k}]`).value.trim(), num = k => g(k) === "" ? undefined : Math.max(0, +g(k) || 0);
-        const c = { shift: g("cshift") }; if (g("cdays") !== "all") c.days = g("cdays"); if (g("clabel")) c.label = g("clabel");
+        // This form owns these fields only; keep plug-in siblings on the same row.
+        const c = Object.assign({}, (R.composition || [])[+tr.dataset.ci]);
+        for (const k of ["shift", "days", "label", "years_min", "years_max", "min", "max", "qual", "not_qual"]) delete c[k];
+        c.shift = g("cshift"); if (g("cdays") !== "all") c.days = g("cdays"); if (g("clabel")) c.label = g("clabel");
         for (const [k, f] of [["years_min", "cymin"], ["years_max", "cymax"], ["min", "cmin"], ["max", "cmax"]]) if (num(f) !== undefined) c[k] = num(f);
         if (g("cqual")) c.qual = g("cqual"); if (g("cnot")) c.not_qual = g("cnot");
         rows.push(c); }

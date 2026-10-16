@@ -103,6 +103,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     h.push(`<div class="box"><h3>${esc(T.t("メモ（確認事項など。JSONに保存されます）"))}</h3><textarea data-path="notes" rows="4" style="width:100%">${esc(m.notes || "")}</textarea></div>`);
     $("#monthSettings").innerHTML = h.join(""); $("#monthSettings").dataset.names = A.names().join("|"); // 読み戻し時に名簿の一致を確認する
     $("#monthSettings").querySelectorAll('[data-path="notes"],[data-dnote]').forEach(el => { el.dataset.textShown = el.value; }); // Compare after the DOM normalizes textarea/input text; untouched source text stays intact.
+    $("#monthSettings").querySelectorAll('[data-path][data-type="days"]').forEach(el => { el.dataset.daysShown = el.value; }); // Untouched imported day lists retain the model's numeric semantics.
     $("#monthSettings").querySelectorAll("[data-prev-names]").forEach(el => { el.dataset.shown = el.value; }); // input の表示値（改行等の正規化後）を比較基準にする
   }
 
@@ -114,7 +115,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const path = el.dataset.path.split("."); let o = m; for (let i = 0; i < path.length - 1; i++) o = (o[path[i]] ||= {});
       const k = path[path.length - 1];
       if (el.type === "checkbox") o[k] = el.checked;
-      else if (el.dataset.type === "days") o[k] = A.parseDays(el.value);
+      else if (el.dataset.type === "days") { if (el.dataset.daysShown === undefined || el.dataset.daysEdited === "1" || el.value !== el.dataset.daysShown) { o[k] = A.parseDays(el.value); el.dataset.daysShown = el.value; delete el.dataset.daysEdited; } }
       else if (el.type === "number") o[k] = el.value === "" ? undefined : +el.value;
       else o[k] = el.value === "" ? null : el.value;
     });
@@ -169,7 +170,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    const markMonthText = el => { if (el.dataset?.path === "notes" || el.dataset?.dnote !== undefined) el.dataset.textEdited = "1"; };
+    const markMonthText = el => { if (el.dataset?.type === "days") el.dataset.daysEdited = "1"; if (el.dataset?.path === "notes" || el.dataset?.dnote !== undefined) el.dataset.textEdited = "1"; };
     root.addEventListener("input", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
     root.addEventListener("change", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
@@ -353,7 +354,7 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
       if (wishes.length) m.wishes.night_on[n] = wishes; else delete m.wishes.night_on[n];
       if (root.querySelector('[data-cal="wishday"]')) { const shown = new Set(), wishesDay = []; root.querySelectorAll('[data-cal="wishday"]').forEach(el => { shown.add(+el.dataset.d); if (el.checked) wishesDay.push(+el.dataset.d); }); // 日勤の希望（規則 wish_day を使う施設。欄を出していないときは前の値のまま）
         m.wishes.day_on = m.wishes.day_on || {}; const all = ((m.wishes.day_on[n] || []).map(Number).filter(d => !shown.has(d))).concat(wishesDay).sort((a, b) => a - b); if (all.length) m.wishes.day_on[n] = all; else delete m.wishes.day_on[n]; } // 欄を出していない日（日勤の枠が無い日）の希望は残す
-      const wk = new Set(m.wishes.weekend_dayshift || []); const cb = $("#wkwish"); if (cb) { if (cb.checked) wk.add(n); else wk.delete(n); } m.wishes.weekend_dayshift = A.names().filter(x => wk.has(x));
+      const wk = new Set(m.wishes.weekend_dayshift || []); const cb = $("#wkwish"); if (cb) { if (cb.checked) wk.add(n); else wk.delete(n); } m.wishes.weekend_dayshift = [...wk]; // Other names, including retained roster-missing input, belong to their own controls or explicit purge.
       // 固定: 変更した欄が表していた条件だけを置き換える。未変更・非表示の条件はそのまま残す。
       const fx = m.fixed, existingWork = new Set();
       for (const k of ["day", "night"]) for (const [d, ns] of Object.entries(fx[k] || {})) if ([].concat(ns || []).includes(n)) existingWork.add(`${+d}:${k}`); // 設定変更で人数超過になった既存の固定は保持し、入力チェックで直してもらう
