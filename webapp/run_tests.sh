@@ -32,6 +32,8 @@ run test_merge_scalar_clear_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
+run test_profile_nested_config_dom_node.js
+run test_profile_edge_preservation_dom_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_settings_import_node.js
 run test_historical_name_guard_dom_node.js
@@ -157,8 +159,10 @@ if [ -x "$PY" ]; then
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
 run test_count_limits_edges_node.js "$PY"
 run test_days_off_numeric_preservation_dom_node.js "$HP"
+run test_roster_share_preservation_dom_node.js "$HP"
 run test_month_count_limits_dom_node.js
 run test_month_history_readback_dom_node.js
+run test_month_text_preservation_dom_node.js
 run test_dayoff_weekday_node.js "$HP"
 run test_dayoff_work_node.js "$HP"
 run test_dayoff_work_edges_node.js "$HP"

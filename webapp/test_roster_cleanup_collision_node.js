@@ -59,7 +59,7 @@ const matchesControl = (el, selector) => selector.split(",").some(s => {
 function controlNode(raw,parent=null) {
   const e={...raw,parent,id:raw.attrs.id||"",value:raw.attrs.value||"",checked:Object.hasOwn(raw.attrs,"checked"),type:raw.attrs.type||"text",
     dataset:Object.fromEntries(Object.entries(raw.attrs).filter(([k])=>k.startsWith("data-")).map(([k,v])=>[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v])),
-    getAttribute(k){return this.attrs[k]??null;},hasAttribute(k){return Object.hasOwn(this.attrs,k);},
+    getAttribute(k){return this.attrs[k]??null;},setAttribute(k,v){this.attrs[k]=String(v);},hasAttribute(k){return Object.hasOwn(this.attrs,k);},
     querySelectorAll(s){return this.children.flatMap(c=>(matchesControl(c,s)?[c]:[]).concat(c.querySelectorAll(s)));},querySelector(s){return this.querySelectorAll(s)[0]||null;},
     closest(s){for(let n=this;n;n=n.parent)if(matchesControl(n,s))return n;return null;}};
   e.children=raw.children.map(c=>controlNode(c,e));

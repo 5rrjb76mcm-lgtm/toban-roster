@@ -8,8 +8,10 @@ T.rules.register({
   weight: "shift_count_range", w0: 150,
   columns: ["night", "day"].map((k, i) => ({ key: `scr_${k}`, at: "duty", order: 4 + i, label: k === "night" ? "夜勤の上限（空欄＝共通）" : "日勤の上限（空欄＝共通）", field: SCR_FIELD[k],
     when: R => { const c = (R.shift_counts || { night: { min: 3, max: 5 } })[k]; return !!c && (c.max != null || c.min != null); },
-    render(d, R, h) { return `<input type="number" min="0" max="31" data-f="${SCR_FIELD[k]}" value="${h.esc(d[SCR_FIELD[k]] ?? "")}" style="width:3.5em">`; },
-    read(td, d) { const v = td.querySelector(`[data-f="${SCR_FIELD[k]}"]`).value; if (v !== "") d[SCR_FIELD[k]] = Math.max(0, +v); } })),
+    render(d, R, h) { return `<input type="number" min="0" max="31" data-f="${SCR_FIELD[k]}" value="${h.esc(T.numberInputText(d[SCR_FIELD[k]] ?? ""))}" style="width:3.5em">`; },
+    read(td, d, R, acc, name, previous) { const old = previous || d, input = td.querySelector(`[data-f="${SCR_FIELD[k]}"]`);
+      if (!T.numberInputChanged(input, old[SCR_FIELD[k]] ?? "")) { if (Object.prototype.hasOwnProperty.call(old, SCR_FIELD[k])) d[SCR_FIELD[k]] = old[SCR_FIELD[k]]; }
+      else if (input.value !== "") d[SCR_FIELD[k]] = Math.max(0, +input.value); } })),
   read(P) { const c = P.rules.shift_counts || { night: { min: 3, max: 5 } }, out = {};
     const active = P.state("shift_count_range") !== "off";
     const count = (v, field) => {

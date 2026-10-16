@@ -192,6 +192,12 @@
     if (!edited && previous != null && previous !== "" && ((initial != null && initial !== "") || !Number.isFinite(numericValue(previous)) || numericValue(previous) < 0)) return previous;
     return empty;
   }
+  // Display accepted numeric strings without asking the number input to parse JSON spelling.
+  // Keep the stored value unless the user changes this projection (including a deliberate clear).
+  const numberInputText = v => typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : String(v).replace(/\r\n?/g, "\n").replace(/\0/g, "\uFFFD");
+  const numberInputChanged = (input, value) => input.dataset?.numericEdited === "1" ||
+    input.value !== numberInputText(value) && !(input.value === "" && input.getAttribute?.("value") === numberInputText(value));
+
   function isValidMonth(m) {
     if (!m || typeof m !== "object" || Array.isArray(m)) return false;
     const y = numericValue(m.year), mo = numericValue(m.month);
@@ -1096,7 +1102,7 @@
   T.rulesSummary = rulesSummary;
   T.RULE_GROUPS = RULE_GROUPS; T.term = term; T.ruleLabel = (rules, def) => term(T.t ? T.t(def.label) : def.label, rules); T.minDaysOff = minDaysOff;
   T.DOW = DOW; T.DOW_JA = DOW_JA; T.PARTS = PARTS; T.KINDS = KINDS; T.Problem = Problem; T.expandDuties = expandDuties; T.autoTargets = autoTargets; T.isValidMonth = isValidMonth; T.requireMonth = requireMonth;
-  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate; T.numberInputValue = numberInputValue;
+  T.esc = esc; T.isDutyCandidate = isDutyCandidate; T.isWorkCandidate = isWorkCandidate; T.numberInputValue = numberInputValue; T.numberInputText = numberInputText; T.numberInputChanged = numberInputChanged;
   T.kindJa = k => KINDS[k] || k; // 互換（日本語固定）
   T.kindLabel = k => (T.t ? T.t(KINDS[k] || k) : (KINDS[k] || k)); // 表示言語で読む
 })(globalThis.T = globalThis.T || {});

@@ -62,9 +62,9 @@
     const roles = T.normalizeRolesOf(R).map(x => [x.id, x.label]);
     // 未指定・読み込んだ不明な役割も選択肢として残す。該当する option が無いと先頭の役割が選ばれ、無関係な編集の読み戻しで別の役割へ移ってしまう。
     const roleOpts = d => [["", "―"], ...roles, ...(d.team && !roles.some(([id]) => id === d.team) ? [[d.team, d.team + tx("（現在は使わない値）")]] : [])];
-    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(roleOpts(d), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(d.years ?? "")}" style="width:3.5em"></td>` +
+    const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(roleOpts(d), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(T.numberInputText(d.years ?? ""))}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
-      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(d.share ?? 1)}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
+      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(T.numberInputText(d.share ?? 1))}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
       `<td>${A.sel([["", tx("配置する")], ["fixed_only", tx("固定したときだけ")], ["no_unless_needed", tx("原則配置しない")], ["never", tx("配置禁止")]], d.duty || "", 'data-f="duty"')}</td>` +
       at("duty").map(c => cell(c, d)).join("") +
@@ -262,6 +262,7 @@
     $("#hardRules").innerHTML = h.join("");
   }
   // 役割の表は読み戻しの最初に一括検査する。不正な識別子・役目で、名簿や月の入力を一部だけ書き換えない。
+  const rawRoleOf = (R, id) => (Array.isArray(R.profile?.roles) ? R.profile.roles : []).find(raw => String((raw || {}).id || "").trim() === id);
   function stageRoles(R) {
     const rows = [...document.querySelectorAll("#roleTbl tr[data-ri]")], renames = new Map();
     if (!rows.length) return { roles: null, renames };
@@ -271,9 +272,10 @@
       const prev = oldRoles[+tr.dataset.ri];
       // 空欄も検査に渡す。行を読み飛ばして役割を削除してしまわない。
       // 表示名・役目を変えていなければ、多言語の表記と欄に出せない2つ目以降の役目も残す。
-      const r = { id, label: prev && label === profileInputText(prev.label) ? (prev.labelRaw ?? prev.label) : label.trim() || id,
-        refs: prev && ref === (prev.refs[0] || "") ? [...prev.refs] : ref ? [ref] : [] };
-      if (g("rstandby").checked) r.standby = true;
+      const raw = rawRoleOf(R, prev?.id);
+      const r = Object.assign({}, raw, { id, label: prev && label === profileInputText(prev.label) ? (prev.labelRaw ?? prev.label) : label.trim() || id,
+        refs: prev && ref === (prev.refs[0] || "") ? [...prev.refs] : ref ? [ref] : [] });
+      if (g("rstandby").checked) r.standby = true; else delete r.standby;
       if (prev && prev.id !== id) renames.set(prev.id, id);
       return r;
     });
@@ -294,7 +296,15 @@
     { const hol = document.querySelector("#setCalHol"), clo = document.querySelector("#setCalClosure"); // 暦（祝日の出どころと施設の休日）
       if (hol) { const closure = {};
         for (const tok of String(clo ? clo.value : "").split(/[,、\s]+/).filter(Boolean)) { const m = tok.match(/^(\d{1,2})\/(\d{1,2})$/); if (m && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) (closure[+m[1]] ||= []).push(+m[2]); }
-        R.profile.calendar = { holidays: hol.value, closure: Object.keys(closure).map(Number).sort((a, b) => a - b).map(mo => ({ month: mo, days: [...new Set(closure[mo])].sort((a, b) => a - b) })) }; } }
+        // The calendar editor owns its two visible fields, not plug-in siblings.
+        const old = R.profile.calendar || {}, next = Object.assign({}, old, { holidays: hol.value });
+        // Keep the original rows (including plug-in fields) when the display projection was not edited.
+        if (old.closure === undefined || clo && (clo.dataset.closureEdited === "1" || clo.value !== clo.getAttribute("value"))) next.closure = Object.keys(closure).map(Number).sort((a, b) => a - b).map(mo => {
+          const rows = Array.isArray(old.closure) ? old.closure.filter(row => +row.month === mo) : [];
+          // A unique month identifies its existing row. Removed months are not copied back.
+          return Object.assign({}, rows.length === 1 ? rows[0] : {}, { month: mo, days: [...new Set(closure[mo])].sort((a, b) => a - b) });
+        });
+        R.profile.calendar = next; } }
     { const ft = document.querySelector("#setFixedTags"), df = document.querySelector("#setDayFlags"); // 固定の印と日ごとの区分（施設の構成）
       const split = v => [...new Set(String(v || "").split(/[・,、\n]+/).map(x => x.trim()).filter(Boolean))];
       if (ft) { const old = [].concat(R.profile.fixed_tags || []);
@@ -318,8 +328,9 @@
           const id = tr.dataset.shift, o = old.find(x => x.id === id) || {}, lab = tr.querySelector("[data-slabel]").value;
           // 名前を変えていなければ元の表記（{ja, en} など）のまま残す
           const soc = document.querySelector(`#profileBuilder [data-soc="${id}"]`); // オンコールを使わない間は欄が無いので、前の値のまま
-          const sh = { id, label: !lab.trim() || lab === profileInputText(o.label) ? (o.labelRaw ?? o.label) : lab.trim(), on: tr.querySelector("[data-son]").value };
-          if ((soc ? soc.checked : o.oncall !== false) === false) sh.oncall = false;
+          const raw = (R.profile.shifts || []).find(x => x.id === id);
+          const sh = Object.assign({}, raw, { id, label: !lab.trim() || lab === profileInputText(o.label) ? (o.labelRaw ?? o.label) : lab.trim(), on: tr.querySelector("[data-son]").value });
+          if ((soc ? soc.checked : o.oncall !== false) === false) sh.oncall = false; else if (sh.oncall === false) delete sh.oncall;
           shifts.push(sh);
         });
         if (shifts.length) R.profile.shifts = shifts; }
@@ -545,10 +556,11 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     for (const { tr, g, old, name } of rows) {
       const prev = cur[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
       const q = g("quota"), quota = q ? T.numberInputValue(q.value, prev.quota, { initial: q.getAttribute?.("value"), edited: q.dataset?.numericEdited === "1", empty: 0 }) : (prev.quota ?? 0);
-      const d = Object.assign({}, prev, { name, team: g("team").value, years: +g("years").value || 0, quota }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
-      if (g("share")) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
+      const d = Object.assign({}, prev, { name, team: g("team").value, quota }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
+      if (T.numberInputChanged(g("years"), prev.years ?? "")) d.years = +g("years").value || 0;
+      if (g("share") && T.numberInputChanged(g("share"), prev.share ?? 1)) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
       // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま。氏名は確定した名前で読む（改名の適用はこの後）
-      for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name); }
+      for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name, prev); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
     }
@@ -560,6 +572,8 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
     readHardRules(R, roleEdit);
     A.ensureMonth(state.month); A.save();
+    const closureInput = $("#setCalClosure");
+    if (closureInput) { closureInput.setAttribute("value", closureInput.value); delete closureInput.dataset.closureEdited; }
   }
   // 役割の識別子を変える: 名簿・オンコール構成の表・固定「OCなし」の記録をまとめて置き換える
   function renameRoles(renames) {
@@ -892,7 +906,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       const R = state.rules, tr = b.closest("tr"), i = tr ? +tr.dataset.i : -1;
       if (mod) { mod.ui.act(R, act, b); A.save(); renderSettings(); return; }
       if (b.dataset.act === "roleAdd" || b.dataset.act === "roleDel") { // 役割の追加・削除
-        const roles = T.normalizeRolesOf(R).map(x => ({ id: x.id, label: x.labelRaw ?? x.label, refs: [...x.refs], standby: x.standby }));
+        const roles = T.normalizeRolesOf(R).map(x => Object.assign({}, rawRoleOf(R, x.id), { id: x.id, label: x.labelRaw ?? x.label, refs: [...x.refs], standby: x.standby }));
         if (b.dataset.act === "roleAdd") {
           let i = roles.length + 1, id = `R${i}`; while (roles.some(r => r.id === id)) id = `R${++i}`;
           roles.push({ id, label: id, refs: [], standby: false });
@@ -946,15 +960,30 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.dataset?.f === "quota" || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
-    settings.addEventListener("focusout", ev => { if (isRuleNumber(ev.target)) commitRuleNumber(ev.target); });
+    settings.addEventListener("focusout", ev => {
+      if (ev.target.id === "setCalClosure" && ev.target.dataset.closureEdited === "1" && settings.contains(ev.target)) {
+        if (readSettings("施設の構成の変更") === false) return;
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor(); return;
+      }
+      if (isRuleNumber(ev.target)) commitRuleNumber(ev.target);
+      const input = ev.target;
+      if (!["share", "years", "shift_max_day", "shift_max_night"].includes(input.dataset?.f) || input.dataset.numericEdited !== "1" || !settings.contains(input)) return;
+      if (readSettings("名簿の変更") === false) return;
+      const value = T.numberInputText(state.rules.doctors[+input.closest("tr[data-i]").dataset.i][input.dataset.f] ?? (input.dataset.f === "share" ? 1 : ""));
+      input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
+      $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+      A.renderSettingsMonth(); A.renderDoctor();
+    });
     $("#settings").addEventListener("change", ev => {
+      if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1";
       if (isRuleNumber(ev.target)) {
         if (ev.target.dataset.numericEdited !== "1" && committedRuleValues.get(ev.target) === ev.target.value) return;
         ev.target.dataset.numericEdited = "1"; commitRuleNumber(ev.target); return;
       }
-      if (ev.target.dataset?.f === "quota") ev.target.dataset.numericEdited = "1";
+      if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f)) ev.target.dataset.numericEdited = "1";
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { if (readSettings(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return; renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
