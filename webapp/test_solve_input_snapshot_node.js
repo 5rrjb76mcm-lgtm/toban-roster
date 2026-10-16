@@ -22,7 +22,7 @@ const matches = (el, sel) => sel.split(",").some(s => {
 });
 function node(raw) {
   const e = { ...raw, dataset: Object.fromEntries(Object.entries(raw.attrs).filter(([k]) => k.startsWith("data-")).map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v])),
-    value: raw.attrs.value || "", checked: Object.hasOwn(raw.attrs, "checked"), type: raw.attrs.type || "text", getAttribute(k) { return this.attrs[k] ?? null; }, hasAttribute(k) { return Object.hasOwn(this.attrs, k); },
+    value: raw.attrs.value || "", checked: Object.hasOwn(raw.attrs, "checked"), type: raw.attrs.type || "text", getAttribute(k) { return this.attrs[k] ?? null; }, setAttribute(k, v) { this.attrs[k] = String(v); }, hasAttribute(k) { return Object.hasOwn(this.attrs, k); },
     querySelectorAll(s) { return this.children.flatMap(c => (matches(c, s) ? [c] : []).concat(c.querySelectorAll(s))); }, querySelector(s) { return this.querySelectorAll(s)[0] || null; } };
   e.children = raw.children.map(node);
   if (e.tag === "select") { const os = e.querySelectorAll("option"); e.value = (os.find(o => o.hasAttribute("selected")) || os[0] || { attrs: {} }).attrs.value || ""; }

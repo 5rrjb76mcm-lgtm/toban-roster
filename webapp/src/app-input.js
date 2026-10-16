@@ -102,6 +102,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       h.push(`<div class="box" data-rmonth="${esc(def.id)}"><h3>${def.source ? `<span class="plug">${esc(T.t("プラグイン"))}</span> ` : ""}${esc(T.ruleLabel(R, def))}</h3>${inner}</div>`); }
     h.push(`<div class="box"><h3>${esc(T.t("メモ（確認事項など。JSONに保存されます）"))}</h3><textarea data-path="notes" rows="4" style="width:100%">${esc(m.notes || "")}</textarea></div>`);
     $("#monthSettings").innerHTML = h.join(""); $("#monthSettings").dataset.names = A.names().join("|"); // 読み戻し時に名簿の一致を確認する
+    $("#monthSettings").querySelectorAll('[data-path="notes"],[data-dnote]').forEach(el => { el.dataset.textShown = el.value; }); // Compare after the DOM normalizes textarea/input text; untouched source text stays intact.
     $("#monthSettings").querySelectorAll("[data-prev-names]").forEach(el => { el.dataset.shown = el.value; }); // input の表示値（改行等の正規化後）を比較基準にする
   }
 
@@ -109,6 +110,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const m = state.month, root = $("#monthSettings"); if (!root.children.length) return;
     if (root.dataset.names !== A.names().join("|")) { renderSettingsMonth(); return; } // 名簿が変わった後の古い画面は読み戻さない
     root.querySelectorAll("[data-path]").forEach(el => {
+      if (el.dataset.path === "notes" && el.dataset.textShown !== undefined && el.dataset.textEdited !== "1" && el.value === el.dataset.textShown) return;
       const path = el.dataset.path.split("."); let o = m; for (let i = 0; i < path.length - 1; i++) o = (o[path[i]] ||= {});
       const k = path[path.length - 1];
       if (el.type === "checkbox") o[k] = el.checked;
@@ -130,10 +132,10 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
         if (v != null && v !== "") t[el.dataset[attr]] = v;
       } m[key] = t; }
     if (root.querySelector("[data-dflag],[data-dnote]")) { // 日ごとの区分・予定（画面に出ている分だけ読み戻す。列の無い区分＝プラグインを読んでいない区分は、そのまま残す）
-      const shown = new Set([...root.querySelectorAll("[data-dflag]")].map(el => el.dataset.dflag)), old = m.day_flags || {}; m.day_flags = {}; m.day_notes = {};
+      const shown = new Set([...root.querySelectorAll("[data-dflag]")].map(el => el.dataset.dflag)), old = m.day_flags || {}; m.day_flags = {}; m.day_notes = { ...(m.day_notes || {}) };
       for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
       root.querySelectorAll("[data-dflag]").forEach(el => { if (el.checked) (m.day_flags[+el.dataset.d] ||= []).push(el.dataset.dflag); });
-      root.querySelectorAll("[data-dnote]").forEach(el => { const v = el.value.trim(); if (v) m.day_notes[+el.dataset.dnote] = v; }); }
+      root.querySelectorAll("[data-dnote]").forEach(el => { if (el.dataset.textShown !== undefined && el.dataset.textEdited !== "1" && el.value === el.dataset.textShown) return; const v = el.value.trim(); if (v) m.day_notes[+el.dataset.dnote] = v; else delete m.day_notes[+el.dataset.dnote]; }); }
     // 未編集の履歴は元の値を残す。空に見える不正値も黙って消さず、明示編集だけ数値化する。
     const historyInput = (el, previous) => { const initial = el.getAttribute?.("value"), edited = el.dataset.numericEdited === "1";
       if (!edited && initial != null && (el.value === initial || el.value === "" && initial !== "")) return previous;
@@ -167,8 +169,9 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
 
   function bindSettingsMonth() {
     const root = $("#monthSettings");
-    root.addEventListener("input", ev => { if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
-    root.addEventListener("change", ev => { if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
+    const markMonthText = el => { if (el.dataset?.path === "notes" || el.dataset?.dnote !== undefined) el.dataset.textEdited = "1"; };
+    root.addEventListener("input", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
+    root.addEventListener("change", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
       if (b.id === "btnImportPrev") { A.importPrevious(); return; } // 読込の取消・失敗では読み戻し・保存・Undo を作らない。通常の入力は change で確定する。
