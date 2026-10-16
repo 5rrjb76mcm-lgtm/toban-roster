@@ -18,7 +18,8 @@ T.rules.register({
   },
   ui: {
     render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(c.max ?? 2)}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
-    read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) R.pair_cap = { shift: a ? a.value : "night", max: b ? Math.max(0, +b.value || 0) : 2 }; },
+    // Preserve sibling settings consumed by facility plug-ins.
+    read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) R.pair_cap = Object.assign({}, R.pair_cap, { shift: a ? a.value : "night", max: b ? Math.max(0, +b.value || 0) : 2 }); },
   },
   summary(P, prm, tv) { return tv("{shift}で同じ人と組むのは月 {n} 回まで", { shift: P.shiftLabel(prm.shift), n: prm.max }); },
   report(ctx, prm) { const { P, t } = ctx, S = ctx.names.filter(n => !P.isRole(n, "reserve") && !P.isFixedOnly(n)), ss = P.slots.filter(s => s[1] === prm.shift), hit = [];

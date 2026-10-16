@@ -89,7 +89,7 @@
   // プラグインが宣言した値（def.params）の設定欄。label の {v} の位置に入力欄を置く。blank は空欄の意味（欄の横に添える）
   function paramField(R, p) {
     const cur = R[p.key], val = cur === undefined || cur === null ? "" : cur;
-    const input = `<input type="number" data-prm="${esc(p.key)}" value="${esc(val)}"${p.min != null ? ` min="${p.min}"` : ""}${p.max != null ? ` max="${p.max}"` : ""} style="width:4em">`;
+    const input = `<input type="number" data-prm="${esc(p.key)}" value="${esc(T.numberInputText(val))}"${p.min != null ? ` min="${p.min}"` : ""}${p.max != null ? ` max="${p.max}"` : ""} style="width:4em">`;
     const [a, b] = tx(p.label).split("{v}");
     return `<label>${esc(a)} ${input} ${esc(b || "")}</label>` + (p.blank ? ` <span class="note">${esc(T.t("空欄なら{what}", { what: tx(p.blank) }))}</span>` : "");
   }
@@ -285,7 +285,8 @@
   function readHardRules(R, roleEdit) {
     const el = s => document.querySelector(s); // 「なし」の規則は設定欄を出さないので、無い欄は前の値のまま残す
     for (const def of (T.RULE_DEFS || [])) { // プラグインが宣言した値と、プラグインの設定欄
-      for (const p of def.params || []) { const x = el(`#hardRules [data-prm="${p.key}"]`); if (!x) continue; R[p.key] = x.value === "" ? null : Math.max(p.min ?? -Infinity, +x.value || 0); }
+      // A rendered number is a projection: unrelated edits must not erase or clamp imported values.
+      for (const p of def.params || []) { const x = el(`#hardRules [data-prm="${p.key}"]`); if (!x || !T.numberInputChanged(x, R[p.key] ?? "")) continue; R[p.key] = x.value === "" ? null : Math.max(p.min ?? -Infinity, +x.value || 0); }
       if (def.ui && def.ui.read && el("#hardRules")) def.ui.read(R, s => el("#hardRules " + s));
     }
     R.profile ||= {};
@@ -960,11 +961,18 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
     settings.addEventListener("focusout", ev => {
       if (ev.target.id === "setCalClosure" && ev.target.dataset.closureEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("施設の構成の変更") === false) return;
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor(); return;
+      }
+      if (ev.target.dataset?.prm !== undefined && ev.target.dataset.numericEdited === "1" && settings.contains(ev.target)) {
+        if (readSettings("規則・重みの変更") === false) return;
+        const input = ev.target, value = T.numberInputText(state.rules[input.dataset.prm] ?? "");
+        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
@@ -983,7 +991,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         if (ev.target.dataset.numericEdited !== "1" && committedRuleValues.get(ev.target) === ev.target.value) return;
         ev.target.dataset.numericEdited = "1"; commitRuleNumber(ev.target); return;
       }
-      if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f)) ev.target.dataset.numericEdited = "1";
+      if (ev.target.dataset?.prm !== undefined || ["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f)) ev.target.dataset.numericEdited = "1";
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { if (readSettings(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return; renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
