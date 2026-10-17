@@ -45,8 +45,14 @@ T.rules.register({
     acts: { seqAdd: "つながりの禁止を追加", seqDel: "つながりの禁止を削除" }, // 表のボタン（data-act）と、戻るための操作名
     act(R, act, btn) { const seq = [].concat(R.forbid_sequence || []); if (!seq.length) seq.push({ from: "night", to: "any" }); if (act === "seqAdd") seq.push({ from: "night", to: "any" }); else seq.splice(+btn.closest("tr").dataset.si, 1); R.forbid_sequence = seq; },
     render(R, h) { const { esc, tx, sel, shifts } = h; const seq = [].concat(R.forbid_sequence || []); if (!seq.length) seq.push({ from: "night", to: "any" });
+      // Accepted saved references may not be among this version's shifts. Keep each
+      // current value selectable instead of silently activating the first option.
+      const choices = (opts, value) => typeof value !== "string" || opts.some(([id]) => id === value) ? opts
+        : opts.concat([[value, value + tx("（現在は使わない値）")]]);
+      const fromChoices = x => choices(shifts, x.from || "night");
+      const toChoices = x => choices([["any", tx("すべての勤務帯（明け休み）")], ...shifts], x.to || "any");
       return `<table class="grid" id="seqTbl"><tr><th>${esc(tx("この勤務帯の翌日は"))}</th><th>${esc(tx("これに入れない"))}</th><th></th></tr>` +
-        seq.map((x, i) => `<tr data-si="${i}"><td>${sel(shifts, x.from || "night", "data-sfrom")}</td><td>${sel([["any", tx("すべての勤務帯（明け休み）")], ...shifts], x.to || "any", "data-sto")}</td><td><button data-act="seqDel">${esc(tx("削除"))}</button></td></tr>`).join("") + `</table>
+        seq.map((x, i) => `<tr data-si="${i}"><td>${sel(fromChoices(x), x.from || "night", "data-sfrom")}</td><td>${sel(toChoices(x), x.to || "any", "data-sto")}</td><td><button data-act="seqDel">${esc(tx("削除"))}</button></td></tr>`).join("") + `</table>
 <p><button data-act="seqAdd">${esc(tx("つながりの禁止を追加"))}</button> <span class="note">${esc(tx("2交代制の「夜勤の翌日は休み（明け休み）」がこれです。"))}</span></p>`; },
     // Row indices identify the rendered records; add/delete re-renders before the next read.
     // Preserve plug-in fields without transferring them between otherwise identical rows.

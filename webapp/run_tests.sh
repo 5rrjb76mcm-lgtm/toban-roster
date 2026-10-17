@@ -117,6 +117,8 @@ if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tool
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
+run test_sequence_selector_preservation_dom_node.js
+run test_pair_shift_preservation_dom_node.js
 run test_rule_setting_preservation_node.js "$HP"
 run test_rule_param_numeric_preservation_dom_node.js "$HP"
 run test_custom_scalar_preservation_dom_node.js "$HP"
