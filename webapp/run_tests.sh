@@ -36,6 +36,7 @@ run test_profile_nested_config_dom_node.js
 run test_rule_field_ownership_dom_node.js
 run test_profile_edge_preservation_dom_node.js
 run test_roster_cleanup_collision_node.js "$HP"
+run test_rule_text_preservation_dom_node.js "$HP"
 run test_settings_import_node.js
 run test_historical_name_guard_dom_node.js
 run test_history_cleanup_dom_node.js
@@ -178,6 +179,7 @@ run test_penalty_node.js "$HP"
 run test_brute_node.js "$HP"
 run test_spec_examples_node.js
 run test_oc_matrix_node.js "$HP"
+run test_plugins_off_preservation_dom_node.js
 run test_plugins_node.js "$HP"
 run ../plugin-example/test_local_data_node.js
 # 実ブラウザの通し試験（Playwright + インストール済みの Chrome）。組み立てた HTML を一時ファイルに作って使う。Playwright か Chrome が無ければ試験の側が省略と表示する

@@ -60,10 +60,14 @@ T.rules.register({
       for (const tr of el("#compTbl").querySelectorAll("tr[data-ci]")) { const g = k => tr.querySelector(`[data-${k}]`).value.trim(), num = k => g(k) === "" ? undefined : Math.max(0, +g(k) || 0);
         // This form owns these fields only; keep plug-in siblings on the same row.
         const c = Object.assign({}, (R.composition || [])[+tr.dataset.ci]);
-        for (const k of ["shift", "days", "label", "qual", "not_qual"]) delete c[k];
-        c.shift = g("cshift"); if (g("cdays") !== "all") c.days = g("cdays"); if (g("clabel")) c.label = g("clabel");
+        for (const k of ["shift", "days"]) delete c[k];
+        c.shift = g("cshift"); if (g("cdays") !== "all") c.days = g("cdays");
+        for (const [k, f] of [["label", "clabel"], ["qual", "cqual"], ["not_qual", "cnot"]]) {
+          const input = tr.querySelector(`[data-${f}]`);
+          if (input.dataset?.textShown !== undefined && input.dataset.textEdited !== "1" && input.value === input.dataset.textShown) continue;
+          delete c[k]; if (g(f)) c[k] = g(f);
+        }
         for (const [k, f] of [["years_min", "cymin"], ["years_max", "cymax"], ["min", "cmin"], ["max", "cmax"]]) { if (!T.numberInputChanged(tr.querySelector(`[data-${f}]`), c[k] ?? "")) continue; delete c[k]; if (num(f) !== undefined) c[k] = num(f); }
-        if (g("cqual")) c.qual = g("cqual"); if (g("cnot")) c.not_qual = g("cnot");
         rows.push(c); }
       R.composition = rows;
     },
