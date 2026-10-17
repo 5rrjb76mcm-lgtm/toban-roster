@@ -5,6 +5,11 @@
   const esc = T.esc;
   const tx = (s2, a) => T.t(s2, a); // 日本語の文字列を鍵にして表示言語に訳す（訳が無ければ日本語のまま）。差し込む値があれば第 2 引数（{shift} など）
   const state = A.state;
+  const ruleTextSelector = "#setRunExempt, #compTbl [data-clabel], #compTbl [data-cqual], #compTbl [data-cnot]";
+  const snapshotRuleText = committed => document.querySelectorAll(ruleTextSelector).forEach(input => {
+    input.dataset.textShown = input.value; delete input.dataset.textEdited;
+    if (committed) input.dataset.textCommitted = "1";
+  });
 
   // 調整目標の重みの表示名（設定タブ）。キーは rules.yaml の weights と一致させる
   const WEIGHT_LABELS = {
@@ -263,6 +268,7 @@
     }
     if (!shown) h.push(`<p class="note">${esc(tx("使う規則がありません。「施設の構成を作る」の「使う規則」で選んでください。"))}</p>`);
     $("#hardRules").innerHTML = h.join("");
+    snapshotRuleText(false); // Compare the actual DOM projection; never rewrite untouched source text.
   }
   // 役割の表は読み戻しの最初に一括検査する。不正な識別子・役目で、名簿や月の入力を一部だけ書き換えない。
   const rawRoleOf = (R, id) => (Array.isArray(R.profile?.roles) ? R.profile.roles : []).find(raw => String((raw || {}).id || "").trim() === id);
@@ -367,7 +373,17 @@
       R._idealAdded = !hadIdeal && Object.keys(ideals).length > 0; // 理想値を新しく書いたら、それに近づける規則を使う（規則の状態を読んだ後で入れる）
       R._multiWork = multi; // 複数名かどうか（規則の状態を読んだあとで併用できない規則を外す）
     }
-    { const pon = [...document.querySelectorAll("#profileBuilder [data-pon]")]; if (pon.length) { const off = pon.filter(x => !x.checked).map(x => x.dataset.pon); if (off.length) R.plugins_off = off; else delete R.plugins_off; } } // プラグインごとの付け外し（規則の状態より先に読む）
+    { const pon = [...document.querySelectorAll("#profileBuilder [data-pon]")]; if (pon.length) {
+      // A missing plug-in has no checkbox. Preserve its disabled state until it returns;
+      // this form owns only the names represented by the current inventory.
+      const old = Array.isArray(R.plugins_off) ? R.plugins_off : [], shown = new Map(pon.map(x => [x.dataset.pon, x]));
+      const off = old.filter(name => !shown.has(name) || !shown.get(name).checked);
+      for (const x of pon) if (!x.checked && !off.includes(x.dataset.pon)) off.push(x.dataset.pon);
+      // Non-array imports retain the prior visible-checkbox readback behavior.
+      if (!Array.isArray(R.plugins_off) || off.length !== old.length || off.some((name, i) => name !== old[i])) {
+        if (off.length) R.plugins_off = off; else delete R.plugins_off;
+      }
+    } } // プラグインごとの付け外し（規則の状態より先に読む）
     R.rule_states ||= {};
     for (const def of (T.RULE_DEFS || [])) {
       const on = document.querySelector(`#profileBuilder [data-ron="${def.id}"]`), sv = document.querySelector(`#hardRules [data-rsv="${def.id}"]`);
@@ -576,6 +592,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
     readHardRules(R, roleEdit);
     A.ensureMonth(state.month); A.save();
+    snapshotRuleText(true);
     const closureInput = $("#setCalClosure");
     if (closureInput) { closureInput.setAttribute("value", closureInput.value); delete closureInput.dataset.closureEdited; }
   }
@@ -999,9 +1016,14 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target) || isCustomNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.matches?.(ruleTextSelector)) ev.target.dataset.textEdited = "1"; if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target) || isCustomNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
     settings.addEventListener("focusout", ev => {
+      if (ev.target.matches?.(ruleTextSelector) && ev.target.dataset.textEdited === "1" && settings.contains(ev.target)) {
+        if (readSettings("規則・重みの変更") === false) return;
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor(); return;
+      }
       if (ev.target.id === "setCalClosure" && ev.target.dataset.closureEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("施設の構成の変更") === false) return;
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
@@ -1025,6 +1047,10 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       A.renderSettingsMonth(); A.renderDoctor();
     });
     $("#settings").addEventListener("change", ev => {
+      if (ev.target.matches?.(ruleTextSelector)) {
+        if (ev.target.dataset.textEdited !== "1" && ev.target.dataset.textCommitted === "1" && ev.target.value === ev.target.dataset.textShown) return;
+        ev.target.dataset.textEdited = "1";
+      }
       if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1";
       if (isCustomNumber(ev.target)) {
         if (ev.target.dataset.numericEdited !== "1" && committedCustomValues.get(ev.target) === ev.target.value) return;

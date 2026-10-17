@@ -34,7 +34,8 @@ T.rules.register({
  <span class="note">${h.esc(h.tx("この資格を持つ人には連勤の上限・下限を当てはめません（平日に続けて勤務する師長など）。"))}</span>`; },
     read(R, el) { const input = el("#setRunMax"); if (input && (input.dataset?.numericEdited === "1" || input.value !== String((R.run_length || {}).max ?? 5).replace(/[\r\n]/g, ""))) { const value = input.value.trim(); R.run_length = Object.assign({}, R.run_length);
         if (value === "") delete R.run_length.max; else R.run_length.max = Number.isFinite(Number(value)) ? Number(value) : value; }
-      if (el("#setRunExempt")) { const v = el("#setRunExempt").value.trim(); R.run_length = Object.assign({}, R.run_length); if (v) R.run_length.exempt_qual = v; else delete R.run_length.exempt_qual; } },
+      const exempt = el("#setRunExempt");
+      if (exempt && !(exempt.dataset?.textShown !== undefined && exempt.dataset.textEdited !== "1" && exempt.value === exempt.dataset.textShown)) { const v = exempt.value.trim(); R.run_length = Object.assign({}, R.run_length); if (v) R.run_length.exempt_qual = v; else delete R.run_length.exempt_qual; } },
   },
   summary(P, prm, tv) { return tv("{n} 日まで", { n: prm.max }); },
   messages: { RUN_TOO_LONG: { en: "{who}: {len} days in a row from {from} (limit {max})", ja: "{who}: {from}から {len} 連勤（上限 {max} 日）" } },
