@@ -37,6 +37,7 @@ run test_rule_field_ownership_dom_node.js
 run test_profile_edge_preservation_dom_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_rule_text_preservation_dom_node.js "$HP"
+run test_roster_qual_preservation_dom_node.js
 run test_settings_import_node.js
 run test_historical_name_guard_dom_node.js
 run test_history_cleanup_dom_node.js
@@ -53,6 +54,7 @@ run test_calendar_day_readback_node.js
 run test_calendar_clear_confirmation_dom_node.js
 run test_calendar_person_selection_dom_node.js
 run test_calendar_boundary_count_node.js
+run test_calendar_value_preservation_dom_node.js
 run test_previous_selection_preservation_node.js
 run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
