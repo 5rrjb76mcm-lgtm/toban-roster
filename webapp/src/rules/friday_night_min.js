@@ -24,8 +24,10 @@ T.rules.register({
       ctx.limit("friday_night_min", ctx.P.slots.filter(s => s[1] === "night" && ctx.P.dow(s[0]) === 4 && ctx.worked(n, s)).length, ">=", +k);
   },
   columns: [{ key: "fri", order: 10, label: "金曜夜勤の最低回数（月）",
-    render(d, R, h) { const v = (R.friday_night_min || {})[d.name] || ""; return `<input type="number" min="0" data-f="fri" value="${h.esc(v)}" placeholder="0" style="width:3.5em" title="金曜夜勤の最低回数（月）。空欄＝指定なし">`; },
-    begin() { return {}; }, read(td, d, R, acc, name) { const v = +td.querySelector("[data-f=fri]").value; if (v > 0) acc[name] = v; }, end(R, acc) { R.friday_night_min = acc; },
+    render(d, R, h) { const v = (R.friday_night_min || {})[d.name] ?? ""; return `<input type="number" min="0" data-f="fri" value="${h.esc(T.numberInputText(v))}" placeholder="0" style="width:3.5em" title="金曜夜勤の最低回数（月）。空欄＝指定なし">`; },
+    begin() { return {}; }, read(td, d, R, acc, name, prev) { const input = td.querySelector("[data-f=fri]"), old = R.friday_night_min || {}, key = prev?.name ?? name;
+      if (!T.numberInputChanged(input, old[key] ?? "")) { if (Object.prototype.hasOwnProperty.call(old, key)) acc[name] = old[key]; }
+      else { const v = +input.value; if (v > 0) acc[name] = v; } }, end(R, acc) { R.friday_night_min = acc; },
     rename(R, o, n) { const m = R.friday_night_min || {}; if (m[o] !== undefined) { m[n] = m[o]; delete m[o]; } } }],
   ui: { render(R, h) { return `<span class="note">${h.esc(h.tx("回数は名簿の「金曜夜勤の最低回数」の欄で人ごとに指定します。"))}</span>`; } },
   summary(P, prm, tv) { return tv("対象: {who}", { who: Object.entries(prm.min).filter(([n]) => P.doctors[n]).map(([n, k]) => `${n} ${k}`).join(T.listSep()) || tv("なし") }); },

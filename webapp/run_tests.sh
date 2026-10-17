@@ -116,6 +116,8 @@ run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
 run test_rule_setting_preservation_node.js "$HP"
 run test_rule_param_numeric_preservation_dom_node.js "$HP"
+run test_custom_scalar_preservation_dom_node.js "$HP"
+run test_custom_numeric_matrix_dom_node.js "$HP"
 run test_fixed_slot_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_friday_night_off_node.js "$HP" "$PY"

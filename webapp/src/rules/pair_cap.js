@@ -17,9 +17,9 @@ T.rules.register({
     for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) { let c = 0; for (const s of ss) if (ctx.worked(S[i], s) && ctx.worked(S[j], s)) c++; ctx.limit("pair_cap", c, "<=", prm.max); }
   },
   ui: {
-    render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(c.max ?? 2)}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
+    render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(T.numberInputText(c.max ?? 2))}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
     // Preserve sibling settings consumed by facility plug-ins.
-    read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) R.pair_cap = Object.assign({}, R.pair_cap, { shift: a ? a.value : "night", max: b ? Math.max(0, +b.value || 0) : 2 }); },
+    read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) { const c = Object.assign({}, R.pair_cap); if (a) c.shift = a.value; if (b && T.numberInputChanged(b, c.max ?? 2)) c.max = Math.max(0, +b.value || 0); R.pair_cap = c; } },
   },
   summary(P, prm, tv) { return tv("{shift}で同じ人と組むのは月 {n} 回まで", { shift: P.shiftLabel(prm.shift), n: prm.max }); },
   report(ctx, prm) { const { P, t } = ctx, S = ctx.names.filter(n => !P.isRole(n, "reserve") && !P.isFixedOnly(n)), ss = P.slots.filter(s => s[1] === prm.shift), hit = [];
