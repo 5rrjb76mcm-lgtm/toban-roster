@@ -47,12 +47,12 @@ T.rules.register({
   },
   ui: {
     render(R, h) { const c = R.shift_counts || { night: { min: 3, max: 5 } };
-      return h.shifts.map(([id, lb]) => `<label>${h.esc(lb)} <input type="number" min="0" max="31" data-scr="${id}:min" value="${h.esc((c[id] || {}).min ?? "")}" style="width:3.5em">〜<input type="number" min="0" max="31" data-scr="${id}:max" value="${h.esc((c[id] || {}).max ?? "")}" style="width:3.5em"> ${h.esc(h.tx("回（空欄＝制限なし）"))}</label>`).join("　"); },
+      return h.shifts.map(([id, lb]) => `<label>${h.esc(lb)} <input type="number" min="0" max="31" data-scr="${id}:min" value="${h.esc(T.numberInputText((c[id] || {}).min ?? ""))}" style="width:3.5em">〜<input type="number" min="0" max="31" data-scr="${id}:max" value="${h.esc(T.numberInputText((c[id] || {}).max ?? ""))}" style="width:3.5em"> ${h.esc(h.tx("回（空欄＝制限なし）"))}</label>`).join("　"); },
     read(R, el) { const out = Object.assign({}, R.shift_counts || { night: { min: 3, max: 5 } }); let shown = false;
       for (const id of ["day", "night"]) { const a = el(`[data-scr="${id}:min"]`), b = el(`[data-scr="${id}:max"]`); if (!a && !b) continue; shown = true;
         const v = Object.assign({}, out[id]);
-        if (a) { delete v.min; if (a.value !== "") v.min = Math.max(0, +a.value); }
-        if (b) { delete v.max; if (b.value !== "") v.max = Math.max(0, +b.value); }
+        if (a && T.numberInputChanged(a, v.min ?? "")) { delete v.min; if (a.value !== "") v.min = Math.max(0, +a.value); }
+        if (b && T.numberInputChanged(b, v.max ?? "")) { delete v.max; if (b.value !== "") v.max = Math.max(0, +b.value); }
         if (Object.keys(v).length) out[id] = v; else delete out[id]; }
       if (shown) R.shift_counts = out; }, // Hidden controls are not a request to clear saved bounds.
   },

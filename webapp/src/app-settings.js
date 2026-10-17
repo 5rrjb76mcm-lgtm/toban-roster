@@ -46,12 +46,11 @@
   };
 
   // ---------- 設定（名簿・重み） ----------
-  function renderSettings() {
+  function renderSettingsRoster() {
     const R = state.rules;
     // 名簿の欄は、その欄を使う規則を「なし」にすると隠す（施設ごとに要る欄だけを並べる）。
     // 本体の欄は 氏名・役割・年数・目安・当番。それ以外の欄は規則のプラグインが宣言する（def.columns。docs/rule-modules.md §5.4）
     const on = id => T.ruleState(R, id) !== "off";
-    const L = s => T.term(s, R);
     const compOn = on("composition"), quotaOn = on("quota_range") || on("quota_target"); // 目安の欄は回数の規則を使うときだけ
     const share = (R.profile || {}).quota_mode === "share"; // 相対のときは目安の代わりに比重を書く
     const h = { esc, tx, sel: A.sel, term: s => T.term(s, R) };
@@ -70,6 +69,10 @@
       at("duty").map(c => cell(c, d)).join("") +
       `<td><button data-act="up">↑</button><button data-act="down">↓</button><button data-act="del">削除</button></td></tr>`).join("");
     $("#doctorTable").innerHTML = `<table class="grid"><tr>${head.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${rows}</table><p><button data-act="add">${esc(tx("{person}を追加"))}</button>　<span class="note">${esc(tx("表の順序が勤務表の枠外「週休日数」の氏名順になります。氏名を変えると、その月のカレンダー・不可日は新しい氏名に引き継がれます。名簿は月ごとの保存データに同梱されるので、過去の月は当時の名簿で開けます。欄が少ないと感じたら、対応する規則が「なし」になっていないか下の規則の表を確認してください。"))}</span></p>`;
+  }
+  function renderSettings() {
+    const R = state.rules, L = s => T.term(s, R);
+    renderSettingsRoster();
     const W = R.weights || {};
     // 規則の表に出る重み（規則そのものの重みと、その中で使う重み）は、ここには重ねて出さない
     const owned = new Set((T.RULE_DEFS || []).flatMap(d => [d.weight].concat(d.sub || [])).filter(Boolean));
@@ -101,7 +104,7 @@
       case "oncall": {
         const oc = R.oncall_requirement || {}, roles = T.normalizeRolesOf(R), sb = roles.filter(x => x.standby);
         return `<table class="grid" id="ocReqTbl"><tr><th>${esc(tx("勤務者の役割"))}</th>${sb.map(x => `<th>${esc(T.t("必要な {role} のオンコール（人）", { role: x.label }))}</th>`).join("") || `<th>${esc(tx("（オンコールに入れる役割がありません）"))}</th>`}</tr>` +
-          roles.map(t => `<tr data-t="${esc(t.id)}"><td>${esc(t.label)}</td>${sb.map(x => `<td><input type="number" min="0" data-oc="${esc(x.id)}" value="${esc((oc[t.id] || {})[x.id] ?? 0)}" style="width:3.5em"></td>`).join("")}</tr>`).join("") + `</table>
+          roles.map(t => `<tr data-t="${esc(t.id)}"><td>${esc(t.label)}</td>${sb.map(x => `<td><input type="number" min="0" data-oc="${esc(x.id)}" value="${esc(T.numberInputText((oc[t.id] || {})[x.id] ?? 0))}" style="width:3.5em"></td>`).join("")}</tr>`).join("") + `</table>
 <p class="note">${esc(L(tx("勤務者の役割ごとに必要なオンコール。{other}の勤務のときだけ、{junior}のオンコールは置けなくてもよく、置けない枠は減点（missing_young_oc）します。")))}</p>`;
       }
       default: return "";
@@ -403,7 +406,7 @@
         R.oncall_requirement = Object.fromEntries([...document.querySelectorAll("#ocReqTbl tr[data-t]")].map(tr => {
           tr.dataset.t = rn(tr.dataset.t);
           const table = R.oncall_requirement || {}, old = Object.prototype.hasOwnProperty.call(table, tr.dataset.t) ? table[tr.dataset.t] : {};
-          const cells = [...tr.querySelectorAll("[data-oc]")].map(x => { x.dataset.oc = rn(x.dataset.oc); return [x.dataset.oc, +x.value || 0]; });
+          const cells = [...tr.querySelectorAll("[data-oc]")].flatMap(x => { x.dataset.oc = rn(x.dataset.oc); return T.numberInputChanged(x, (old || {})[x.dataset.oc] ?? 0) ? [[x.dataset.oc, +x.value || 0]] : []; });
           return [tr.dataset.t, Object.fromEntries([...Object.entries(old || {}).filter(([id]) => roles.has(id)), ...cells])];
         }));
       } } // 画面の表の識別子も新しくしておく（描き直す前にもう一度読まれても、旧い識別子で上書きしない）
@@ -942,7 +945,40 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       A.ensureMonth(state.month); A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.renderFixed(); // 名簿が変わったので他の画面も描き直す
     });
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnExportProfile") exportProfile(); });
-    const settings = $("#settings"), isRuleNumber = el => ["setRunMax", "setRunMin", "setHrWeek", "setHrDay", "setOffMin"].includes(el.id), committedRuleValues = new WeakMap();
+    const settings = $("#settings"), isRuleNumber = el => ["setRunMax", "setRunMin", "setHrWeek", "setHrDay", "setOffMin", "setPairMax", "setWishOffMax", "setDoMaxExtra", "setPairMin"].includes(el.id), committedRuleValues = new WeakMap();
+    const customNumberSelector = '[data-scr], [data-srm], [data-f="fri"], [data-cymin], [data-cymax], [data-cmin], [data-cmax], [data-oc]';
+    const isCustomNumber = input => input.matches?.(customNumberSelector), committedCustomValues = new WeakMap();
+    const refreshCustomNumbers = () => {
+      const R = state.rules;
+      for (const input of settings.querySelectorAll(customNumberSelector)) {
+        let shown;
+        if (input.dataset.scr !== undefined) { const [shift, bound] = input.dataset.scr.split(":"); shown = ((R.shift_counts || { night: { min: 3, max: 5 } })[shift] || {})[bound] ?? ""; }
+        else if (input.dataset.srm !== undefined) shown = (R.shift_run_max || { day: 3 })[input.dataset.srm] ?? "";
+        else if (input.dataset.f === "fri") shown = (R.friday_night_min || {})[R.doctors[+input.closest("tr[data-i]").dataset.i].name] ?? "";
+        else if (input.dataset.oc !== undefined) shown = ((R.oncall_requirement || {})[input.closest("tr[data-t]").dataset.t] || {})[input.dataset.oc] ?? 0;
+        else { const row = (R.composition || [])[+input.closest("tr[data-ci]").dataset.ci] || {};
+          const field = [["cymin", "years_min"], ["cymax", "years_max"], ["cmin", "min"], ["cmax", "max"]].find(([key]) => input.dataset[key] !== undefined)[1];
+          shown = row[field] ?? "";
+        }
+        const value = T.numberInputText(shown);
+        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
+        committedCustomValues.set(input, input.value);
+      }
+    };
+    let committingCustomNumber = false;
+    const commitCustomNumber = input => {
+      if (committingCustomNumber || !settings.contains(input) || input.dataset.numericEdited !== "1") return;
+      committingCustomNumber = true;
+      try {
+        const rosterColumns = T.rules.columns(state.rules).map(c => c.key).join("\0");
+        if (readSettings(input.closest("#profileBuilder") ? "施設の構成の変更" : input.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return;
+        // Keep the focused row and refresh snapshots after committing all visible settings.
+        if (input.dataset.scr !== undefined && rosterColumns !== T.rules.columns(state.rules).map(c => c.key).join("\0")) renderSettingsRoster();
+        refreshCustomNumbers();
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor();
+      } finally { committingCustomNumber = false; }
+    };
     let committingRuleNumber = false;
     const commitRuleNumber = input => {
       if (committingRuleNumber || !settings.contains(input) || $("#" + input.id) !== input || input.dataset.numericEdited !== "1") return;
@@ -952,16 +988,18 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         // 設定DOMを残し、Tabやクリックで移った先の欄を失わない。確定済みの編集印は各欄から除く。
         const rest = state.rules.days_off || {}, restText = v => typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : String(v).replace(/\r\n?/g, "\n").replace(/\0/g, "\uFFFD");
         for (const [id, shown] of [["setRunMax", (state.rules.run_length || {}).max ?? 5], ["setRunMin", (state.rules.run_length || {}).min ?? 3],
-          ["setHrWeek", restText(rest.hours_per_week ?? 40)], ["setHrDay", restText(rest.hours_per_day ?? 8)], ["setOffMin", restText(rest.min != null && rest.min !== "auto" ? rest.min : "")]]) {
+          ["setHrWeek", restText(rest.hours_per_week ?? 40)], ["setHrDay", restText(rest.hours_per_day ?? 8)], ["setOffMin", restText(rest.min != null && rest.min !== "auto" ? rest.min : "")],
+          ["setPairMax", T.numberInputText((state.rules.pair_cap || {}).max ?? 2)], ["setWishOffMax", T.numberInputText((state.rules.wish_off || {}).max ?? 3)],
+          ["setDoMaxExtra", T.numberInputText(rest.max_extra ?? 1)], ["setPairMin", T.numberInputText(rest.pair_min ?? 1)]]) {
           const el = $("#" + id); if (!el) continue;
           const value = ["setRunMax", "setRunMin"].includes(id) ? String(shown).replace(/[\r\n]/g, "") : String(shown);
-          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, value);
+          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, el.value);
         }
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target) || isCustomNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
     settings.addEventListener("focusout", ev => {
       if (ev.target.id === "setCalClosure" && ev.target.dataset.closureEdited === "1" && settings.contains(ev.target)) {
@@ -976,6 +1014,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
+      if (isCustomNumber(ev.target)) { commitCustomNumber(ev.target); return; }
       if (isRuleNumber(ev.target)) commitRuleNumber(ev.target);
       const input = ev.target;
       if (!["share", "years", "shift_max_day", "shift_max_night"].includes(input.dataset?.f) || input.dataset.numericEdited !== "1" || !settings.contains(input)) return;
@@ -987,6 +1026,10 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     });
     $("#settings").addEventListener("change", ev => {
       if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1";
+      if (isCustomNumber(ev.target)) {
+        if (ev.target.dataset.numericEdited !== "1" && committedCustomValues.get(ev.target) === ev.target.value) return;
+        ev.target.dataset.numericEdited = "1"; commitCustomNumber(ev.target); return;
+      }
       if (isRuleNumber(ev.target)) {
         if (ev.target.dataset.numericEdited !== "1" && committedRuleValues.get(ev.target) === ev.target.value) return;
         ev.target.dataset.numericEdited = "1"; commitRuleNumber(ev.target); return;

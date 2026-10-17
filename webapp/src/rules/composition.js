@@ -48,9 +48,9 @@ T.rules.register({
         ? dy.concat([[c.days, tx("「{f}」の日", { f: T.dayFlags ? T.dayFlags.labelOf(R, c.days.slice(5)) : c.days.slice(5) }) + tx("（現在は使わない値）")]]) : dy;
       return `<table class="grid" id="compTbl"><tr><th>${esc(tx("勤務帯"))}</th><th>${esc(tx("日"))}</th><th>${esc(tx("名前"))}</th><th>${esc(tx("何年目以上"))}</th><th>${esc(tx("何年目以下"))}</th><th>${esc(tx("資格あり"))}</th><th>${esc(tx("資格なし"))}</th><th>${esc(tx("最低（人）"))}</th><th>${esc(tx("最大（人）"))}</th><th></th></tr>` +
         rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${sel(dayOpts(c), c.days || "all", "data-cdays")}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
-          ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${h.esc(c[k] ?? "")}" style="width:4em"></td>`).join("") +
+          ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${h.esc(T.numberInputText(c[k] ?? ""))}" style="width:4em"></td>`).join("") +
           `<td><input data-cqual value="${esc(c.qual || "")}" style="width:6em"></td><td><input data-cnot value="${esc(c.not_qual || "")}" style="width:6em"></td>` +
-          `<td><input type="number" min="0" data-cmin value="${h.esc(c.min ?? "")}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${h.esc(c.max ?? "")}" style="width:4em"></td>` +
+          `<td><input type="number" min="0" data-cmin value="${h.esc(T.numberInputText(c.min ?? ""))}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${h.esc(T.numberInputText(c.max ?? ""))}" style="width:4em"></td>` +
           `<td><button data-act="compDel">${esc(tx("削除"))}</button></td></tr>`).join("") + `</table>
 <p><button data-act="compAdd">${esc(tx("構成の条件を追加"))}</button> <span class="note">${esc(tx("枠ごとに、条件に合う人が何人いるかの下限・上限です。空欄の条件は問いません。何年目は名簿の「何年目」、資格は名簿の「資格」と照らします。資格を「・」で区切ると「どれか 1 つを持つ人」です。例: 夜勤に若手は1人まで（資格あり 若手・最大 1）。管理者とは別にリーダーを 1 人置くなら「管理者 1 人以上」と「管理者・リーダー 2 人以上」。ここに書いた資格は名簿の資格の欄にチェックボックスで出ます。"))}</span></p>`;
     },
@@ -60,9 +60,9 @@ T.rules.register({
       for (const tr of el("#compTbl").querySelectorAll("tr[data-ci]")) { const g = k => tr.querySelector(`[data-${k}]`).value.trim(), num = k => g(k) === "" ? undefined : Math.max(0, +g(k) || 0);
         // This form owns these fields only; keep plug-in siblings on the same row.
         const c = Object.assign({}, (R.composition || [])[+tr.dataset.ci]);
-        for (const k of ["shift", "days", "label", "years_min", "years_max", "min", "max", "qual", "not_qual"]) delete c[k];
+        for (const k of ["shift", "days", "label", "qual", "not_qual"]) delete c[k];
         c.shift = g("cshift"); if (g("cdays") !== "all") c.days = g("cdays"); if (g("clabel")) c.label = g("clabel");
-        for (const [k, f] of [["years_min", "cymin"], ["years_max", "cymax"], ["min", "cmin"], ["max", "cmax"]]) if (num(f) !== undefined) c[k] = num(f);
+        for (const [k, f] of [["years_min", "cymin"], ["years_max", "cymax"], ["min", "cmin"], ["max", "cmax"]]) { if (!T.numberInputChanged(tr.querySelector(`[data-${f}]`), c[k] ?? "")) continue; delete c[k]; if (num(f) !== undefined) c[k] = num(f); }
         if (g("cqual")) c.qual = g("cqual"); if (g("cnot")) c.not_qual = g("cnot");
         rows.push(c); }
       R.composition = rows;

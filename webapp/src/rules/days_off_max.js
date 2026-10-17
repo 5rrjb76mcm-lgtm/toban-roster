@@ -16,8 +16,8 @@ T.rules.register({
     for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue; ctx.limit("days_off_max", P.N - ctx.offDays(n).length, ">=", P.N - (P.offTarget(n) + prm.extra)); }
   },
   ui: {
-    render(R, h) { const x = (R.days_off || {}).max_extra; return `<label>${h.esc(h.tx("休みは決まった日数より"))} <input type="number" min="0" max="10" id="setDoMaxExtra" value="${h.esc(x ?? 1)}" style="width:3.5em"> ${h.esc(h.tx("日多いところまで"))}</label>`; },
-    read(R, el) { const x = el("#setDoMaxExtra"); if (x) R.days_off = Object.assign({}, R.days_off, { max_extra: Math.max(0, +x.value || 0) }); },
+    render(R, h) { const x = (R.days_off || {}).max_extra; return `<label>${h.esc(h.tx("休みは決まった日数より"))} <input type="number" min="0" max="10" id="setDoMaxExtra" value="${h.esc(T.numberInputText(x ?? 1))}" style="width:3.5em"> ${h.esc(h.tx("日多いところまで"))}</label>`; },
+    read(R, el) { const x = el("#setDoMaxExtra"); if (x && T.numberInputChanged(x, (R.days_off || {}).max_extra ?? 1)) R.days_off = Object.assign({}, R.days_off, { max_extra: Math.max(0, +x.value || 0) }); },
   },
   summary(P, prm, tv) { return tv("休みは決まった日数 ＋ {n} 日まで", { n: prm.extra }); },
   report(ctx, prm) { const { P, t } = ctx; const over = ctx.names.filter(n => !P.isRole(n, "reserve") && !P.isFixedOnly(n) && ctx.offDays(n).length > P.offTarget(n) + prm.extra).map(n => `${n} ${ctx.offDays(n).length}`); ctx.line(t("休みが上限を超えた人: {items}", { items: over.join(ctx.sep()) || t("なし") })); },

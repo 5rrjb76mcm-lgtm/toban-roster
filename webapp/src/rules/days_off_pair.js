@@ -27,10 +27,10 @@ T.rules.register({
       ctx.add("days_off_pair_short", P.softW("days_off_pair"), pos(prm.min - pr)); }
   },
   ui: {
-    render(R, h) { const { esc, tx, sel } = h; return `<label>${esc(tx("月に"))} <input type="number" min="0" max="15" id="setPairMin" value="${h.esc((R.days_off || {}).pair_min ?? 1)}" style="width:4em"> ${esc(tx("回以上"))}</label>
+    render(R, h) { const { esc, tx, sel } = h; return `<label>${esc(tx("月に"))} <input type="number" min="0" max="15" id="setPairMin" value="${h.esc(T.numberInputText((R.days_off || {}).pair_min ?? 1))}" style="width:4em"> ${esc(tx("回以上"))}</label>
 　<label>${esc(tx("数え方: "))}${sel([["pairs", tx("続く 2 日の組の数（3 連休は 2 回）")], ["runs", tx("続いた休みで 1 回（3 連休も 1 回）")]], (R.days_off || {}).pair_count || "pairs", 'id="setPairCount"')}</label>`; },
     read(R, el) { const d = Object.assign({}, R.days_off);
-      if (el("#setPairMin")) d.pair_min = Math.max(0, +el("#setPairMin").value || 0);
+      if (el("#setPairMin") && T.numberInputChanged(el("#setPairMin"), d.pair_min ?? 1)) d.pair_min = Math.max(0, +el("#setPairMin").value || 0);
       if (el("#setPairCount")) { if (el("#setPairCount").value === "runs") d.pair_count = "runs"; else delete d.pair_count; }
       if (Object.keys(d).length) R.days_off = d; },
   },

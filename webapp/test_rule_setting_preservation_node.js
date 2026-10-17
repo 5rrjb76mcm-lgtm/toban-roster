@@ -22,13 +22,15 @@ const matches = (el, sel) => sel.split(",").some(s => {
 function node(raw) {
   const e = { ...raw, id: raw.attrs.id || "", disabled: Object.hasOwn(raw.attrs, "disabled"), dataset: Object.fromEntries(Object.entries(raw.attrs).filter(([k]) => k.startsWith("data-")).map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v])),
     value: raw.attrs.value || "", checked: Object.hasOwn(raw.attrs, "checked"), type: raw.attrs.type || "text", getAttribute(k) { return this.attrs[k] ?? null; }, setAttribute(k, v) { this.attrs[k] = String(v); }, hasAttribute(k) { return Object.hasOwn(this.attrs, k); },
+    matches(s) { return matches(this, s); },
     querySelectorAll(s) { return this.children.flatMap(c => (matches(c, s) ? [c] : []).concat(c.querySelectorAll(s))); }, querySelector(s) { return this.querySelectorAll(s)[0] || null; } };
   e.children = raw.children.map(node);
   if (e.tag === "select") { const os = e.querySelectorAll("option"); e.value = (os.find(o => o.hasAttribute("selected")) || os[0] || { attrs: {} }).attrs.value || ""; }
   return e;
 }
 function element(sel) {
-  if (!elements.has(sel)) elements.set(sel, { handlers: {}, value: "", textContent: "", innerHTML: "", disabled: false,
+  if (!elements.has(sel)) elements.set(sel, { handlers: {}, value: "", textContent: "", disabled: false,
+    get innerHTML() { return this._html || ""; }, set innerHTML(value) { this._html = String(value); this._tree = null; },
     addEventListener(k, fn) { (this.handlers[k] ||= []).push(fn); }, querySelectorAll() { return []; } });
   return elements.get(sel);
 }
@@ -42,8 +44,11 @@ for (const f of ["i18n.js", "rules-core.js", "model.js", "messages.js", "plugins
 const A = T.app, clone = x => JSON.parse(JSON.stringify(x)), tick = () => Promise.resolve();
 T.registerLang({ code: "ja" }); T.registerLang({ code: "en" });
 for (const k of ["save", "renderHeader", "renderSettingsMonth", "renderDoctor", "renderFixed", "toast"]) A[k] = () => {};
-const sync = () => { trees = []; for (const id of ['doctorTable','weightsTable','hardRules','profileBuilder']) { const e=element('#'+id), tree=node(parse(e.innerHTML)); e.querySelectorAll=s=>tree.querySelectorAll(s); e.querySelector=s=>tree.querySelector(s); trees.push(tree); }
+const sync = () => { trees = []; for (const id of ['doctorTable','weightsTable','hardRules','profileBuilder']) { const e=element('#'+id), tree=e._tree || (e._tree=node(parse(e.innerHTML))); e.querySelectorAll=s=>tree.querySelectorAll(s); e.querySelector=s=>tree.querySelector(s); trees.push(tree); }
  doctors = document.querySelectorAll('#doctorTable tr[data-i]'); };
+// Preserve live controls between commits; only an actual innerHTML assignment replaces them.
+element('#settings').querySelectorAll = s => trees.flatMap(t => t.querySelectorAll(s));
+element('#settings').contains = e => trees.some(t => t.querySelectorAll('*').includes(e));
 const paint = () => { A.renderSettings(); sync(); }; A.renderAll = paint; A.bindSettings();
 function setup(rules, lang = "en") {
   const R = clone(rules); T.fillDefaultRules(R); T.setLang(lang);
