@@ -7,9 +7,21 @@ T.rules.register({
   label: "勤務帯ごとの構成（経験年数・資格ごとの人数。例: 夜勤に1〜2年目は1人まで、日勤にリーダー1人）", states: ["hard", "soft", "off"], def: "off",
   weight: "composition_miss", w0: 100, relax: "composition",
   columns: [{ key: "quals", at: "years", label: "資格", field: "quals",
-    render(d, R, h) { const qn = T.qualNames(R), has = [].concat(d.quals || []);
-      return qn.map(q => `<label style="margin-right:.5em;white-space:nowrap"><input type="checkbox" data-q="${h.esc(q)}" ${has.includes(q) ? "checked" : ""}>${h.esc(q)}</label>`).join("") + `<input data-f="quals" value="" placeholder="${h.esc(h.tx("ほかの資格"))}" style="width:6em">`; },
-    read(td, d) { const qs = [...td.querySelectorAll("[data-q]")].filter(x => x.checked).map(x => x.dataset.q).concat(td.querySelector("[data-f=quals]").value.split(/[・,、\s]+/).filter(Boolean)); if (qs.length) d.quals = [...new Set(qs)]; else delete d.quals; } }],
+    // 名簿の資格は保存値（配列）を土台にし、画面の印が所有する名前だけを書き換える。チェックボックスは改行を正規化した名前で照合する
+    // （HTML の属性値は CR・CRLF が LF になるため、data-q から作り直すと元の文字列が変わる）。どの印にも当たらない要素（前後空白・区切り文字入りなど）は不透明なまま残す。
+    // 触っていない行は保存値をそのまま返す（配列でない旧形式も含めて）。空欄に見える印を外した・自由記入で足したときだけ書き換える。計算の照合（完全一致）は変えない
+    render(d, R, h) { const norm = q => String(q).replace(/\r\n?/g, "\n"), seen = new Set(), has = [].concat(d.quals || []).map(norm); // 改行の違いだけの候補は 1 つの印にまとめる（属性値では区別できない）
+      const qn = T.qualNames(R).filter(q => { const k = norm(q); if (seen.has(k)) return false; seen.add(k); return true; }), on = q => has.includes(norm(q));
+      return qn.map(q => `<label style="margin-right:.5em;white-space:nowrap"><input type="checkbox" data-q="${h.esc(q)}" data-shown="${on(q) ? 1 : 0}" ${on(q) ? "checked" : ""}>${h.esc(q)}</label>`).join("") + `<input data-f="quals" value="" placeholder="${h.esc(h.tx("ほかの資格"))}" style="width:6em">`; },
+    read(td, d, R, acc, name, prev) {
+      const norm = q => String(q).replace(/\r\n?/g, "\n"), boxes = [...td.querySelectorAll("[data-q]")], free = td.querySelector("[data-f=quals]"), typed = free ? free.value.split(/[・,、\s]+/).filter(Boolean) : [];
+      const stored = prev && Object.prototype.hasOwnProperty.call(prev, "quals") ? prev.quals : undefined, raw = [].concat(stored ?? []);
+      const touched = boxes.some(x => x.checked !== (x.dataset.shown === "1")) || typed.length > 0;
+      if (!touched) { if (stored !== undefined) d.quals = stored; return; }
+      const out = raw.filter(q => !boxes.some(x => !x.checked && norm(x.dataset.q) === norm(q))); // 外した印が所有する名前だけ消す
+      for (const q of boxes.filter(x => x.checked).map(x => x.dataset.q).concat(typed)) if (!out.some(x => norm(x) === norm(q))) out.push(q);
+      boxes.forEach(x => { x.dataset.shown = x.checked ? "1" : "0"; });
+      if (out.length) d.quals = out; else delete d.quals; } }],
   read(P) { return { list: P.comp }; },
   solve(ctx, prm) {
     const { LP, lp, P } = ctx, st = P.state("composition");

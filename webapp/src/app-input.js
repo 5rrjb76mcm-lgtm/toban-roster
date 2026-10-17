@@ -47,7 +47,7 @@
 ${on("cath_requirement") ? `<br><span class="note">${esc(T.t("専門業務の配置が不要な日（0件確定、学会など。日付をカンマ区切り。必要人数を0にする。専門外来の担当1名は確保）"))}</span>
 <label>${esc(L("{other}"))} <input data-path="cath_off_days_A" data-type="days" value="${esc((m.cath_off_days_A || []).join(", "))}" style="width:10em"></label>
 <label>${esc(L("{charge}"))} <input data-path="cath_off_days_I" data-type="days" value="${esc((m.cath_off_days_I || []).join(", "))}" style="width:10em"></label>` : ""}
-${on("weekend_balance") ? `<label>${esc(T.t("週末担当の許容差（組。空欄＝共通ルール {v}）", { v: R.weekend_balance_max_diff }))} <input type="number" data-path="exceptions.weekend_balance_max_diff" value="${esc(m.exceptions?.weekend_balance_max_diff ?? "")}" style="width:4em"></label>` : ""}
+${on("weekend_balance") ? `<label>${esc(T.t("週末担当の許容差（組。空欄＝共通ルール {v}）", { v: R.weekend_balance_max_diff }))} <input type="number" data-path="exceptions.weekend_balance_max_diff" value="${esc(T.numberInputText(m.exceptions?.weekend_balance_max_diff ?? ""))}" style="width:4em"></label>` : ""}
 ${hasReserve ? `<label><input type="checkbox" data-path="allow_chief_duty" ${m.allow_chief_duty ? "checked" : ""}> ${esc(L(T.t("{reserve}（原則配置しない）を当番候補に含める")))}</label>` : ""}</div>`);
     let at = null, P0 = null; try { at = T.autoTargets(R, m); P0 = new T.Problem(R, m); } catch (e) { }
     const bal = m.history.work_balance || {}, share = P0 && P0.quotaMode === "share", workerNames = A.workNames();
@@ -116,7 +116,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const k = path[path.length - 1];
       if (el.type === "checkbox") o[k] = el.checked;
       else if (el.dataset.type === "days") { if (el.dataset.daysShown === undefined || el.dataset.daysEdited === "1" || el.value !== el.dataset.daysShown) { o[k] = A.parseDays(el.value); el.dataset.daysShown = el.value; delete el.dataset.daysEdited; } }
-      else if (el.type === "number") o[k] = el.value === "" ? undefined : +el.value;
+      else if (el.type === "number") { if (!T.numberInputChanged(el, o[k] ?? "")) return; o[k] = el.value === "" ? undefined : +el.value; } // 受理される数値表記（" 2 " など）は、この欄を変えるまで保持する
       else o[k] = el.value === "" ? null : el.value;
     });
     if (m.exceptions && m.exceptions.weekend_balance_max_diff === undefined) delete m.exceptions.weekend_balance_max_diff;
@@ -171,8 +171,9 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
   function bindSettingsMonth() {
     const root = $("#monthSettings");
     const markMonthText = el => { if (el.dataset?.type === "days") el.dataset.daysEdited = "1"; if (el.dataset?.path === "notes" || el.dataset?.dnote !== undefined) el.dataset.textEdited = "1"; };
-    root.addEventListener("input", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; });
-    root.addEventListener("change", ev => { markMonthText(ev.target); if (["target", "cmin", "cmax", "bal", "hist"].some(k => ev.target.dataset?.[k] !== undefined)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
+    const isMonthNumber = el => ["target", "cmin", "cmax", "bal", "hist"].some(k => el.dataset?.[k] !== undefined) || (el.type === "number" && el.dataset?.path !== undefined);
+    root.addEventListener("input", ev => { markMonthText(ev.target); if (isMonthNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    root.addEventListener("change", ev => { markMonthText(ev.target); if (isMonthNumber(ev.target)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b) return;
       if (b.id === "btnImportPrev") { A.importPrevious(); return; } // 読込の取消・失敗では読み戻し・保存・Undo を作らない。通常の入力は change で確定する。
@@ -254,7 +255,8 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     const isDuty = true; // 部長も同じ欄を出す（当直候補でない間はソルバーが無視する）
     const isCand = A.dutyNames().includes(n), monthlyWorkExcluded = isCand && !A.workNames().includes(n); // 予備の月許可は実勤務だけ。OC候補・従来の記録用入力とは分ける
     const dd = m.duty_days[n] || {};
-    const kindSel = (d, part) => A.sel([["", "―"], ...kindOpts()], (dd[d] || {})[part] || "", `data-cal="duty" data-d="${d}" data-part="${part}"`);
+    const kindSel = (d, part) => { const cur = (dd[d] || {})[part], val = cur == null || cur === "" ? "" : String(cur), opts = [["", "―"], ...kindOpts()]; // 選択肢に無い種別（プラグインの更新で外れた値・前後空白など）は「（現在は使わない値）」として残す（空欄を選んだときだけ消える）
+      return A.sel(val && !opts.some(o => o[0] === val) ? opts.concat([[val, val + T.t("（現在は使わない値）")]]) : opts, val, `data-cal="duty" data-d="${d}" data-part="${part}"`); };
     const R = state.rules, chargeId = roleOf(R, "charge"), juniorId = roleOf(R, "junior");
     const wishDayOn = T.ruleState(R, "wish_day") !== "off"; // 日勤の希望（規則 wish_day を使う施設だけ欄を出す）
     const ext = T.calendarExt ? T.calendarExt.merged(R) : { fixedTags: [], fields: [], hideDuties: false, paidLeave: false, dayHead: false, symbol: null }; // 施設のプラグインによるカレンダーの拡張（施設の設定で付け外し）
@@ -312,6 +314,8 @@ ${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m
     { const nd = N + 1, w = (A.dowOf(y, mo, N) + 1) % 7, nh = !!m.next_month_first_day_is_holiday; cells.push(`<td class="cal next"><div class="dnum">${esc(T.t("翌{m}/1", { m: mo === 12 ? 1 : mo + 1 }))}<small>${esc(dowJa(w))}${nh && w < 5 ? esc(T.t("祝")) : ""}</small></div><div>${esc(T.t("午前"))} ${kindSel(nd, "am")}</div><div>${esc(T.t("午後"))} ${kindSel(nd, "pm")}</div>${isDuty ? `<div>${esc(T.t("固定"))} ${fixedSel(nd, dayOn(w >= 5 || nh), nightOn(w >= 5 || nh))}</div>` : ""}<div class="note">${esc(T.t("翌月1日（月末の判定用。固定は翌月へ引き継ぐ）"))}</div></td>`); }
     const rem = (first + N + 1) % 7; if (rem) for (let i = rem; i < 7; i++) cells.push(`<td class="empty"></td>`);
     const pats = (m.regular_duties?.[n] || []);
+    // 曜日パターンの選択欄。選択肢に無い値（プラグインの更新で外れた種別・旧形式の曜日など）は「（現在は使わない値）」として残し、描いたときの値を data-shown に持つ（読み戻しで触っていない行を保存値のまま返すため）
+    const patSel = (opts, v, f) => { const val = v == null ? "" : String(v); return A.sel(val && !opts.some(o => o[0] === val) ? opts.concat([[val, val + T.t("（現在は使わない値）")]]) : opts, val, `data-f="${f}" data-shown="${esc(val)}"`); };
     $("#doctorPane").dataset.doctor = n;
     $("#doctorPane").innerHTML = `<div class="box">
 <h3 class="doctorEditing" aria-live="polite">${esc(T.t("編集中: {who}", { who: n }))}</h3>
@@ -322,7 +326,7 @@ ${isDuty ? `<div>${A.sel(unOptsWith(unOpts(dayOn(isSun || isSat)), unavailPart(m
 <p class="note">${esc(T.t("（1 枠に複数名の施設や平日にも日勤がある施設では、固定と不可の選択肢は勤務帯と枠の人数の設定に従います。）"))} ${esc(T.t("午前・午後: 外来・病棟番・外勤を置く。「不在」＝長期休暇・出張などでその時間帯に勤務しない申告（専門業務の候補から除外。夜勤・OCの翌日制約や不可には影響しないので、夜勤も無理なら不可を別に申告）。不可・避の欄: 「日夜両方」＝その日の日勤・夜勤とそのOCの不可（前夜からの担当は含めない。未明から不可なら前日も不可にする）、「日勤帯」＝日勤とそのOCのみ不可、「夜勤」＝その日から始まる夜勤・夜間OCの不可（日付だけの申告はこれ）。希望＝その日の夜勤の希望。固定＝その日の枠にこの人を必ず置く（作成責任者の指定。休日は日勤帯と夜間を別々に固定でき、日勤＋夜間OC のような組合せも指定できる。同じ枠に2人は置けない）。「避：…」＝できれば避けたい日（調整目標。その時間帯の勤務・OCを減点で避けるが、申告した人の勤務回数が参照解（避けたい日を無視した計算）の回数を下回る分には大きな減点が付き、申告で負担は減らない。曜日の希望、例えば「平日夜勤は水曜に」は、他の曜日の夜勤を「避：夜勤」にする。曜日パターンの「避：…」は平日だけに展開し、土日祝はここで個別に指定する。平日は夜勤だけ選べる。平日の日中の不在は午前・午後の「不在」で申告する）"))}</p>
 <details><summary>${esc(T.t("曜日パターン（下書き。展開するとカレンダーを上書き）"))}</summary>
 <table class="grid" id="patTbl"><tr><th>${esc(T.t("種別"))}</th><th>${esc(T.t("曜日"))}</th><th>${esc(T.t("時間帯（避：…では無視。避：…は平日だけに展開）"))}</th><th>${esc(T.t("第n曜日（例 2,4。空欄＝毎週）"))}</th><th>${esc(T.t("翌月へ引き継ぐ"))}</th><th></th></tr>
-${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS()), it.kind, 'data-f="kind"')}</td><td>${A.sel(DOWS.map((d, i) => [d, dowJa(i)]), it.dow, 'data-f="dow"')}</td><td>${A.sel(Object.entries(PARTS()), it.part || "full", 'data-f="part"')}</td><td><input data-f="nth" value="${esc((it.nth || []).join(","))}" style="width:6em"></td><td style="text-align:center"><input type="checkbox" data-f="carry" ${it.carry ? "checked" : ""} title="${esc(T.t("翌月を作るとき、このパターンを引き継いで展開する（避けたい日の曜日希望などに）"))}"></td><td><button data-act="patDel">${esc(T.t("削除"))}</button></td></tr>`).join("")}
+${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><td>${patSel(Object.entries(PAT_KINDS()), it.kind, "kind")}</td><td>${patSel(DOWS.map((d, i) => [d, dowJa(i)]), it.dow, "dow")}</td><td>${patSel(Object.entries(PARTS()), it.part || "full", "part")}</td><td><input data-f="nth" value="${esc((it.nth || []).join(","))}" data-shown="${esc((it.nth || []).join(","))}" style="width:6em"></td><td style="text-align:center"><input type="checkbox" data-f="carry" data-shown="${it.carry ? 1 : 0}" ${it.carry ? "checked" : ""} title="${esc(T.t("翌月を作るとき、このパターンを引き継いで展開する（避けたい日の曜日希望などに）"))}"></td><td><button data-act="patDel">${esc(T.t("削除"))}</button></td></tr>`).join("")}
 </table>
 <p><button data-act="patAdd">${esc(T.t("行を追加"))}</button> <button data-act="patExpand">${esc(T.t("パターンをカレンダーに展開（{who} の業務と避けたい日を上書き）", { who: n }))}</button> <label><input type="checkbox" id="patHol" ${m.duties_on_holidays ? "checked" : ""}> ${esc(T.t("土日祝にも展開する"))}</label> <button data-act="calClear">${esc(T.t("{who} の業務を全消去", { who: n }))}</button></p>
 </details></div>`;
@@ -402,7 +406,15 @@ ${pats.map((it, i) => `<tr data-i="${i}"><td>${A.sel(Object.entries(PAT_KINDS())
         return [].concat(fx[k]?.[d] || []).includes(n) ? k : (fx[k + "_oc"]?.[d] || []).includes(n) ? k + "oc" : k === "day" && fx.weekend_charge?.[d] === n ? "charge" : ""; };
       if (changedFixed.some(el => fixedShownNow(el) !== el.value)) setTimeout(renderDoctor, 0); // 変更した欄の裏に残っていた条件を表示する。
     }
-    const pats = []; root.querySelectorAll("#patTbl tr[data-i]").forEach(tr => { const g = f => tr.querySelector(`[data-f="${f}"]`).value; const it = { kind: g("kind"), dow: g("dow"), part: g("part") }; const nth = A.parseDays(g("nth")); if (nth.length) it.nth = nth; const cb = tr.querySelector('[data-f="carry"]'); if (cb && cb.checked) it.carry = true; pats.push(it); });
+    // 曜日パターン: 触っていない行は保存値（余分なキー・数値文字列の第 n 曜日を含む）をそのまま返す。変えた行も保存値を土台に、画面の欄が持つ項目だけ書き換える
+    const pats = []; root.querySelectorAll("#patTbl tr[data-i]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => el(f).value, cb = el("carry");
+      let stored = null; try { stored = tr.dataset.pat !== undefined ? JSON.parse(tr.dataset.pat) : null; } catch (e) { stored = null; }
+      const same = f => el(f).dataset.shown !== undefined && g(f) === el(f).dataset.shown, untouched = stored && typeof stored === "object" && ["kind", "dow", "part", "nth"].every(same) && (!cb || (cb.checked ? "1" : "0") === cb.dataset.shown);
+      if (untouched) { pats.push(stored); return; }
+      const it = Object.assign({}, stored && typeof stored === "object" ? stored : {}, { kind: g("kind"), dow: g("dow"), part: g("part") });
+      if (!same("nth")) { const nth = A.parseDays(g("nth")); if (nth.length) it.nth = nth; else delete it.nth; }
+      if (cb && cb.checked) it.carry = true; else delete it.carry;
+      pats.push(it); });
     m.regular_duties[n] = pats;
     A.save();
   }
