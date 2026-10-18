@@ -829,8 +829,12 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     const label = T.pickLabel((R.profile || {}).label, (R.profile || {}).id || file.name);
     if (!confirm(T.t("施設プロファイル「{name}」を読み込みます。施設の構成・規則・規則の状態が置き換わります（「元に戻す」で取り消せます）。", { name: label }))) return;
     if (stopEdited()) return;
+    // Only the current explicit handover marker makes an empty roster authoritative.
+    // Legacy/placeholder files (and unrecognized marker versions) keep their existing fallback.
+    const marker = R.toban_profile;
+    const includedRoster = marker && typeof marker === "object" && !Array.isArray(marker) && marker.version === 1 && marker.roster === "included";
     delete R.toban_profile;
-    let prepared; try { prepared = prepareRulesImport(R, true); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
+    let prepared; try { prepared = prepareRulesImport(R, !includedRoster); } catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     pushUndo("施設プロファイルの読み込み");
     state.rules = prepared.rules; state.month = prepared.month;
     A.save(); A.renderAll();
