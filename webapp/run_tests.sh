@@ -45,6 +45,7 @@ run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_profile_day_flags_preservation_dom_node.js
 run test_profile_text_preservation_dom_node.js
+run test_name_order_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_pending_input_dom_node.js
@@ -117,6 +118,7 @@ if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tool
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
+run test_composition_day_selector_preservation_dom_node.js
 run test_sequence_selector_preservation_dom_node.js
 run test_pair_shift_preservation_dom_node.js
 run test_rule_setting_preservation_node.js "$HP"

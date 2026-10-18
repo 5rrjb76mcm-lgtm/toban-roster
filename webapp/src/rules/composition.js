@@ -73,7 +73,9 @@ T.rules.register({
         // This form owns these fields only; keep plug-in siblings on the same row.
         const c = Object.assign({}, (R.composition || [])[+tr.dataset.ci]);
         for (const k of ["shift", "days"]) delete c[k];
-        c.shift = g("cshift"); if (g("cdays") !== "all") c.days = g("cdays");
+        // Select values are exact flag identifiers; whitespace belongs to the ID.
+        const days = tr.querySelector("[data-cdays]").value;
+        c.shift = g("cshift"); if (days !== "all") c.days = days;
         for (const [k, f] of [["label", "clabel"], ["qual", "cqual"], ["not_qual", "cnot"]]) {
           const input = tr.querySelector(`[data-${f}]`);
           if (input.dataset?.textShown !== undefined && input.dataset.textEdited !== "1" && input.value === input.dataset.textShown) continue;
