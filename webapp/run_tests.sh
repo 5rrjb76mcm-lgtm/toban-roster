@@ -48,6 +48,7 @@ run test_profile_text_preservation_dom_node.js
 run test_name_order_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
+run test_profile_count_preservation_dom_node.js
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js
@@ -56,6 +57,7 @@ run test_calendar_clear_confirmation_dom_node.js
 run test_calendar_person_selection_dom_node.js
 run test_calendar_boundary_count_node.js
 run test_calendar_value_preservation_dom_node.js
+run test_month_day_flag_preservation_dom_node.js
 run test_previous_selection_preservation_node.js
 run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
@@ -119,6 +121,7 @@ run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
 run test_composition_day_selector_preservation_dom_node.js
+run test_composition_day_projection_dom_node.js
 run test_sequence_selector_preservation_dom_node.js
 run test_pair_shift_preservation_dom_node.js
 run test_rule_setting_preservation_node.js "$HP"
