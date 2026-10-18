@@ -17,7 +17,11 @@ T.rules.register({
     for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) { let c = 0; for (const s of ss) if (ctx.worked(S[i], s) && ctx.worked(S[j], s)) c++; ctx.limit("pair_cap", c, "<=", prm.max); }
   },
   ui: {
-    render(R, h) { const c = R.pair_cap || {}; return `<label>${h.sel(h.shifts, c.shift || "night", 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(T.numberInputText(c.max ?? 2))}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
+    render(R, h) { const c = R.pair_cap || {}, shift = c.shift || "night";
+      // Keep an imported unknown selection; unrelated edits must not select the first shift.
+      // This preserves the source value, not support for custom shifts in this rule.
+      const shifts = typeof shift !== "string" || h.shifts.some(([id]) => id === shift) ? h.shifts : h.shifts.concat([[shift, shift]]);
+      return `<label>${h.sel(shifts, shift, 'id="setPairShift"')} ${h.esc(h.tx("で同じ人と組むのは月"))} <input type="number" min="0" max="31" id="setPairMax" value="${h.esc(T.numberInputText(c.max ?? 2))}" style="width:3.5em"> ${h.esc(h.tx("回まで"))}</label>`; },
     // Preserve sibling settings consumed by facility plug-ins.
     read(R, el) { const a = el("#setPairShift"), b = el("#setPairMax"); if (a || b) { const c = Object.assign({}, R.pair_cap); if (a) c.shift = a.value; if (b && T.numberInputChanged(b, c.max ?? 2)) c.max = Math.max(0, +b.value || 0); R.pair_cap = c; } },
   },
