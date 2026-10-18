@@ -58,8 +58,11 @@ T.rules.register({
       // Retain this row's saved reference until the user explicitly chooses another scope.
       const dayOpts = c => typeof c.days === "string" && /^flag:.+/.test(c.days) && !dy.some(([id]) => id === c.days)
         ? dy.concat([[c.days, tx("「{f}」の日", { f: T.dayFlags ? T.dayFlags.labelOf(R, c.days.slice(5)) : c.days.slice(5) }) + tx("（現在は使わない値）")]]) : dy;
+      // HTML normalizes CR/CRLF and NUL in option values. Keep exact IDs by option
+      // index, including distinct IDs whose displayed values normalize identically.
+      const daySelect = c => { const opts = dayOpts(c); return sel(opts, c.days || "all", `data-cdays data-cday-values="${esc(JSON.stringify(opts.map(([id]) => id)))}"`); };
       return `<table class="grid" id="compTbl"><tr><th>${esc(tx("勤務帯"))}</th><th>${esc(tx("日"))}</th><th>${esc(tx("名前"))}</th><th>${esc(tx("何年目以上"))}</th><th>${esc(tx("何年目以下"))}</th><th>${esc(tx("資格あり"))}</th><th>${esc(tx("資格なし"))}</th><th>${esc(tx("最低（人）"))}</th><th>${esc(tx("最大（人）"))}</th><th></th></tr>` +
-        rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${sel(dayOpts(c), c.days || "all", "data-cdays")}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
+        rows.map((c, i) => `<tr data-ci="${i}"><td>${sel(sh, c.shift || "all", "data-cshift")}</td><td>${daySelect(c)}</td><td><input data-clabel value="${esc(c.label || "")}" style="width:9em"></td>` +
           ["years_min", "years_max"].map(k => `<td><input type="number" min="0" data-c${k === "years_min" ? "ymin" : "ymax"} value="${h.esc(T.numberInputText(c[k] ?? ""))}" style="width:4em"></td>`).join("") +
           `<td><input data-cqual value="${esc(c.qual || "")}" style="width:6em"></td><td><input data-cnot value="${esc(c.not_qual || "")}" style="width:6em"></td>` +
           `<td><input type="number" min="0" data-cmin value="${h.esc(T.numberInputText(c.min ?? ""))}" style="width:4em"></td><td><input type="number" min="0" data-cmax value="${h.esc(T.numberInputText(c.max ?? ""))}" style="width:4em"></td>` +
@@ -73,8 +76,9 @@ T.rules.register({
         // This form owns these fields only; keep plug-in siblings on the same row.
         const c = Object.assign({}, (R.composition || [])[+tr.dataset.ci]);
         for (const k of ["shift", "days"]) delete c[k];
-        // Select values are exact flag identifiers; whitespace belongs to the ID.
-        const days = tr.querySelector("[data-cdays]").value;
+        // Read the rendered option's exact ID, not its HTML-normalized projection.
+        const select = tr.querySelector("[data-cdays]"), values = select.dataset?.cdayValues;
+        const days = values && select.selectedIndex >= 0 ? JSON.parse(values)[select.selectedIndex] : select.value;
         c.shift = g("cshift"); if (days !== "all") c.days = days;
         for (const [k, f] of [["label", "clabel"], ["qual", "cqual"], ["not_qual", "cnot"]]) {
           const input = tr.querySelector(`[data-${f}]`);

@@ -356,8 +356,14 @@
       });
       const maxOf = v => isObj(v) ? Math.max(v.weekday == null ? 1 : +v.weekday || 0, v.off_days == null ? 1 : +v.off_days || 0) : (v ?? 1);
       const count = Object.assign({}, kept.count); let multi = Object.values(count).some(v => maxOf(v) > 1), staffingEdited = false;
-      const noteStaffingEdit = x => { if (x.value !== x.getAttribute?.("value")) staffingEdited = true; };
-      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => { noteStaffingEdit(x); const v = Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0)); count[x.dataset.count] = v; if (v > 1) multi = true; });
+      const noteStaffingEdit = x => { const edited = x.value !== x.getAttribute?.("value"); if (edited) staffingEdited = true; return edited; };
+      document.querySelectorAll("#shiftTbl input[data-count]").forEach(x => {
+        const edited = noteStaffingEdit(x), stored = profileCountOf(profileWorkCount(posOld), x.dataset.count);
+        // The numeric editor limit applies to edits, not accepted imported counts. Keep an
+        // untouched shift (also when editing its sibling or a bound) at its stored value.
+        const v = !edited && typeof stored === "number" ? stored : Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0));
+        count[x.dataset.count] = v; if (v > 1) multi = true;
+      });
       const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
       const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
       const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;

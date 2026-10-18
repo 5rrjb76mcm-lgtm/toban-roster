@@ -15,6 +15,17 @@
     { avoid_night: T.t("避：夜勤"), avoid_day: T.t("避：日勤帯"), avoid_allday: T.t("避：日夜両方") });
   const PARTS = () => ({ full: T.t("終日"), am: T.t("午前"), pm: T.t("午後") });
   const hasDay = (days, d) => (days || []).some(x => +x === d); // model.js と同じく数値文字列の日付も表示する（未選択として読み戻して消さない）
+  // HTML 属性が改行・NUL を正規化しても、区分の識別子は JSON からそのまま戻す。
+  // 変えた欄だけ反映し、未編集の区分・順序・画面にない日のデータは残す。
+  function readDayFlag(el) {
+    if (el.checked === (el.dataset.flagChecked === "1")) return;
+    let id; try { id = JSON.parse(el.dataset.flagId); } catch (e) { return; }
+    if (typeof id !== "string") return;
+    const m = state.month, d = +el.dataset.d, old = [].concat(m.day_flags?.[d] || []);
+    const ids = el.checked ? (old.includes(id) ? old : old.concat(id)) : old.filter(x => x !== id);
+    m.day_flags ||= {}; if (ids.length) m.day_flags[d] = ids; else delete m.day_flags[d];
+    el.dataset.flagChecked = el.checked ? "1" : "0";
+  }
   // 役割の機能から引く（識別子は施設ごとに違う）
   const roleOf = (R, ref) => { try { return (T.normalizeRolesOf(R).find(x => x.refs.includes(ref)) || {}).id || null; } catch (e) { return null; } };
   const standbyIds = R => { try { return T.normalizeRolesOf(R).filter(x => x.standby).map(x => x.id); } catch (e) { return []; } };
@@ -95,7 +106,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     { const flags = T.dayFlags ? T.dayFlags.activeFor(R) : [], N = A.daysIn(+m.year, +m.month), hol = new Set((m.holidays || []).map(Number)), hasData = Object.values(m.day_flags || {}).some(v => [].concat(v || []).length) || Object.values(m.day_notes || {}).some(v => v); // 日ごとの区分（プラグインが登録）と予定
       const hdr = `<tr><th>${esc(T.t("日付"))}</th>${flags.map(f => `<th>${f.source ? `<span class="plug">${esc(T.t("プラグイン"))}</span> ` : ""}${esc(T.pickLabel ? T.pickLabel(f.label, f.id) : String(f.label))}</th>`).join("")}<th>${esc(T.t("予定（行事など）"))}</th></tr>`;
       const rowsH = []; for (let d = 1; d <= N; d++) { const w = A.dowOf(+m.year, +m.month, d), holiday = w >= 5 || hol.has(d), fl = [].concat((m.day_flags || {})[d] || []);
-        rowsH.push(`<tr class="${holiday && w !== 5 ? "sun" : w === 5 ? "sat" : ""}"><th>${esc(T.t("{d}日（{dow}）", { d, dow: dowJa(w) }))}</th>${flags.map(f => `<td><input type="checkbox" data-dflag="${esc(f.id)}" data-d="${d}" ${fl.includes(f.id) ? "checked" : ""}></td>`).join("")}<td><input data-dnote="${d}" value="${esc((m.day_notes || {})[d] || "")}" style="width:14em"></td></tr>`); }
+        rowsH.push(`<tr class="${holiday && w !== 5 ? "sun" : w === 5 ? "sat" : ""}"><th>${esc(T.t("{d}日（{dow}）", { d, dow: dowJa(w) }))}</th>${flags.map(f => `<td><input type="checkbox" data-dflag="${esc(f.id)}" data-flag-id="${esc(JSON.stringify(f.id))}" data-flag-checked="${fl.includes(f.id) ? "1" : "0"}" data-d="${d}" ${fl.includes(f.id) ? "checked" : ""}></td>`).join("")}<td><input data-dnote="${d}" value="${esc((m.day_notes || {})[d] || "")}" style="width:14em"></td></tr>`); }
       h.push(`<div class="box"><details ${hasData || flags.length ? "open" : ""}><summary><b>${esc(T.t("日ごとの区分・予定"))}</b> <span class="note">${esc(T.t("区分の列は施設のプラグインが登録したもの。予定は勤務表の様式が使えれば出ます"))}</span></summary><table class="grid">${hdr}${rowsH.join("")}</table></details></div>`); }
     for (const def of T.RULE_DEFS || []) { const mu = def.ui && def.ui.month; if (!mu || !mu.render || !on(def.id)) continue; // 規則（プラグイン）が月ごとに入れる値の欄（plugin-example/README.md 0c）。「なし」の規則は出さない
       let inner = ""; try { inner = mu.render(R, m); } catch (e) { inner = `<p class="note">${esc(String(e && e.message || e))}</p>`; }
@@ -133,9 +144,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
         if (v != null && v !== "") t[el.dataset[attr]] = v;
       } m[key] = t; }
     if (root.querySelector("[data-dflag],[data-dnote]")) { // 日ごとの区分・予定（画面に出ている分だけ読み戻す。列の無い区分＝プラグインを読んでいない区分は、そのまま残す）
-      const shown = new Set([...root.querySelectorAll("[data-dflag]")].map(el => el.dataset.dflag)), old = m.day_flags || {}; m.day_flags = {}; m.day_notes = { ...(m.day_notes || {}) };
-      for (const [d, ids] of Object.entries(old)) { const keep = [].concat(ids || []).filter(id => !shown.has(id)); if (keep.length) m.day_flags[+d] = keep; }
-      root.querySelectorAll("[data-dflag]").forEach(el => { if (el.checked) (m.day_flags[+el.dataset.d] ||= []).push(el.dataset.dflag); });
+      root.querySelectorAll("[data-dflag]").forEach(readDayFlag); m.day_notes = { ...(m.day_notes || {}) };
       root.querySelectorAll("[data-dnote]").forEach(el => { if (el.dataset.textShown !== undefined && el.dataset.textEdited !== "1" && el.value === el.dataset.textShown) return; const v = el.value.trim(); if (v) m.day_notes[+el.dataset.dnote] = v; else delete m.day_notes[+el.dataset.dnote]; }); }
     // 未編集の履歴は元の値を残す。空に見える不正値も黙って消さず、明示編集だけ数値化する。
     const historyInput = (el, previous) => { const initial = el.getAttribute?.("value"), edited = el.dataset.numericEdited === "1";
@@ -263,7 +272,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     // 計算結果の記号（勤務表の様式と同じ）。この月の結果があるときだけ
     let symAt = () => ""; if (ext.symbol && state.result && state.result.asg) { try { const PS = new T.Problem(R, m), AS = new T.Asg(PS, state.result.asg); symAt = d => T.calendarExt.symbolHtml(ext.symbol(PS, AS, n, d)); } catch (e) { symAt = () => ""; } }
     const dflags = ext.dayHead && T.dayFlags ? T.dayFlags.activeFor(R) : []; // 日付の見出しで付け外しする日ごとの区分（その日の全員に効く）
-    const dayHead = d => !ext.dayHead ? "" : `<div class="calhead">${dflags.map(f => `<label class="calflag" title="${esc(T.t("その日の全員に効きます"))}"><input type="checkbox" data-cal="dflag" data-id="${esc(f.id)}" data-d="${d}" ${[].concat((m.day_flags || {})[d] || []).includes(f.id) ? "checked" : ""}>${esc(T.dayFlags.labelOf(R, f.id))}</label>`).join("")}${(m.day_notes || {})[d] ? `<span class="calnote">${esc(m.day_notes[d])}</span>` : ""}</div>`;
+    const dayHead = d => !ext.dayHead ? "" : `<div class="calhead">${dflags.map(f => `<label class="calflag" title="${esc(T.t("その日の全員に効きます"))}"><input type="checkbox" data-cal="dflag" data-id="${esc(f.id)}" data-flag-id="${esc(JSON.stringify(f.id))}" data-flag-checked="${[].concat((m.day_flags || {})[d] || []).includes(f.id) ? "1" : "0"}" data-d="${d}" ${[].concat((m.day_flags || {})[d] || []).includes(f.id) ? "checked" : ""}>${esc(T.dayFlags.labelOf(R, f.id))}</label>`).join("")}${(m.day_notes || {})[d] ? `<span class="calnote">${esc(m.day_notes[d])}</span>` : ""}</div>`;
     const fx = m.fixed || {}, isOC = standbyIds(R).includes(doc.team), isI = !!chargeId && doc.team === chargeId;
     const monthlyOCEligible = isCand && isOC && T.ruleState(R, "oncall") !== "off" && T.normalizeShiftsOf(R).some(sh => sh.on !== "none" && sh.oncall !== false);
     // 固定: 休日は日勤帯（日勤・日勤OC・期間責任者）と夜間（夜勤・夜間OC）を別々に選べる。平日は夜間だけ
@@ -395,8 +404,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       m.fixed_tags ||= {}; for (const key of Object.keys(keptTags)) { const [sl] = key.split("|"), [dd, kk] = sl.split(":"); if (![].concat((fx[kk] || {})[+dd] || []).includes(n)) delete m.fixed_tags[key]; }
       root.querySelectorAll('[data-cal="ftag"]').forEach(el => { const d = +el.dataset.d, k = el.dataset.k, key = `${d}:${k}|${n}`; // 固定の印（選択肢があるカレンダー）
         if (el.value && [].concat((fx[k] || {})[d] || []).includes(n)) m.fixed_tags[key] = el.value; else delete m.fixed_tags[key]; });
-      root.querySelectorAll('[data-cal="dflag"]').forEach(el => { const d = +el.dataset.d, id = el.dataset.id; m.day_flags ||= {}; const cur = new Set([].concat(m.day_flags[d] || [])); // 日付の見出しの区分（その日の全員に効く）
-        if (el.checked) cur.add(id); else cur.delete(id); if (cur.size) m.day_flags[d] = [...cur]; else delete m.day_flags[d]; });
+      root.querySelectorAll('[data-cal="dflag"]').forEach(readDayFlag); // 日付の見出しの区分（その日の全員に効く）
       if (root.querySelector('[data-cal="pfield"]')) { m.person_days ||= {}; const got = {}; // 施設のプラグインが足した日ごとの欄（この人の分を作り直す）
         root.querySelectorAll('[data-cal="pfield"]').forEach(el => { const id = el.dataset.id; got[id] ||= {}; if (el.value !== "") got[id][+el.dataset.d] = el.value; });
         for (const [id, byDay] of Object.entries(got)) { m.person_days[id] ||= {}; if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n]; } }
