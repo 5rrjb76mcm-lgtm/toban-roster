@@ -57,7 +57,10 @@ T.rules.register({
     render(d, R, h) { const v = (R.dayoff_work_max || {})[d.name]; return `<input type="text" inputmode="numeric" data-f="dwm" value="${h.esc(v ?? "")}" placeholder="―" style="width:3.5em" title="${h.esc(h.tx("土曜・日曜の実勤務は月に何日までか。空欄＝指定なし、0＝土日の実勤務なし。OC と平日（祝日を含む）の勤務は数えません"))}">`; },
     begin() { return {}; },
     read(td, d, R, acc, name) { const raw = String(td.querySelector("[data-f=dwm]").value || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); if (raw === "") return; const k = parse(raw); acc[name] = Number.isNaN(k) ? raw : k; },
-    end(R, acc) { R.dayoff_work_max = acc; },
+    end(R, acc, readback) {
+      // A visible row owns its names only; empty begin/end remains the cleanup contract.
+      const keep = readback ? Object.fromEntries(Object.entries(R.dayoff_work_max || {}).filter(([n]) => !readback.names.has(n))) : {};
+      R.dayoff_work_max = Object.assign(keep, acc); },
     rename(R, o, n) { const m = R.dayoff_work_max || {}; if (m[o] !== undefined) { m[n] = m[o]; delete m[o]; } } }],
   ui: { render(R, h) { return `<span class="note">${h.esc(h.tx("日数は名簿の「土日の実勤務の上限」の欄で人ごとに指定します（空欄の人には何もしません）。上限は減点で調整するため、ほかの条件との兼ね合いで超えることがあります。"))}</span>`; } },
   summary(P, prm, tv) { return tv("対象: {who}", { who: targets(P, prm).map(n => tv("{who} 月{n}日まで", { who: n, n: prm.max[n] })).join(T.listSep()) || tv("なし") }); },
