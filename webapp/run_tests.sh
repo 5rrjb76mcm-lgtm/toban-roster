@@ -34,6 +34,7 @@ run test_profile_export_node.js
 run test_profile_export_collision_node.js
 run test_profile_nested_config_dom_node.js
 run test_rule_field_ownership_dom_node.js
+run test_rule_absent_entries_dom_node.js
 run test_profile_edge_preservation_dom_node.js
 run test_roster_cleanup_collision_node.js "$HP"
 run test_rule_text_preservation_dom_node.js "$HP"
@@ -49,6 +50,7 @@ run test_name_order_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_count_preservation_dom_node.js
+run test_profile_minimum_preservation_dom_node.js
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js

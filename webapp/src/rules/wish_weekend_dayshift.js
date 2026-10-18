@@ -6,7 +6,13 @@ T.rules.register({
   weight: "wish_weekend_dayshift", w0: 20,
   columns: [{ key: "wkw", order: 20, label: "休日日勤の希望",
     render(d, R) { return `<input type="checkbox" data-f="wkw" ${(R.weekend_dayshift_wish || []).includes(d.name) ? "checked" : ""}>`; },
-    begin() { return []; }, read(td, d, R, acc, name) { if (td.querySelector("[data-f=wkw]").checked) acc.push(name); }, end(R, acc) { R.weekend_dayshift_wish = acc; },
+    begin() { return []; }, read(td, d, R, acc, name) { if (td.querySelector("[data-f=wkw]").checked) acc.push(name); }, end(R, acc, readback) {
+      // Keep unrepresented entries and their order; explicit unchecks own represented names.
+      // Without the readback context, empty begin/end still clears the personal container.
+      if (!readback) { R.weekend_dayshift_wish = acc; return; }
+      const keep = (Array.isArray(R.weekend_dayshift_wish) ? R.weekend_dayshift_wish : []).filter(n => !readback.names.has(n) || acc.includes(n));
+      for (const n of acc) if (!keep.includes(n)) keep.push(n);
+      R.weekend_dayshift_wish = keep; },
     rename(R, o, n) { R.weekend_dayshift_wish = (R.weekend_dayshift_wish || []).map(x => x === o ? n : x); } }],
   read(P, rules) { return { who: [...new Set([...P.wishWeekendDay, ...(rules.weekend_dayshift_wish || [])])] }; },
   solve(ctx, prm) {

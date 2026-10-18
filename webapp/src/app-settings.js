@@ -364,7 +364,8 @@
         const v = !edited && typeof stored === "number" ? stored : Math.max(0, Math.min(40, x.value === "" ? 1 : +x.value || 0));
         count[x.dataset.count] = v; if (v > 1) multi = true;
       });
-      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
+      let minimumEdited = false;
+      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (noteStaffingEdit(x)) minimumEdited = true; if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
       const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
       const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;
       // An unchanged shorthand is accepted storage, not an implicit request to flatten it.
@@ -372,7 +373,11 @@
       // branches and other metadata. Clearing a bound must remove that owned field.
       if (Object.keys(count).length && !(workOld != null && posOld.count === undefined && !staffingEdited)) {
         const next = Object.assign({}, isObj(posOld) ? posOld : {}, { count }); delete next.min; delete next.ideal;
-        if (Object.keys(mins).length) next.min = mins; if (Object.keys(ideals).length) next.ideal = ideals;
+        if (Object.keys(mins).length) next.min = mins;
+        // Present empty/null minima use the model's fallback of one, unlike absent min
+        // (fixed count). A blank display is not a request to remove that accepted value.
+        else if (!minimumEdited && posOld.min !== undefined) next.min = posOld.min;
+        if (Object.keys(ideals).length) next.ideal = ideals;
         (R.profile.positions ||= {}).work = next;
       }
       { const qm = document.querySelector("#setQuotaMode"); if (qm) { if (qm.value === "share") R.profile.quota_mode = "share"; else delete R.profile.quota_mode; } } // 目安の決め方
@@ -560,7 +565,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     catch (e) { A.toast(T.t("役割の変更を取り消しました: {err}", { err: e && e.message || e })); A.renderSettings(); return false; }
     if (undoLabel) pushUndo(undoLabel); // 不正な役割の編集は、既存の取り消し履歴にも触れない
     const oldNames = R.doctors.map(d => d.name), oldDuty = R.doctors.map(d => T.isDutyCandidate(d, false));
-    const prevDocs = Object.fromEntries(R.doctors.map(d => [d.name, d])), cols = T.rules.columns(R), acc = {};
+    const prevDocs = Object.fromEntries(R.doctors.map(d => [d.name, d])), cols = T.rules.columns(R), acc = {}, represented = {};
     for (const c of cols) if (c.begin) acc[c.key] = c.begin(R);
     // 名簿の読み戻しの順: (1) 行の氏名を確定する（氏名は個人の識別子なので一意にする。変えていない行の氏名を先に押さえ、改名・追加で重なるものは改名を取り消す／連番を付ける）
     // (2) 改名の追随（名簿の欄の rename と規則の rename）を複製で試し、失敗する改名は取り消す (3) 行を読む（土台は現在の職員。名前は確定した新しい名前）
@@ -586,7 +591,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (T.numberInputChanged(g("years"), prev.years ?? "")) d.years = +g("years").value || 0;
       if (g("share") && T.numberInputChanged(g("share"), prev.share ?? 1)) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
       // プラグインの欄。出ている欄はその値を読む（空にした欄は消す）。出ていない欄の値はそのまま。氏名は確定した名前で読む（改名の適用はこの後）
-      for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name, prev); }
+      for (const c of T.rules.columnsAll(R)) { const td = tr.querySelector(`[data-col="${c.key}"]`); if (!td) continue; (represented[c.key] ||= new Set()).add(old); represented[c.key].add(name); if (c.field) delete d[c.field]; c.read(td, d, R, acc[c.key], name, prev); }
       if (g("duty").value) d.duty = g("duty").value; else delete d.duty;
       docs.push(d);
     }
@@ -595,7 +600,8 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     // rebuild explicitly after add/delete/move, preserving their existing behavior.
     const orderChanged = docs.length !== oldNames.length || docs.some((d, i) => d.name !== oldNames[i] || T.isDutyCandidate(d, false) !== oldDuty[i]);
     R.doctors = docs; if (orderChanged) A.refreshNameOrder(R);
-    for (const c of cols) if (c.end) c.end(R, acc[c.key]);
+    // Only ordinary readback supplies the represented names. Cleanup probes still use empty begin/end.
+    for (const c of cols) if (c.end) c.end(R, acc[c.key], { names: represented[c.key] || new Set() });
     for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
       replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; state.renames = backup.renames; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
       A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return false; }
