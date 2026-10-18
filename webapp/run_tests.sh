@@ -32,6 +32,7 @@ run test_merge_scalar_clear_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
+run test_profile_included_roster_dom_node.js
 run test_profile_nested_config_dom_node.js
 run test_rule_field_ownership_dom_node.js
 run test_rule_absent_entries_dom_node.js
