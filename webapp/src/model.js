@@ -1067,9 +1067,18 @@
     const cfg = [];
     { const pr = P.rules.profile || {}; cfg.push(tv("施設プロファイル: {label}（{id}）", { label: T.pickLabel ? T.pickLabel(pr.label, pr.id || "") : (pr.label || ""), id: pr.id || "" })); }
     cfg.push(tv("役割: {roles}", { roles: P.roles.map(r => r.label + (r.refs.length ? `（${t({ charge: "期間の責任者になれる", other: "対になる役割", junior: "補助として入る役割", reserve: "原則配置しない予備" }[r.refs[0]] || r.refs[0])}）` : "")).join(sep) }));
-    cfg.push(tv("勤務帯: {shifts}", { shifts: shifts.map(sh => tv("{label}（{on}・1枠 {n} 人）", {
-      label: sh.label, n: (s => P.countMinOf(s) === P.countOf(s) ? P.countOf(s) : `${P.countMinOf(s)}〜${P.countOf(s)}` + (P.countIdealOf(s) != null && P.on("count_target") ? tv("（理想 {n}）", { n: P.countIdealOf(s) }) : ""))([P.slots.find(x => x[1] === sh.id)[0], sh.id]),
-      on: t({ all: "毎日", off_days: "土日祝だけ", weekdays: "平日だけ" }[sh.on] || sh.on) })).join(sep) }));
+    cfg.push(tv("勤務帯: {shifts}", { shifts: shifts.flatMap(sh => {
+      const slots = P.slots.filter(s => s[1] === sh.id);
+      const staffing = s => P.countMinOf(s) === P.countOf(s) ? String(P.countOf(s)) : `${P.countMinOf(s)}〜${P.countOf(s)}` + (P.countIdealOf(s) != null && P.on("count_target") ? tv("（理想 {n}）", { n: P.countIdealOf(s) }) : "");
+      const line = (on, n) => tv("{label}（{on}・1枠 {n} 人）", { label: sh.label, n, on: t({ all: "毎日", off_days: "土日祝だけ", weekdays: "平日だけ" }[on] || on) });
+      // All represented slots agree: retain the concise description. Otherwise describe
+      // each represented day type, rather than generalizing the first day's staffing.
+      if (new Set(slots.map(staffing)).size === 1) return [line(sh.on, staffing(slots[0]))];
+      return [false, true].flatMap(holiday => {
+        const s = slots.find(s => P.isHoliday(s[0]) === holiday);
+        return s ? [line(holiday ? "off_days" : "weekdays", staffing(s))] : [];
+      });
+    }).join(sep) }));
     { const cal = calendarOf(P.rules), src = CAL_BY_ID[cal.holidays];
       cfg.push(tv("暦: {src}。施設の休日: {closure}", { src: T.pickLabel ? T.pickLabel(src ? src.label : cal.holidays, cal.holidays) : cal.holidays, closure: cal.closure.flatMap(x => x.days.map(d => `${x.month}/${d}`)).join(sep) || t("なし") })); }
     cfg.push(tv("名簿: {n} 人（当番に入るのは {duty} 人）。枠は {slots}、勤務回数の目安の合計は {quota}", {

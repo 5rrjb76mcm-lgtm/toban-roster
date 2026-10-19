@@ -41,6 +41,10 @@ run test_roster_cleanup_collision_node.js "$HP"
 run test_rule_text_preservation_dom_node.js "$HP"
 run test_roster_qual_preservation_dom_node.js
 run test_settings_import_node.js
+run test_profile_shift_import_atomic_dom_node.js
+run test_profile_alias_uniqueness_dom_node.js
+run test_dayoff_raw_projection_dom_node.js
+run test_staffing_summary_dom_node.js
 run test_historical_name_guard_dom_node.js
 run test_history_cleanup_dom_node.js
 run test_role_edit_preservation_node.js

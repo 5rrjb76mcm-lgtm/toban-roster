@@ -56,7 +56,15 @@ T.rules.register({
     // 文字の欄にする（数の欄だと、読み込んだ値が数字でないとき空に見えて、無関係な編集の読み戻しで黙って消える）。全角の数字は半角に直して読む
     render(d, R, h) { const v = (R.dayoff_work_max || {})[d.name]; return `<input type="text" inputmode="numeric" data-f="dwm" value="${h.esc(v ?? "")}" placeholder="―" style="width:3.5em" title="${h.esc(h.tx("土曜・日曜の実勤務は月に何日までか。空欄＝指定なし、0＝土日の実勤務なし。OC と平日（祝日を含む）の勤務は数えません"))}">`; },
     begin() { return {}; },
-    read(td, d, R, acc, name) { const raw = String(td.querySelector("[data-f=dwm]").value || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim(); if (raw === "") return; const k = parse(raw); acc[name] = Number.isNaN(k) ? raw : k; },
+    read(td, d, R, acc, name, previous) { const input = td.querySelector("[data-f=dwm]"), old = R.dayoff_work_max || {}, key = previous?.name ?? name;
+      // HTML stringification and text-input sanitization can turn invalid saved values
+      // ([2], null, or "1\n2") into a valid number or an empty field. Only an edit owns that correction.
+      if (input.dataset?.textShown !== undefined && input.dataset.textEdited !== "1" && input.value === input.dataset.textShown) {
+        if (Object.prototype.hasOwnProperty.call(old, key)) acc[name] = old[key];
+        return;
+      }
+      const raw = String(input.value || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
+      if (raw === "") return; const k = parse(raw); acc[name] = Number.isNaN(k) ? raw : k; },
     end(R, acc, readback) {
       // A visible row owns its names only; empty begin/end remains the cleanup contract.
       const keep = readback ? Object.fromEntries(Object.entries(R.dayoff_work_max || {}).filter(([n]) => !readback.names.has(n))) : {};
