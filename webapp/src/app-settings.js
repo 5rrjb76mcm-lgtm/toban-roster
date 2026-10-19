@@ -5,8 +5,8 @@
   const esc = T.esc;
   const tx = (s2, a) => T.t(s2, a); // 日本語の文字列を鍵にして表示言語に訳す（訳が無ければ日本語のまま）。差し込む値があれば第 2 引数（{shift} など）
   const state = A.state;
-  const ruleTextSelector = "#setRunExempt, #compTbl [data-clabel], #compTbl [data-cqual], #compTbl [data-cnot]";
-  const snapshotRuleText = committed => document.querySelectorAll(ruleTextSelector).forEach(input => {
+  const ruleTextSelector = '#doctorTable [data-f="dwm"], #setRunExempt, #compTbl [data-clabel], #compTbl [data-cqual], #compTbl [data-cnot]';
+  const snapshotRuleText = (committed, scope = document) => scope.querySelectorAll(ruleTextSelector).forEach(input => {
     input.dataset.textShown = input.value; delete input.dataset.textEdited;
     if (committed) input.dataset.textCommitted = "1";
   });
@@ -74,6 +74,7 @@
       at("duty").map(c => cell(c, d)).join("") +
       `<td><button data-act="up">↑</button><button data-act="down">↓</button><button data-act="del">削除</button></td></tr>`).join("");
     $("#doctorTable").innerHTML = `<table class="grid"><tr>${head.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${rows}</table><p><button data-act="add">${esc(tx("{person}を追加"))}</button>　<span class="note">${esc(tx("表の順序が勤務表の枠外「週休日数」の氏名順になります。氏名を変えると、その月のカレンダー・不可日は新しい氏名に引き継がれます。名簿は月ごとの保存データに同梱されるので、過去の月は当時の名簿で開けます。欄が少ないと感じたら、対応する規則が「なし」になっていないか下の規則の表を確認してください。"))}</span></p>`;
+    snapshotRuleText(false, $("#doctorTable")); // Capture the sanitized projection, including roster-only re-renders.
   }
   function renderSettings() {
     const R = state.rules, L = s => T.term(s, R);
@@ -749,8 +750,10 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       catch (e) { throw new Error(T.t("名簿の個人別の欄を安全に除けないため、共有用の書き出しを中止しました。プラグインの欄の変換を確認してください")); }
       const schema = exportSchema(R, columnKeys), safeKeys = new Set(), safeValues = new Map(), valueWarnings = new Map(), structural = new Set();
       const collect = s => { if (!s) return; for (const v of s.tokens || []) structural.add(v); for (const [k, child] of s.fields || []) { structural.add(k); collect(child); } collect(s.item); }; collect(schema);
-      const roles = T.normalizeRolesOf(R), cnt = new Map(), map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
-      const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); const n = (cnt.get(base) || 0) + 1; cnt.set(base, n); const nn = `${base}${n}`; if (d.name) map.set(d.name, nn);
+      const roles = T.normalizeRolesOf(R), cnt = new Map(), usedAliases = new Set(), map = new Map(), origNames = (R.doctors || []).map(d => d.name).filter(n => typeof n === "string" && n);
+      const doctors = (R.doctors || []).map(d => { const r = roles.find(x => x.id === d.team); const base = r ? r.label : (d.team || "S"); // Different labels can generate the same alias (Staff + 11 and Staff1 + 1).
+        let n = (cnt.get(base) || 0) + 1; while (usedAliases.has(`${base}${n}`)) n++;
+        cnt.set(base, n); const nn = `${base}${n}`; usedAliases.add(nn); if (d.name) map.set(d.name, nn);
         const o = { name: nn }; for (const k of EXPORT_DOCTOR_KEYS) if (d[k] !== undefined) o[k] = d[k]; return o; });
       const childOf = (s, k) => s && s.fields && s.fields.get(k);
       const fits = (s, v) => {
@@ -811,6 +814,9 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     const historical = historicalImportNames(rules);
     if (historical.length) throw new Error(T.t("履歴・前月の記録にある氏名を新たに含むため、設定を読み込みませんでした: {who}。同じ本人なら、先に名簿の「追加」で確認してから、もう一度読み込んでください。別人なら、読み込む設定で別の氏名にしてください", { who: historical.join(T.nameSep()) }));
     T.fillDefaultRules(rules); T.normalizeMonth(month, rules);
+    // Reject unsupported shift definitions on the clone, before saving or rendering live state.
+    // Keep the raw definitions (including metadata); numeric errors remain repairable in settings.
+    T.normalizeShiftsOf(rules);
     return { rules, month };
   }
   async function importProfile(file) {
@@ -1040,7 +1046,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
     settings.addEventListener("focusout", ev => {
       if (ev.target.matches?.(ruleTextSelector) && ev.target.dataset.textEdited === "1" && settings.contains(ev.target)) {
-        if (readSettings("規則・重みの変更") === false) return;
+        if (readSettings(ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return;
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }

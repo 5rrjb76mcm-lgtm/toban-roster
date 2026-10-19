@@ -5,6 +5,14 @@ const fs = require("fs"), path = require("path"), vm = require("vm"), assert = r
 const root = process.env.TOBAN_WEBAPP_ROOT || __dirname, elements = new Map();
 function element(sel) {
   if (!elements.has(sel)) elements.set(sel, { handlers: {}, value: "", textContent: "", innerHTML: "", disabled: false,
+    // This partial fixture exposes only roster rows below doctorTable. Reject
+    // other element queries rather than silently returning an empty collection.
+    querySelectorAll(query) {
+      assert.strictEqual(sel, '#doctorTable', 'unsupported fixture query scope');
+      assert.strictEqual(query, '#doctorTable [data-f="dwm"], #setRunExempt, #compTbl [data-clabel], #compTbl [data-cqual], #compTbl [data-cnot]', 'unsupported fixture selector');
+      return document.querySelectorAll('#doctorTable tr[data-i]')
+        .map(row => row.querySelector('[data-f="dwm"]')).filter(Boolean);
+    },
     addEventListener(type, fn) { (this.handlers[type] ||= []).push(fn); } });
   return elements.get(sel);
 }
