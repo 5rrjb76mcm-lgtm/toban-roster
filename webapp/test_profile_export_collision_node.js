@@ -1,8 +1,18 @@
 // Shared-profile export must distinguish staff names from schema keys and IDs.
 // Exercises the actual sanitizer and rendered export/download/import entry points.
 // All staff, settings, browser storage and downloads here are synthetic.
+// Local run: node test_profile_export_collision_node.js. Requires Node and python3
+// (standard-library HTMLParser DOM adapter); no jsdom, solver or browser dependency.
+// Baseline: TOBAN_SOURCE_ROOT=/absolute/baseline/webapp node /absolute/patched/webapp/test_profile_export_collision_node.js
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert"), { execFileSync } = require("child_process");
-const root = process.env.TOBAN_TEST_ROOT || __dirname, elements = new Map();
+const EXPECTED_CASES = 115, cases = [];
+let passed = 0, failed = 0, started = 0, completed = 0, finished = false;
+process.on("exit", () => {
+  console.log(`ACCOUNTING registered=${cases.length} started=${started} completed=${completed} passed=${passed} failed=${failed} finished=${finished}`);
+  if (!finished || cases.length !== EXPECTED_CASES || started !== EXPECTED_CASES || completed !== EXPECTED_CASES || passed !== EXPECTED_CASES || failed) process.exitCode = 1;
+});
+const watchdog = setTimeout(() => { console.error("FAIL profile export collision regression timed out"); process.exit(1); }, 180000);
+const root = process.env.TOBAN_SOURCE_ROOT || process.env.TOBAN_TEST_ROOT || __dirname, elements = new Map();
 const element = s => { if (!elements.has(s)) elements.set(s, { value: "", innerHTML: "", textContent: "", hidden: false, disabled: false, className: "", listeners: {}, querySelectorAll: () => [], querySelector: () => null, addEventListener(k, fn) { (this.listeners[k] ||= []).push(fn); } }); return elements.get(s); };
 let alerts = [], confirmations = [], downloads = [], toasts = [], saves = 0, confirmAnswer = true, unhandled = [];
 const blobs = new Map(); let blobId = 0;
@@ -28,8 +38,7 @@ for (const key of ["renderAll", "renderHeader", "readAll", "renderSettingsMonth"
 A.save = () => saves++; A.toast = text => toasts.push(String(text));
 process.on("unhandledRejection", error => unhandled.push(error));
 A.bindSettings();
-let passed = 0, failed = 0;
-async function test(label, fn) { try { await fn(); console.log("ok " + label); passed++; } catch (error) { console.error("FAIL " + label + ": " + error.stack); failed++; } }
+function test(label, fn) { cases.push({ label, fn }); }
 // Reuse the actual-settings-renderer harness from test_roster_cleanup_collision_node.js.
 // Only DOM selection/event dispatch and the browser download boundary are adapted.
 const parseControls = html => JSON.parse(execFileSync("python3", ["-c", `import json,sys
@@ -42,7 +51,7 @@ class Controls(HTMLParser):
  def handle_endtag(self,tag):
   for i in range(len(self.stack)-1,0,-1):
    if self.stack[i]['tag']==tag: self.stack=self.stack[:i]; break
-p=Controls(); p.feed(sys.stdin.read()); print(json.dumps(p.root))`], { input: html, encoding: "utf8" }));
+p=Controls(); p.feed(sys.stdin.read()); print(json.dumps(p.root))`], { input: html, encoding: "utf8", timeout: 30000 }));
 const matchesControl = (el, selector) => selector.split(",").some(s => {
   s=s.trim();const tag=s.match(/^[\w-]+/),id=s.match(/#([\w-]+)/);
   if(tag&&el.tag!==tag[0]||id&&el.attrs.id!==id[1])return false;
@@ -331,6 +340,98 @@ function registerPersonalColumn(state = "off") {
       assert.strictEqual(JSON.stringify(A.state), renderedBefore, "failed shared transformation never changes live state");
     } finally { T.rules.unregister(id); T.plugins.loaded.length = 0; }
   });
+  // Both accepted day-flag spellings are identifiers. Shared export must not rename
+  // the scalar spelling while retaining flag:<id> references, or turn a reference
+  // matching a staff name into an alias that the model interprets as all days.
+  const flagScope = (R, id) => {
+    const M = T.normalizeMonth({ year: 2026, month: 11, day_flags: { 7: [id] } }, R), P = new T.Problem(R, M);
+    return P.slots.filter(s => P.compOn(P.comp[0], s));
+  };
+  for (const name of ["Synthetic Flag", "night"]) for (const shape of ["scalar", "object"]) await test(`${shape} flag ID equal to ${name} survives shared export with warning`, async () => {
+    const R = setup(name); delete R.opaque;
+    R.profile.day_flags = [shape === "scalar" ? name : { id: name, label: "Synthetic event" }];
+    R.composition = [{ shift: "night", days: `flag:${name}`, min: 1 }];
+    R.rule_states.composition = "hard";
+    const before = JSON.stringify(A.state), exported = A.profileForExport(false);
+    assert.deepStrictEqual(exported.rules.profile.day_flags, R.profile.day_flags);
+    assert.deepStrictEqual(exported.rules.composition, R.composition);
+    assert(T.dayFlags.activeFor(exported.rules).some(f => f.id === name), "exported definitions still own the referenced ID");
+    assert.deepStrictEqual(flagScope(exported.rules, name), [[7, "night"]]);
+    assert(exported.leftover.includes(name), "arbitrary identifiers containing staff names still need review");
+    assert.strictEqual(JSON.stringify(A.state), before);
+    const included = A.profileForExport(true).rules; delete included.toban_profile; assert.deepStrictEqual(included, R);
+  });
+  for (const declared of [true, false]) await test(`flag reference matching a staff name preserves one-day scope, declaration=${declared}`, async () => {
+    const R = setup("flag:training"); delete R.opaque;
+    if (declared) R.profile.day_flags = [{ id: "training", label: "Synthetic event" }];
+    R.composition = [{ shift: "night", days: "flag:training", min: 1 }]; R.rule_states.composition = "hard";
+    const before = JSON.stringify(A.state), exported = A.profileForExport(false);
+    assert.deepStrictEqual(exported.rules.composition, R.composition);
+    assert.deepStrictEqual(flagScope(exported.rules, "training"), [[7, "night"]], "a flag reference never broadens to all days");
+    assert(exported.leftover.includes("flag:training"));
+    assert.strictEqual(JSON.stringify(A.state), before);
+  });
+  for (const id of [" ", "training ", "unavailable.synthetic"]) await test(`exact accepted flag selector ${JSON.stringify(id)} is preserved`, async () => {
+    const name = `flag:${id}`, R = setup(name); delete R.opaque;
+    R.composition = [{ shift: "night", days: name, min: 1 }];
+    const before = JSON.stringify(A.state), exported = A.profileForExport(false);
+    assert.deepStrictEqual(exported.rules.composition, R.composition);
+    assert.deepStrictEqual(flagScope(exported.rules, id), [[7, "night"]]);
+    assert(exported.leftover.includes(name)); assert.strictEqual(JSON.stringify(A.state), before);
+  });
+  for (const days of ["all", "weekdays", "off_days"]) await test(`built-in day scope ${days} remains structural without a privacy warning`, async () => {
+    const R = setup(days); delete R.opaque;
+    R.composition = [{ shift: "night", days, min: 1 }];
+    const exported = A.profileForExport(false);
+    assert.deepStrictEqual(exported.rules.composition, R.composition); assert.deepStrictEqual(exported.leftover, []);
+  });
+  await test("flag labels and fixed-tag text remain ordinary anonymized text", async () => {
+    const R = setup("Synthetic Label"); delete R.opaque;
+    R.profile.day_flags = [{ id: "training", label: "Synthetic Label", short: "Synthetic Label" }];
+    R.profile.fixed_tags = ["Synthetic Label"];
+    const exported = A.profileForExport(false), alias = exported.rules.doctors[0].name;
+    assert.deepStrictEqual(exported.rules.profile.day_flags, [{ id: "training", label: alias, short: alias }]);
+    assert.deepStrictEqual(exported.rules.profile.fixed_tags, [alias]); assert.deepStrictEqual(exported.leftover, []);
+  });
+  for (const where of ["scalar", "reference"]) await test(`share-injected ${where} flag identifier still warns`, async () => {
+    const name = "Synthetic Injected", R = setup(name), id = "local.export.flag_injection"; delete R.opaque;
+    R.profile.day_flags = ["training"]; R.composition = [{ shift: "night", days: "flag:training", min: 1 }];
+    T.rules.register({ id, api: 1, states: ["off"], def: "off", share(rules) {
+      if (where === "scalar") rules.profile.day_flags[0] = name;
+      else rules.composition[0].days = `flag:${name}`;
+    } }); R.rule_states[id] = "off";
+    const before = JSON.stringify(A.state);
+    try { assert(A.profileForExport(false).leftover.includes(name)); assert.strictEqual(JSON.stringify(A.state), before); }
+    finally { T.rules.unregister(id); }
+  });
+  for (const where of ["key", "value"]) await test(`opaque ${where} matching a scalar flag remains ambiguous`, async () => {
+    const name = "Synthetic Flag", R = setup(name); delete R.opaque; R.profile.day_flags = [name];
+    R.local_opaque = where === "key" ? { [name]: { private_note: "PRIVATE-NOTE" } } : { allowed: [name] };
+    const before = JSON.stringify(A.state);
+    assert.throws(() => A.profileForExport(false), "newly recognized flag IDs must not exempt unknown personal payloads");
+    assert.strictEqual(JSON.stringify(A.state), before);
+  });
+  for (const kind of ["scalar", "reference"]) await test(`rendered ${kind} flag collision can be cancelled, then exported and imported intact`, async () => {
+    const name = kind === "scalar" ? "Synthetic Flag" : "flag:training", flag = kind === "scalar" ? name : "training", R = setup(name); delete R.opaque;
+    R.profile.day_flags = [flag]; R.composition = [{ shift: "night", days: `flag:${flag}`, min: 1 }]; R.rule_states.composition = "hard";
+    renderControls(); confirmAnswer = false; const before = JSON.stringify(A.state);
+    await clickExport(); assert.strictEqual(downloads.length, 0); assert.strictEqual(confirmations.length, 1); assert(confirmations[0].includes(name));
+    assert.strictEqual(JSON.stringify(A.state), before); assert.deepStrictEqual(alerts, []);
+    confirmAnswer = true; await clickExport(); assert.strictEqual(downloads.length, 1);
+    const exported = JSON.parse(await downloads[0].blob.text());
+    assert.deepStrictEqual(exported.profile.day_flags, [flag]); assert.deepStrictEqual(exported.composition, R.composition);
+    assert.deepStrictEqual(flagScope(exported, flag), [[7, "night"]]);
+    await importDownload(downloads[0]); assert.deepStrictEqual(alerts, []);
+    assert.deepStrictEqual(A.state.rules.profile.day_flags, [flag]); assert.deepStrictEqual(flagScope(A.state.rules, flag), [[7, "night"]]);
+  });
+  assert.strictEqual(cases.length, EXPECTED_CASES, "every planned regression is registered");
+  for (const { label, fn } of cases) {
+    started++;
+    try { await fn(); console.log("ok " + label); passed++; }
+    catch (error) { console.error("FAIL " + label + ": " + error.stack); failed++; }
+    finally { completed++; }
+  }
+  assert.strictEqual(completed, EXPECTED_CASES); finished = true; clearTimeout(watchdog);
   console.log(`profile export collision: ${passed} passed, ${failed} failed`);
   if (failed) process.exitCode = 1;
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch(error => { clearTimeout(watchdog); console.error(error); process.exitCode = 1; });
