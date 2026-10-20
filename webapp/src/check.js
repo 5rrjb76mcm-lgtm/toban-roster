@@ -272,6 +272,9 @@
     // 各枠に勤務できる人がいるか
     for (const s of P.slots) { const c = P.dutyNames.filter(n => cctx.canWork(n, s)); if (!c.length) push("LINT_SLOT_NO_CANDIDATE", { day: lab(s[0]), slot: P.shiftLabel(s[1]) }); }
     T.rules.runLint(cctx); // プラグインの入力チェック
+    // 容量見積もりの前提は該当する指摘に添える。説明だけの項目を「矛盾の疑い」に数えない。
+    const capacityNote = cctx.facts.busy_days?.note;
+    if (capacityNote) for (const item of out) if (["LINT_BUSY_DAYS_TOO_FEW", "LINT_SHIFT_CAPACITY", "LINT_COMPOSITION_TOO_FEW_PEOPLE", "LINT_COMPOSITION_CAPACITY"].includes(item.code)) item.msg += " " + capacityNote;
     return out;
   }
 

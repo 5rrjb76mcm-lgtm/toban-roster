@@ -43,13 +43,16 @@ run test_roster_qual_preservation_dom_node.js
 run test_settings_import_node.js
 run test_profile_shift_import_atomic_dom_node.js
 run test_profile_alias_uniqueness_dom_node.js
+run test_report_change_identity_node.js
 run test_dayoff_raw_projection_dom_node.js
+run test_weight_readback_preservation_dom_node.js
 run test_staffing_summary_dom_node.js
 run test_historical_name_guard_dom_node.js
 run test_history_cleanup_dom_node.js
 run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
 run test_profile_day_flags_preservation_dom_node.js
+run test_profile_list_projection_dom_node.js
 run test_profile_text_preservation_dom_node.js
 run test_name_order_preservation_dom_node.js
 run test_settings_builder_preservation_dom_node.js "$HP"
@@ -170,6 +173,7 @@ run test_reserve_permission_node.js "$HP"
 run test_reserve_lint_node.js "$HP"
 run test_reserve_targets_node.js
 run test_fixed_only_lint_node.js "$HP"
+run test_fixed_only_busy_supply_node.js "$HP"
 run test_fixed_only_targets_node.js "$HP"
 run test_variable_capacity_node.js "$HP"
 run test_count_limits_node.js "$HP"

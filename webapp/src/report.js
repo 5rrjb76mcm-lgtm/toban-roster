@@ -3,6 +3,8 @@
   const esc = T.esc; // HTML エスケープ（model.js で共通定義）
   const table = (hdr, rows, cls = "") => `<table class="rep ${cls}"><thead><tr>${hdr.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   const join = (a, sep = null) => (a || []).join(sep == null ? T.nameSep() : sep);
+  // Compare names as structured values: a display separator can also be part of a name.
+  const nameSetKey = value => JSON.stringify([].concat(value || []).filter(Boolean).sort());
 
   // sections: [{id, title, html}]
   function buildReport(P, asg, info = {}) {
@@ -34,9 +36,9 @@
       const avoidTxt = P.dutyNames.filter(n => (P.avoid[n] || []).some(([dd]) => dd === d)).map(n => { const ps = [...new Set((P.avoid[n] || []).filter(([dd]) => dd === d).map(([, pp]) => P.msg(pp === "allday" ? "AVOID_MARK_ALL" : pp === "day" ? "AVOID_MARK_DAY" : "AVOID_MARK_NIGHT")))]; return `${n}(${ps.join("")})`; }).join("・");
       const cls = P.isHoliday(d) ? (P.dow(d) === 5 && !P.holidaysExtra.has(d) ? "sat" : "sun") : "";
       // 最小変更で直したときは、前回の版と違う枠を赤字にする（info.baseAsg）
-      const B = info.baseAsg || null; const bw = s => (B && B[`${s[0]}:${s[1]}`] ? (B[`${s[0]}:${s[1]}`].work || "") : ""), bo = s => (B && B[`${s[0]}:${s[1]}`] ? [...(B[`${s[0]}:${s[1]}`].oc || [])].sort().join("・") : "");
-      const cw = s => { const t = esc(A.workers(s).map(n => P.nameWithTag(s, n)).join("・")); return B && [...A.workers(s)].sort().join("・") !== [].concat(bw(s) || []).filter(Boolean).sort().join("・") ? `<span class="chg">${t}</span>` : t; }; // 固定の印（研修など）は名前の後ろ
-      const co = s => { const t = esc(join(A.oc(s))); return B && [...A.oc(s)].sort().join("・") !== bo(s) ? `<span class="chg">${t}</span>` : t; };
+      const B = info.baseAsg || null, before = s => B && B[`${s[0]}:${s[1]}`] || {};
+      const cw = s => { const t = esc(A.workers(s).map(n => P.nameWithTag(s, n)).join("・")); return B && nameSetKey(A.workers(s)) !== nameSetKey(before(s).work) ? `<span class="chg">${t}</span>` : t; }; // 固定の印（研修など）は名前の後ろ
+      const co = s => { const t = esc(join(A.oc(s))); return B && nameSetKey(A.oc(s)) !== nameSetKey(before(s).oc) ? `<span class="chg">${t}</span>` : t; };
       const dayCell = P.slotExists(d, "day") ? [cw([d, "day"]), co([d, "day"])] : ["―", "―"]; // 日勤枠がある日だけ（勤務帯の設定による）
       rows2.push([P.isHoliday(d) ? `<span class="${cls}">${esc(P.label(d))}</span>` : esc(P.label(d)), ...dayCell, cw([d, "night"]), co([d, "night"]), esc(unDay), esc(unNight), esc(avoidTxt)]);
     }

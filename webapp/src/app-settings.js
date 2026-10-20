@@ -83,7 +83,7 @@
     // 規則の表に出る重み（規則そのものの重みと、その中で使う重み）は、ここには重ねて出さない
     const owned = new Set((T.RULE_DEFS || []).flatMap(d => [d.weight].concat(d.sub || [])).filter(Boolean));
     const rest = Object.keys(WEIGHT_LABELS).filter(k => !owned.has(k));
-    $("#weightsTable").innerHTML = `<table class="grid"><tr><th>${esc(tx("調整目標"))}</th><th>${esc(tx("重み"))}</th></tr>${rest.map(k => `<tr><td>${esc(L(tx(WEIGHT_LABELS[k])))}<br><small class="note">${esc(k)}</small></td><td><input type="number" data-w="${esc(k)}" value="${esc(W[k] ?? "")}" style="width:5em"></td></tr>`).join("")}</table>
+    $("#weightsTable").innerHTML = `<table class="grid"><tr><th>${esc(tx("調整目標"))}</th><th>${esc(tx("重み"))}</th></tr>${rest.map(k => `<tr><td>${esc(L(tx(WEIGHT_LABELS[k])))}<br><small class="note">${esc(k)}</small></td><td><input type="number" data-w="${esc(k)}" value="${esc(T.numberInputText(W[k] ?? ""))}" style="width:5em"></td></tr>`).join("")}</table>
 <p class="note">${esc(tx("ここに無い重みは、上の規則の表で規則ごとに並んでいます。"))}</p>`;
     renderBuilder(R); renderHardRules(R); renderUndo(); renderHistoryCleanup();
     { const el = $("#pluginsInfo"), pl = T.PLUGINS || [], fl = (T.plugins && T.plugins.loaded) || []; if (el) { const lines = [];
@@ -127,10 +127,10 @@
   // Match workerCount: explicit count (including null) wins; otherwise work itself is the count.
   const profileWorkCount = work => work != null && work.count !== undefined ? work.count : work;
   const profileCountOf = (c, k) => c == null ? null : typeof c === "number" ? c : typeof c === "object" ? (c[k] !== undefined ? c[k] : (c.weekday !== undefined || c.off_days !== undefined ? c : null)) : null;
-  // Text inputs remove line breaks; compare the displayed projection before normalizing edits.
+  // Text inputs remove line breaks and HTML replaces NUL; compare the display before normalizing edits.
   const profileInputText = value => String(value ?? "").replace(/[\r\n]/g, "").replace(/\0/g, "\uFFFD");
-  const profileTagLabel = x => String(typeof x === "string" ? x : x.label || "").replace(/[\r\n]/g, "");
-  const profileFlagLabel = x => String(typeof x === "string" ? x : T.pickLabel(x.label, x.id)).replace(/[\r\n]/g, "");
+  const profileTagLabel = x => profileInputText(typeof x === "string" ? x : x.label || "");
+  const profileFlagLabel = x => profileInputText(typeof x === "string" ? x : T.pickLabel(x.label, x.id));
   function renderBuilder(R) {
     const h = [], step = (n, title, body) => h.push(`<div class="builder-step"><h4>${n}. ${esc(tx(title))}</h4>${body}</div>`);
     { const cur = R.profile || {}; const pl = x => T.pickLabel((x || {}).label, (x || {}).id);
@@ -256,12 +256,12 @@
         const st = T.ruleState(R, def.id), onStates = def.states.filter(x => x !== "off");
         rows.push(`<tr data-rs="${esc(def.id)}"${plugRow(def)}><td>${plugTag(def)}${esc(T.ruleLabel(R, def))}<br>${idNote(R, def)}</td>` +
           `<td>${onStates.length > 1 ? A.sel(onStates.map(x => [x, tx(T.STATE_JA[x])]), st, `data-rsv="${esc(def.id)}"`) : esc(tx(T.STATE_JA[st]))}</td>` +
-          `<td>${def.weight && onStates.includes("soft") ? `<input type="number" data-rsw="${esc(def.weight)}" value="${esc(R.weights?.[def.weight] ?? def.w0)}" style="width:5em"${st === "soft" ? "" : " disabled"}>` : "―"}</td></tr>`);
+          `<td>${def.weight && onStates.includes("soft") ? `<input type="number" data-rsw="${esc(def.weight)}" value="${esc(T.numberInputText(R.weights?.[def.weight] ?? def.w0))}" style="width:5em"${st === "soft" ? "" : " disabled"}>` : "―"}</td></tr>`);
         const parts = [];
         const p = def.id === "oncall" ? "" : ruleParams(R, def); if (p) parts.push(p); // オンコールの構成は施設の構成を作るで決める
         const subs = (def.sub || []).filter(k => WEIGHT_LABELS[k]);
         if (subs.length) parts.push(`<div class="note">${esc(tx("この規則の中で使う重み: "))}` +
-          subs.map(k => `<label style="margin-right:1em">${esc(T.term(tx(WEIGHT_LABELS[k]), R))} <input type="number" data-rsw="${esc(k)}" value="${esc(R.weights?.[k] ?? "")}" style="width:5em"></label>`).join("") + `</div>`);
+          subs.map(k => `<label style="margin-right:1em">${esc(T.term(tx(WEIGHT_LABELS[k]), R))} <input type="number" data-rsw="${esc(k)}" value="${esc(T.numberInputText(R.weights?.[k] ?? ""))}" style="width:5em"></label>`).join("") + `</div>`);
         if (parts.length) rows.push(`<tr class="rparam"><td colspan="3">${parts.join("")}</td></tr>`);
         shown++;
       }
@@ -405,7 +405,9 @@
       else if (on && cur === "off") R.rule_states[def.id] = def.def !== "off" ? def.def : def.states.find(x => x !== "off"); // 使うにした規則は既定の扱いから始める
       else if (sv) R.rule_states[def.id] = sv.value;
     }
-    document.querySelectorAll("#hardRules [data-rsw]").forEach(x => { if (!x.disabled && x.value !== "") (R.weights ||= {})[x.dataset.rsw] = +x.value; });
+    // A weight's rendered number is only a projection: [2] looks like 2 but must
+    // remain invalid until the user explicitly corrects that weight.
+    document.querySelectorAll("#hardRules [data-rsw]").forEach(x => { if (!x.disabled && x.value !== "" && T.numberInputChanged(x, R.weights?.[x.dataset.rsw] ?? "")) (R.weights ||= {})[x.dataset.rsw] = +x.value; });
     if (R._multiWork) { // 1 枠に複数名のときは、勤務者が 1 名である前提の規則を外す（そのままだと計算できない）
       const off = ["oncall", "period_charge", "same_day_team"].filter(id => T.RULE_BY_ID[id] && T.ruleState(R, id) !== "off"); // 登録の無い規則（プラグイン）は無視
       for (const id of off) R.rule_states[id] = "off";
@@ -606,7 +608,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     for (const r of rows) if (r.old && r.old !== r.name && !renameDoctor(r.old, r.name, { readBack: true })) { // 読んだ後に改名を適用（月・結果・独自データの追随）。ここで失敗したら読み戻し全体を取り消す
       replaceInto(state.rules, backup.rules); replaceInto(state.month, backup.month); state.result = backup.result; state.base = backup.base; state.baseRules = backup.baseRules; state.renames = backup.renames; // 1 件目の改名が済んでいても、結果・統合の基準ごと元に戻す
       A.toast(T.t("名簿の読み戻しを取り消しました（{who} の改名の追随に失敗）", { who: r.old })); A.renderSettings(); return false; }
-    R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "") R.weights[el.dataset.w] = +el.value; });
+    R.weights = R.weights || {}; document.querySelectorAll("#weightsTable [data-w]").forEach(el => { if (el.value !== "" && T.numberInputChanged(el, R.weights[el.dataset.w] ?? "")) R.weights[el.dataset.w] = +el.value; });
     readHardRules(R, roleEdit);
     A.ensureMonth(state.month); A.save();
     snapshotRuleText(true);
@@ -699,6 +701,10 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     const ocRoles = [...new Set([...roleIds, ...(T.DEFAULT_ROLES || []).map(x => x.id)])];
     const languages = [...new Set(["ja", "en", ...(T.LANGS ? T.LANGS().map(([code]) => code) : [])])];
     const label = Object.assign(dict(languages, text), { accept: x => typeof x === "string" || plain(x) && Object.keys(x).every(k => languages.includes(k)) });
+    // Scalar day flags are identifiers too, and flag:<id> is a structural reference.
+    // Keep either spelling when it matches a staff name, but still warn about the name.
+    const flagScope = x => typeof x === "string" && /^flag:./.test(x), dayScopes = ["all", "weekdays", "off_days"];
+    const days = { safe: x => dayScopes.includes(x) || flagScope(x), accept: x => dayScopes.includes(x) || flagScope(x), tokens: dayScopes, warn: x => flagScope(x) ? "all" : null };
     const count = obj({ weekday: number, off_days: number }); count.safe = number.safe; count.accept = x => number.accept(x) || plain(x) && Object.entries(x).every(([k, v]) => count.fields.has(k) && number.accept(v));
     const counts = obj({ day: count, night: count, weekday: number, off_days: number }); counts.safe = number.safe; counts.accept = x => number.accept(x) || plain(x) && Object.entries(x).every(([k, v]) => counts.fields.has(k) && counts.fields.get(k).accept(v));
     const bounds = obj({ min: number, max: number });
@@ -707,7 +713,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       shifts: arr(obj({ id: shift, label, on: oneOf(["off_days", "all", "weekdays", "none"]), oncall: bool })),
       positions: obj({ work: Object.assign(obj({ count: counts, min: counts, ideal: counts, day: count, night: count, weekday: number, off_days: number }), { safe: number.safe, accept: x => number.accept(x) || plain(x) }) }),
       calendar: obj({ holidays: id, closure: arr(obj({ month: number, days: arr(number) })) }),
-      day_flags: arr(Object.assign(obj({ id, label, short: label }), { accept: x => typeof x === "string" || plain(x) })), fixed_tags: arr(Object.assign(obj({ label, shifts: arr(shift) }), { accept: x => typeof x === "string" || plain(x) })) });
+      day_flags: arr(Object.assign(obj({ id, label, short: label }), { safe: id.safe, warn: id.warn, accept: x => typeof x === "string" || plain(x) })), fixed_tags: arr(Object.assign(obj({ label, shifts: arr(shift) }), { accept: x => typeof x === "string" || plain(x) })) });
     const defs = T.RULE_DEFS || [], weights = [...new Set([...Object.keys(WEIGHT_LABELS), ...defs.flatMap(d => [d.weight, ...(d.sub || []), ...Object.keys(d.w0sub || {})]).filter(Boolean)])];
     const fields = {
       profile, doctors: arr(obj({ name: text, team: role, quota: number, share: number })), name_order: arr(text),
@@ -723,7 +729,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       days_off: obj({ min: { safe: x => x === "auto" || number.safe(x), accept: x => x === "auto" || number.accept(x) }, hours_per_week: number, hours_per_day: number, basis: oneOf(["hours", "holidays"]), mode: oneOf(["exact", "min"]), ake_is_off: bool, pair_min: number, pair_count: oneOf(["pairs", "runs"]), max_extra: number }),
       wish_off: obj({ max: number, counts: oneOf(["unavailable", "avoid", "both"]) }),
       forbid_sequence: arr(obj({ from: oneOf(["day", "night", "any"]), to: oneOf(["day", "night", "any"]) })),
-      composition: arr(obj({ shift: oneOf(["day", "night", "all"]), days: oneOf(["all", "weekdays", "off_days"]), label, qual: text, not_qual: text, years_min: number, years_max: number, min: number, max: number })),
+      composition: arr(obj({ shift: oneOf(["day", "night", "all"]), days, label, qual: text, not_qual: text, years_min: number, years_max: number, min: number, max: number })),
       docx: obj({ template: id, font: text, paper: obj({ size: oneOf(["A3", "A4", "Letter"]), orient: oneOf(["portrait", "landscape"]), margin: number }) }),
     };
     for (const d of defs) { for (const p of d.params || []) if (!(p.key in fields)) fields[p.key] = number; if (d.legacy && !(d.legacy in fields)) fields[d.legacy] = { accept: x => x == null || typeof x !== "object" }; }
@@ -764,7 +770,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       };
       // Snapshot the original structural edges/values before share hooks run. A hook
       // cannot introduce a name into a structural-looking location to evade the scan.
-      const prove = (v, s, p = []) => { if (typeof v === "string" && s && s.safe && s.safe(v)) { safeValues.set(pathKey(p), v); if (s.warn) valueWarnings.set(pathKey(p), s.warn); structural.add(v); }
+      const prove = (v, s, p = []) => { if (typeof v === "string" && s && s.safe && s.safe(v)) { safeValues.set(pathKey(p), v); const warn = typeof s.warn === "function" ? s.warn(v) : s.warn; if (warn) valueWarnings.set(pathKey(p), warn); structural.add(v); }
         if (Array.isArray(v)) v.forEach((x, i) => prove(x, s && s.item, [...p, i]));
         else if (plain(v)) for (const [k, x] of Object.entries(v)) { const q = [...p, k], child = childOf(s, k); if (fits(child, x) && !personalKeys.has(pathKey(q))) safeKeys.add(pathKey(q)); prove(x, child, q); }
       }; prove(R, schema);
@@ -989,7 +995,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     });
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnExportProfile") exportProfile(); });
     const settings = $("#settings"), isRuleNumber = el => ["setRunMax", "setRunMin", "setHrWeek", "setHrDay", "setOffMin", "setPairMax", "setWishOffMax", "setDoMaxExtra", "setPairMin"].includes(el.id), committedRuleValues = new WeakMap();
-    const customNumberSelector = '[data-scr], [data-srm], [data-f="fri"], [data-cymin], [data-cymax], [data-cmin], [data-cmax], [data-oc]';
+    const customNumberSelector = '[data-scr], [data-srm], [data-f="fri"], [data-cymin], [data-cymax], [data-cmin], [data-cmax], [data-oc], [data-w], [data-rsw]';
     const isCustomNumber = input => input.matches?.(customNumberSelector), committedCustomValues = new WeakMap();
     const refreshCustomNumbers = () => {
       const R = state.rules;
@@ -999,6 +1005,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         else if (input.dataset.srm !== undefined) shown = (R.shift_run_max || { day: 3 })[input.dataset.srm] ?? "";
         else if (input.dataset.f === "fri") shown = (R.friday_night_min || {})[R.doctors[+input.closest("tr[data-i]").dataset.i].name] ?? "";
         else if (input.dataset.oc !== undefined) shown = ((R.oncall_requirement || {})[input.closest("tr[data-t]").dataset.t] || {})[input.dataset.oc] ?? 0;
+        else if (input.dataset.w !== undefined || input.dataset.rsw !== undefined) shown = R.weights?.[input.dataset.w ?? input.dataset.rsw] ?? "";
         else { const row = (R.composition || [])[+input.closest("tr[data-ci]").dataset.ci] || {};
           const field = [["cymin", "years_min"], ["cymax", "years_max"], ["cmin", "min"], ["cmax", "max"]].find(([key]) => input.dataset[key] !== undefined)[1];
           shown = row[field] ?? "";

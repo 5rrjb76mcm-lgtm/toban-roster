@@ -1446,6 +1446,7 @@
     "LINT_PERIOD_CHARGE_NEEDS_ONCALL": "The period-charge rule needs the person in charge in every slot of the period, but the {shift} shift has no on-call; the same person would have to work consecutive days, which usually has no solution",
     "LINT_PERIOD_CHARGE_NEEDS_ONCALL_HINT": "In \"Set up the facility\", attach on-call to this shift, or untick the period-charge rule",
     "DAYS_OFF_OVER": "{who}: {off} days off, more than the required {target}",
+    "BUSY_DAYS_FIXED_ONLY_OFF_NOTE": "For this working-day capacity estimate, fixed-only staff may also cover non-fixed shifts when the fixed-only rule is off. Their quota, run-length and days-off exemptions remain. Facility plug-in restrictions are not included, so this upper bound does not guarantee an achievable schedule.",
     "COMPOSITION_SHORT": "{slot}: {got} of \"{cond}\" (at least {min} needed)",
     "COMPOSITION_OVER": "{slot}: {got} of \"{cond}\" (at most {max})",
     "LINT_BUSY_DAYS_TOO_MANY": "The {people} people must work {supply} days in total (days off are fixed exactly), but the slots need only {need} working days (night shifts count the post-night day too). {diff} days are left over, so there is no solution",
