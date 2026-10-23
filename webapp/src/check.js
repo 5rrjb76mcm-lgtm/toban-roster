@@ -269,8 +269,9 @@
       if (!P.refId("junior") && P.state("oncall") === "hard") push("LINT_ROLE_REF_MISSING", { ref: T.t("補助として入る役割") }); } // 期間責任者の役割はプラグイン period_charge が見る
     { const want = (P.rules.profile || {}).id, got = (P.m || {}).profile_id;
       if (want && got && want !== got) push("LINT_PROFILE_MISMATCH", { got, want }); }
-    // 各枠に勤務できる人がいるか
-    for (const s of P.slots) { const c = P.dutyNames.filter(n => cctx.canWork(n, s)); if (!c.length) push("LINT_SLOT_NO_CANDIDATE", { day: lab(s[0]), slot: P.shiftLabel(s[1]) }); }
+    // 必須の人数がある枠に勤務できる人がいるか。下限0の空枠は許される。
+    // 固定指定・構成・個人の下限などが別に求める勤務は、それぞれの入力チェックで知らせる。
+    for (const s of P.slots) { if (P.countMinOf(s) === 0) continue; const c = P.dutyNames.filter(n => cctx.canWork(n, s)); if (!c.length) push("LINT_SLOT_NO_CANDIDATE", { day: lab(s[0]), slot: P.shiftLabel(s[1]) }); }
     T.rules.runLint(cctx); // プラグインの入力チェック
     // 容量見積もりの前提は該当する指摘に添える。説明だけの項目を「矛盾の疑い」に数えない。
     const capacityNote = cctx.facts.busy_days?.note;

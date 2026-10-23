@@ -593,6 +593,7 @@
     "（未確認）": " (not confirmed)",
     "同日夜勤": "night shift the same day",
     "同日夜間OC": "night on-call the same day",
+    "同日日勤OC": "day on-call the same day",
     "同日日勤OC（禁止）": "day on-call the same day (forbidden)",
     "同日の夜勤・OCなし": "no night shift or on-call that day",
     "午後外勤": "outside work in the afternoon",

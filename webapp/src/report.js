@@ -116,7 +116,7 @@
     // 午後外勤日の全件（同日の夜勤・夜間OCの有無と「間に合う」確認の登録）
     for (const n of P.dutyNames) for (let d = 1; d <= P.N; d++) if (P.busy(n, d, "pm", ["external"])) {
       const ok = tx(P.confirmedPmExtNight.has(`${d}:${n}`) ? "（間に合う確認あり）" : "（未確認）");
-      const st = A.worked(n, [d, "night"]) ? tx("同日夜勤") + ok : A.oc([d, "night"]).includes(n) ? tx("同日夜間OC") + ok : A.oc([d, "day"]).includes(n) ? tx("同日日勤OC（禁止）") : tx("同日の夜勤・OCなし");
+      const st = A.worked(n, [d, "night"]) ? tx("同日夜勤") + ok : A.oc([d, "night"]).includes(n) ? tx("同日夜間OC") + ok : A.oc([d, "day"]).includes(n) ? tx(P.isHard("duty_conflicts") ? "同日日勤OC（禁止）" : "同日日勤OC") : tx("同日の夜勤・OCなし");
       rows7.push([`${esc(P.label(d))} ${esc(tx("午後外勤"))}`, esc(n), esc(st)]);
     }
     S.push({ id: "s7", title: tx("7 定期業務との重なり（残る負担・午後外勤日の全件）"), html: rows7.length ? table(["担当", "{person}", "翌日の業務／当日の扱い"].map(tx), rows7) : `<p>${esc(tx("なし"))}</p>` });

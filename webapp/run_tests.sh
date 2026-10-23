@@ -42,8 +42,10 @@ run test_rule_text_preservation_dom_node.js "$HP"
 run test_roster_qual_preservation_dom_node.js
 run test_settings_import_node.js
 run test_profile_shift_import_atomic_dom_node.js
+run test_duplicate_roster_row_preservation_dom_node.js
 run test_profile_alias_uniqueness_dom_node.js
 run test_report_change_identity_node.js
+run test_report_duty_state_node.js
 run test_dayoff_raw_projection_dom_node.js
 run test_weight_readback_preservation_dom_node.js
 run test_staffing_summary_dom_node.js
@@ -59,6 +61,7 @@ run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_count_preservation_dom_node.js
 run test_profile_minimum_preservation_dom_node.js
+run test_profile_null_ideal_preservation_dom_node.js
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js
@@ -173,9 +176,11 @@ run test_reserve_permission_node.js "$HP"
 run test_reserve_lint_node.js "$HP"
 run test_reserve_targets_node.js
 run test_fixed_only_lint_node.js "$HP"
+run test_fixed_work_candidate_lint_node.js "$HP"
 run test_fixed_only_busy_supply_node.js "$HP"
 run test_fixed_only_targets_node.js "$HP"
 run test_variable_capacity_node.js "$HP"
+run test_optional_slot_lint_node.js "$HP"
 run test_count_limits_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_quota_candidate_scope_node.js "$HP" "$PY"
@@ -185,6 +190,7 @@ else echo "--  Python quota candidate checks skipped (../tools/.venv is unavaila
 run test_count_limits_edges_node.js "$PY"
 run test_days_off_numeric_preservation_dom_node.js "$HP"
 run test_roster_share_preservation_dom_node.js "$HP"
+run test_roster_quota_preservation_dom_node.js
 run test_month_count_limits_dom_node.js
 run test_month_history_readback_dom_node.js
 run test_month_text_preservation_dom_node.js
