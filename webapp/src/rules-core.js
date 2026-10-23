@@ -215,6 +215,9 @@
     const dutyOn = P.isHard("duty_conflicts"); // 規則 duty_conflicts が「なし」の施設は日中の業務で当番を制限しない
     const canWork = (n, s) => { if (!P.workAllowed(n)) return false; const [d, k] = s;
       if (P.isHard("fixed_only") && P.isFixedOnly(n) && !P.isFixedWork(s, n)) return false;
+      // 実在する同じ勤務枠の固定は不可・日中業務より優先（解く側と同じ）。
+      // 候補外の人、別の帯・OC・期間責任者・不存在枠の固定はこの例外にしない。
+      if (P.slotExists(d, k) && P.isFixedWork(s, n)) return true;
       if (k === "night") { if (unN(n, d) || unO(n, d) === "allday") return false; if (!dutyOn) return true;
         if (d + 1 <= N && (P.busy(n, d + 1, "am", ["external"]) || P.busy(n, d + 1, "pm"))) return false;
         if (P.busy(n, d, "pm", ["external"]) && P.pmExtNightBanned(d, n)) return false; return true; }

@@ -68,7 +68,7 @@
     const roleOpts = d => [["", "―"], ...roles, ...(d.team && !roles.some(([id]) => id === d.team) ? [[d.team, d.team + tx("（現在は使わない値）")]] : [])];
     const rows = R.doctors.map((d, i) => `<tr data-i="${i}"><td><input data-f="name" value="${esc(d.name)}" style="width:5em"></td><td>${A.sel(roleOpts(d), d.team, 'data-f="team"')}</td><td><input type="number" data-f="years" value="${esc(T.numberInputText(d.years ?? ""))}" style="width:3.5em"></td>` +
       at("years").map(c => cell(c, d)).join("") +
-      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(T.numberInputText(d.share ?? 1))}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(d.quota ?? 0)}" style="width:3.5em"></td>`) : "") +
+      (quotaOn ? (share ? `<td><input type="number" min="0" step="0.1" data-f="share" value="${esc(T.numberInputText(d.share ?? 1))}" style="width:3.5em" title="${esc(tx("比重。1 が標準、0.5 なら半分、0 なら目安 0 回（当番に入れないなら、当番の欄を「配置禁止」にする）"))}"></td>` : `<td><input type="number" min="0" step="any" data-f="quota" value="${esc(T.numberInputText(d.quota ?? 0))}" style="width:3.5em"></td>`) : "") +
       at("quota").map(c => cell(c, d)).join("") +
       `<td>${A.sel([["", tx("配置する")], ["fixed_only", tx("固定したときだけ")], ["no_unless_needed", tx("原則配置しない")], ["never", tx("配置禁止")]], d.duty || "", 'data-f="duty"')}</td>` +
       at("duty").map(c => cell(c, d)).join("") +
@@ -367,7 +367,14 @@
       });
       let minimumEdited = false;
       const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (noteStaffingEdit(x)) minimumEdited = true; if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
-      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => { noteStaffingEdit(x); if (x.value !== "") ideals[x.dataset.countideal] = Math.max(0, Math.min(maxOf(count[x.dataset.countideal]), +x.value || 0)); });
+      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => {
+        const edited = noteStaffingEdit(x) || x.dataset.idealEdited === "1", k = x.dataset.countideal;
+        if (edited) staffingEdited = true;
+        if (x.value !== "") ideals[k] = Math.max(0, Math.min(maxOf(count[k]), +x.value || 0));
+        // A present per-shift null has an ideal of one in the model; an absent
+        // shift has no ideal. The blank projection alone cannot request removal.
+        else if (!edited && isObj(posOld.ideal) && Object.prototype.hasOwnProperty.call(posOld.ideal, k) && posOld.ideal[k] === null) ideals[k] = null;
+      });
       const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;
       // An unchanged shorthand is accepted storage, not an implicit request to flatten it.
       // Explicit staffing edits use the existing count/min/ideal form, keeping hidden day-type
@@ -586,10 +593,14 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (taken.has(r.name)) { const resolved = resolveRosterName(r.old, r.name, taken); if (resolved === r.old) A.toast(T.t("氏名「{name}」は別の{person}と重なるため、{who} の改名を取り消しました", { name: r.name, who: r.old })); else A.toast(T.t("氏名「{name}」は別の{person}と重なるため「{name} {k}」にしました", { name: r.name, k: resolved.slice(r.name.length + 1) })); r.name = resolved; }
       taken.add(r.name); }
     for (const r of rows) if (r.old && r.old !== r.name && !renameTrial(r.old, r.name)) { taken.delete(r.name); r.name = r.old; } // 追随に失敗する改名は取り消す（知らせは renameTrial）
-    const cur = Object.fromEntries(R.doctors.map(d => [d.name, d])); const docs = [];
+    const cur = R.doctors.slice(); const docs = [];
     for (const { tr, g, old, name } of rows) {
-      const prev = cur[old] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
-      const q = g("quota"), quota = q ? T.numberInputValue(q.value, prev.quota, { initial: q.getAttribute?.("value"), edited: q.dataset?.numericEdited === "1", empty: 0 }) : (prev.quota ?? 0);
+      // An imported duplicate name is repairable. Its row still owns its original
+      // attributes; a name-keyed lookup would copy the last duplicate into every row.
+      const prev = cur[+tr.dataset.i] || {}; // 規則が「なし」で欄を出していない項目は、元の値をそのまま残す
+      // Preserve raw imported quotas until this input is edited: [2] projects to
+      // the same visible number as 2, but must still reach the model's validation.
+      const q = g("quota"), quota = q && T.numberInputChanged(q, prev.quota ?? 0) ? T.numberInputValue(q.value, prev.quota, { initial: q.getAttribute?.("value"), edited: q.dataset?.numericEdited === "1", empty: 0 }) : (prev.quota ?? 0);
       const d = Object.assign({}, prev, { name, team: g("team").value, quota }); // 前の値を土台に、画面で扱った項目だけ書き換える（いま登録の無いプラグインの属性も未登録のまま残す）
       if (T.numberInputChanged(g("years"), prev.years ?? "")) d.years = +g("years").value || 0;
       if (g("share") && T.numberInputChanged(g("share"), prev.share ?? 1)) d.share = Math.max(0, +g("share").value || 0); // 比重（相対のときの欄。隠れていても値は残す）
@@ -614,6 +625,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     snapshotRuleText(true);
     const closureInput = $("#setCalClosure");
     if (closureInput) { closureInput.setAttribute("value", closureInput.value); delete closureInput.dataset.closureEdited; }
+    document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(input => { input.setAttribute("value", input.value); delete input.dataset.idealEdited; });
   }
   // 役割の識別子を変える: 名簿・オンコール構成の表・固定「OCなし」の記録をまとめて置き換える
   function renameRoles(renames) {
@@ -725,11 +737,13 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       quota_tolerance: number, max_same_weekday_shifts: number, dayoff_weekday_max: number, weekend_balance_max_diff: number,
       rest_day_required: bool, pm_external_night: oneOf(["allow", "confirm", "forbid"]),
       shift_run_max: dict(["day", "night"], number), shift_counts: dict(["day", "night"], bounds),
-      pair_cap: obj({ shift, max: number }), run_length: obj({ min: number, max: number, exempt_qual: text }),
+      // Qualification selectors are identifiers, including their delimiter syntax.
+      // Preserve exact selectors and warn if they contain a roster name.
+      pair_cap: obj({ shift, max: number }), run_length: obj({ min: number, max: number, exempt_qual: id }),
       days_off: obj({ min: { safe: x => x === "auto" || number.safe(x), accept: x => x === "auto" || number.accept(x) }, hours_per_week: number, hours_per_day: number, basis: oneOf(["hours", "holidays"]), mode: oneOf(["exact", "min"]), ake_is_off: bool, pair_min: number, pair_count: oneOf(["pairs", "runs"]), max_extra: number }),
       wish_off: obj({ max: number, counts: oneOf(["unavailable", "avoid", "both"]) }),
       forbid_sequence: arr(obj({ from: oneOf(["day", "night", "any"]), to: oneOf(["day", "night", "any"]) })),
-      composition: arr(obj({ shift: oneOf(["day", "night", "all"]), days, label, qual: text, not_qual: text, years_min: number, years_max: number, min: number, max: number })),
+      composition: arr(obj({ shift: oneOf(["day", "night", "all"]), days, label, qual: id, not_qual: id, years_min: number, years_max: number, min: number, max: number })),
       docx: obj({ template: id, font: text, paper: obj({ size: oneOf(["A3", "A4", "Letter"]), orient: oneOf(["portrait", "landscape"]), margin: number }) }),
     };
     for (const d of defs) { for (const p of d.params || []) if (!(p.key in fields)) fields[p.key] = number; if (d.legacy && !(d.legacy in fields)) fields[d.legacy] = { accept: x => x == null || typeof x !== "object" }; }
@@ -1049,9 +1063,14 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
-    settings.addEventListener("input", ev => { if (ev.target.matches?.(ruleTextSelector)) ev.target.dataset.textEdited = "1"; if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target) || isCustomNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
+    settings.addEventListener("input", ev => { if (ev.target.matches?.(ruleTextSelector)) ev.target.dataset.textEdited = "1"; if (ev.target.id === "setCalClosure") ev.target.dataset.closureEdited = "1"; if (ev.target.dataset?.countideal !== undefined) ev.target.dataset.idealEdited = "1"; if (["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(ev.target.dataset?.f) || ev.target.dataset?.prm !== undefined || isRuleNumber(ev.target) || isCustomNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     // 改行だけ・空配列の保存値は空欄に見える。同じ空欄へ編集するとchangeが出ないため、離れた時にも確定する。
     settings.addEventListener("focusout", ev => {
+      if (ev.target.dataset?.countideal !== undefined && ev.target.dataset.idealEdited === "1" && settings.contains(ev.target)) {
+        if (readSettings("施設の構成の変更") === false) return;
+        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        A.renderSettingsMonth(); A.renderDoctor(); return;
+      }
       if (ev.target.matches?.(ruleTextSelector) && ev.target.dataset.textEdited === "1" && settings.contains(ev.target)) {
         if (readSettings(ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return;
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
@@ -1072,14 +1091,15 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (isCustomNumber(ev.target)) { commitCustomNumber(ev.target); return; }
       if (isRuleNumber(ev.target)) commitRuleNumber(ev.target);
       const input = ev.target;
-      if (!["share", "years", "shift_max_day", "shift_max_night"].includes(input.dataset?.f) || input.dataset.numericEdited !== "1" || !settings.contains(input)) return;
+      if (!["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(input.dataset?.f) || input.dataset.numericEdited !== "1" || !settings.contains(input)) return;
       if (readSettings("名簿の変更") === false) return;
-      const value = T.numberInputText(state.rules.doctors[+input.closest("tr[data-i]").dataset.i][input.dataset.f] ?? (input.dataset.f === "share" ? 1 : ""));
+      const value = T.numberInputText(state.rules.doctors[+input.closest("tr[data-i]").dataset.i][input.dataset.f] ?? (input.dataset.f === "share" ? 1 : input.dataset.f === "quota" ? 0 : ""));
       input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
       $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
       A.renderSettingsMonth(); A.renderDoctor();
     });
     $("#settings").addEventListener("change", ev => {
+      if (ev.target.dataset?.countideal !== undefined) ev.target.dataset.idealEdited = "1";
       if (ev.target.matches?.(ruleTextSelector)) {
         if (ev.target.dataset.textEdited !== "1" && ev.target.dataset.textCommitted === "1" && ev.target.value === ev.target.dataset.textShown) return;
         ev.target.dataset.textEdited = "1";

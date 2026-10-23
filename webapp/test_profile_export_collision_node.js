@@ -5,7 +5,7 @@
 // (standard-library HTMLParser DOM adapter); no jsdom, solver or browser dependency.
 // Baseline: TOBAN_SOURCE_ROOT=/absolute/baseline/webapp node /absolute/patched/webapp/test_profile_export_collision_node.js
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert"), { execFileSync } = require("child_process");
-const EXPECTED_CASES = 115, cases = [];
+const EXPECTED_CASES = 135, cases = [];
 let passed = 0, failed = 0, started = 0, completed = 0, finished = false;
 process.on("exit", () => {
   console.log(`ACCOUNTING registered=${cases.length} started=${started} completed=${completed} passed=${passed} failed=${failed} finished=${finished}`);
@@ -423,6 +423,60 @@ function registerPersonalColumn(state = "off") {
     assert.deepStrictEqual(flagScope(exported, flag), [[7, "night"]]);
     await importDownload(downloads[0]); assert.deepStrictEqual(alerts, []);
     assert.deepStrictEqual(A.state.rules.profile.day_flags, [flag]); assert.deepStrictEqual(flagScope(A.state.rules, flag), [[7, "night"]]);
+  });
+  // Qualification strings are shared identifiers, not references to the person
+  // whose name happens to match. Compound and exact selectors must stay connected.
+  const qualificationValue = (R, field) => field === "exempt_qual" ? R.run_length.exempt_qual : R.composition[0][field];
+  const setQualification = (R, field, value) => { if (field === "exempt_qual") R.run_length.exempt_qual = value; else R.composition[0][field] = value; };
+  const qualificationFixture = (field, value, state = "hard") => {
+    const R = setup("Trainer"); delete R.opaque;
+    R.composition = [{ shift: "night", days: "all", qual: "Trainer|Supervisor", not_qual: "Other", min: 1 }];
+    R.run_length = { min: 3, max: 5, exempt_qual: "Trainer" };
+    R.rule_states.composition = state; R.rule_states.run_length_max = state;
+    setQualification(R, field, value); return R;
+  };
+  const qualificationSemantics = source => {
+    // Shared export intentionally removes the personal quals attributes. Supply
+    // the same fictional qualification afterwards to compare selector meanings.
+    const R = clone(source); R.doctors[0].quals = ["Trainer"];
+    const P = new T.Problem(R, T.normalizeMonth({ year: 2026, month: 11 }, R)), name = R.doctors[0].name;
+    return { quals: P.comp[0].quals, notQuals: P.comp[0].notQuals, exempt: P.runExempt,
+      compositionMatch: P.compMatch(P.comp[0], name), runApplies: P.runApplies(name) };
+  };
+  for (const field of ["qual", "not_qual", "exempt_qual"]) for (const state of ["hard", "off"]) for (const shape of ["exact", "compound"]) await test(`qualification ${field} ${state} ${shape} retains selectors and warns`, async () => {
+    const value = shape === "exact" ? "Trainer" : " Trainer | Supervisor ", R = qualificationFixture(field, value, state);
+    const before = JSON.stringify(A.state), semantics = qualificationSemantics(R), exported = A.profileForExport(false);
+    assert.strictEqual(qualificationValue(exported.rules, field), value);
+    assert.deepStrictEqual(qualificationSemantics(exported.rules), semantics, "the same qualification retains the same rule membership");
+    assert(exported.leftover.includes("Trainer"), "selector names still require privacy review");
+    assert(!Object.hasOwn(exported.rules.doctors[0], "quals"), "individual qualifications are still omitted");
+    assert.strictEqual(JSON.stringify(A.state), before);
+    const included = A.profileForExport(true).rules; delete included.toban_profile; assert.deepStrictEqual(included, R);
+  });
+  for (const field of ["qual", "not_qual", "exempt_qual"]) await test(`share-injected qualification ${field} still warns`, async () => {
+    const R = qualificationFixture(field, "Supervisor"), id = "local.export.qualification_injection";
+    T.rules.register({ id, api: 1, states: ["off"], def: "off", share(rules) { setQualification(rules, field, "Trainer"); } }); R.rule_states[id] = "off";
+    const before = JSON.stringify(A.state);
+    try { assert(A.profileForExport(false).leftover.includes("Trainer")); assert.strictEqual(JSON.stringify(A.state), before); }
+    finally { T.rules.unregister(id); }
+  });
+  for (const where of ["key", "value"]) await test(`opaque ${where} matching a qualification selector remains ambiguous`, async () => {
+    const R = qualificationFixture("qual", "Trainer");
+    R.local_opaque = where === "key" ? { Trainer: { private_note: "PRIVATE-NOTE" } } : { allowed: ["Trainer"] };
+    const before = JSON.stringify(A.state);
+    assert.throws(() => A.profileForExport(false), "qualification recognition must not exempt opaque personal payloads");
+    assert.strictEqual(JSON.stringify(A.state), before);
+  });
+  for (const field of ["qual", "not_qual", "exempt_qual"]) await test(`rendered qualification ${field} warning can cancel, then export and import intact`, async () => {
+    qualificationFixture(field, "Trainer"); renderControls(); confirmAnswer = false;
+    const before = JSON.stringify(A.state), semantics = qualificationSemantics(A.state.rules);
+    await clickExport(); assert.strictEqual(downloads.length, 0); assert.strictEqual(confirmations.length, 1);
+    assert(confirmations[0].includes("Trainer")); assert.strictEqual(JSON.stringify(A.state), before); assert.deepStrictEqual(alerts, []);
+    confirmAnswer = true; await clickExport(); assert.strictEqual(downloads.length, 1);
+    const downloaded = JSON.parse(await downloads[0].blob.text());
+    assert.strictEqual(qualificationValue(downloaded, field), "Trainer"); assert.deepStrictEqual(qualificationSemantics(downloaded), semantics);
+    await importDownload(downloads[0]); assert.deepStrictEqual(alerts, []);
+    assert.strictEqual(qualificationValue(A.state.rules, field), "Trainer"); assert.deepStrictEqual(qualificationSemantics(A.state.rules), semantics);
   });
   assert.strictEqual(cases.length, EXPECTED_CASES, "every planned regression is registered");
   for (const { label, fn } of cases) {
