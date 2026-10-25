@@ -29,6 +29,7 @@ run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
 run test_merge_scalar_clear_node.js
+run test_merge_paid_entry_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
@@ -42,10 +43,13 @@ run test_rule_text_preservation_dom_node.js "$HP"
 run test_roster_qual_preservation_dom_node.js
 run test_settings_import_node.js
 run test_profile_shift_import_atomic_dom_node.js
+run test_month_shift_import_atomic_dom_node.js
 run test_duplicate_roster_row_preservation_dom_node.js
 run test_profile_alias_uniqueness_dom_node.js
 run test_report_change_identity_node.js
 run test_report_duty_state_node.js
+run test_report_next_duty_scope_node.js
+if [ -x "$PY" ]; then echo "== Python next-duty report scope"; "$PY" ../tools/test_report_next_duty_scope.py || fail=1; else echo "-- Python next-duty report scope skipped (venv unavailable)"; fi
 run test_dayoff_raw_projection_dom_node.js
 run test_weight_readback_preservation_dom_node.js
 run test_staffing_summary_dom_node.js
@@ -62,6 +66,7 @@ run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_count_preservation_dom_node.js
 run test_profile_minimum_preservation_dom_node.js
 run test_profile_null_ideal_preservation_dom_node.js
+run test_profile_empty_ideal_preservation_dom_node.js
 run test_profile_pending_input_dom_node.js
 run test_oncall_standby_preservation_dom_node.js
 run test_role_delete_preservation_node.js
@@ -84,6 +89,7 @@ run test_numeric_validation_node.js "$HP"
 run test_fractional_targets_node.js "$HP" "$PY"
 run test_previous_fixed_integrity_node.js
 run test_save_node.js
+run test_staffing_signature_node.js
 run test_save_exists_node.js
 run test_save_context_node.js
 run test_save_peer_update_node.js
@@ -147,6 +153,9 @@ if [ -x "$PY" ]; then
   run test_python_saved_count_node.js "$HP" "$PY"
   echo "== Python saved count compatibility"
   "$PY" ../tools/test_saved_count_compat.py || fail=1
+  echo "== Python unsupported rule compatibility guards"
+  "$PY" ../tools/test_unsupported_rule_guards.py || fail=1
+  run test_python_unsupported_rules_node.js "$PY"
   echo "== Python Friday minimum state contract"
   "$PY" ../tools/test_friday_night_off.py || fail=1
 else echo "--  Python Friday minimum checks skipped (../tools/.venv is unavailable)"; fi

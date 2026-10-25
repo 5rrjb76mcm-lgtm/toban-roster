@@ -55,6 +55,7 @@
 ## 保存と照合
 
 - 保存データ `YYYYMM_data.json` は `{rules, month, result, saved_at}`。`rules` はその月で使った設定（名簿・重み）で、設定タブの値はここから読む。
+- 人数設定の意味を持つ空値を署名に含めるようにしたため、旧署名で保存したデータは、新版で開くと「未保存」や「再計算が必要」と表示されることがあります。再保存すると保存状態は更新されますが、既存の計算結果の `input_sig` を現行入力の署名へ書き換えることはありません。現在の入力に対応する結果を得るには再計算してください。既存の帳票と版履歴は保持されます。
   役割（チーム）は `rules.profile.roles = [{id, label, refs, standby}]`。識別子・数・表示名は施設が決める。規則は識別子ではなく役目
   （`refs`: charge / other / junior / reserve）を見る。`P.byRole[id]`、`P.refId(ref)`、`P.isRole(name, ref)`、`P.isStandby(name)` を使い、
   `P.I` / `P.A` / `P.Y` は役目から引く別名。オンコール構成 `oncall_requirement` は行も列も役割の識別子。
@@ -125,6 +126,9 @@ Python 参照実装でも `rule_states.oncall: off` は対応します。設定 
 
 ## テスト
 
+- `test_report_next_duty_scope_node.js` — 夜勤翌日の午後・終日の業務を「午前のみ」と表示しないことを、日本語・英語、規則の必須／なし、固定による許容、翌月1日の接続、説明資料HTMLで確かめる（架空データ、ソルバー・ブラウザ不要）。
+- `../tools/test_report_next_duty_scope.py` — Python参照実装の同じ報告を、対応済みの必須／既定値、固定による許容、翌月1日の接続で実CP-SAT・検算と照合する。未対応の `duty_conflicts: off` の拒否は変えない。
+
 - `test_role_metadata_preservation_node.js` — 同梱プロファイルの役割の多言語表記と、JSON・ファイル・プロファイル選択で読み込んだ複数の役目を、無関係な設定編集・保存・Undoで消さないことを確認。表示名・役目の明示的な変更や解除は反映する（架空データ、実際のHTMLをHTMLParserで読んだDOM代替。実ブラウザ試験ではない）
 
 - `test_previous_selection_preservation_node.js` — 名簿から外した職員・役割を変えた職員の前月末の勤務・OC・期間責任者の記録を、月別条件の無関係な編集・保存・Undoで消さないことを確認。明示的な空欄・別人への変更は反映し、当月の配置候補は増やさない（架空データ、実際のHTMLをHTMLParserで読んだDOM代替。実ブラウザ試験ではない）
@@ -190,3 +194,7 @@ Python 参照実装でも `rule_states.period_charge: off` は対応済みです
 - `test_previous_fixed_integrity_node.js` — 架空データで、固定配置の変更→保存データ→翌月作成／前月取込を通し、明示の翌月固定を古い計算結果で上書きしないこと、固定に結び付かない印を持ち込まないことを確かめる。
 
 - `test_profile_text_preservation_dom_node.js` — Imported multilingual profile/shift/role labels and Unicode facility IDs survive unrelated edits and reload; explicit text edits keep existing normalization.
+
+- `test_month_shift_import_atomic_dom_node.js` — Whole-month external/folder adoption rejects unsupported shift definitions before replacing state, browser recovery data or Undo, including months with already expanded `duty_days`. Accepted missing/empty/partial definitions and repairable numeric-invalid settings remain raw. Static-authored candidate; not executed during preparation.
+
+- `test_profile_empty_ideal_preservation_dom_node.js` — 設定画面の読み戻しで未編集の人数目安を保持し、root の空文字（目安 1）を片側の勤務帯だけで編集・削除しても反対側を変えないことを、架空データの 50 ケースで確かめます。null・未指定・空配列・空 object の対照、反復読取、書き出し、保存再読込、Undo と編集フラグの解除、未編集帯の空コンテナや上限を超える目安の raw 保持を含みます（jsdom、実ブラウザではありません）。

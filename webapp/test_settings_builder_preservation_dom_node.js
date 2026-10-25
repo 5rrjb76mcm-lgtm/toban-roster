@@ -103,13 +103,41 @@ let highs=null;
   a.change('[data-count="day"]','');assert.strictEqual(P(a).countOf([1,'day']),1);
   a.change('[data-count="day"]','0');a.A.readSettings();await reload(a,r,b=>assert.strictEqual(P(b).countOf([1,'day']),0));
  });
- for(const [label,count] of [['numeric',0],['day-type',{weekday:0,off_days:0}]])test('staffing: '+label+' zero upper bound caps visible min and ideal at zero',rulesFor({count,min:1,ideal:1}),async(a,r)=>{
-  editYears(a);for(const shift of ['day','night']){assert.strictEqual(a.A.state.rules.profile.positions.work.min[shift],0);assert.strictEqual(a.A.state.rules.profile.positions.work.ideal[shift],0);}
-  const before=semantics(a);a.A.readSettings();await reload(a,r,b=>assert.deepStrictEqual(semantics(b),before));
+ for(const [label,count] of [['numeric',0],['day-type',{weekday:0,off_days:0}]])test('staffing: '+label+' zero upper bound caps effective min and ideal while retaining raw ideal',rulesFor({count,min:1,ideal:1}),async(a,r)=>{
+  const capped=(b,cleared=false)=>{const p=P(b);for(const shift of ['day','night'])for(const day of [1,2]){
+   assert.strictEqual(p.countOf([day,shift]),0);assert.strictEqual(p.countMinOf([day,shift]),0);assert.strictEqual(p.countIdealOf([day,shift]),cleared&&shift==='day'?null:0);
+  }for(const slot of p.slots){assert(p.countMinOf(slot)<=p.countOf(slot));assert(p.countIdealOf(slot)==null||p.countIdealOf(slot)<=p.countOf(slot));}};
+  editYears(a);assert.strictEqual(a.A.state.rules.profile.positions.work.ideal,1,'unrelated edit retains accepted raw ideal');
+  for(const shift of ['day','night']){
+   assert.strictEqual(a.A.state.rules.profile.positions.work.min[shift],0,'existing minimum storage normalization is unchanged');
+   assert.strictEqual(a.q(`[data-countideal="${shift}"]`).value,'1','editor shows raw ideal separately from effective zero');
+  }
+  capped(a);const before=semantics(a);a.A.readSettings();await reload(a,r,b=>{assert.strictEqual(b.A.state.rules.profile.positions.work.ideal,1);capped(b);assert.deepStrictEqual(semantics(b),before);});
+  const bounds=clone({count:a.A.state.rules.profile.positions.work.count,min:a.A.state.rules.profile.positions.work.min});
+  a.change('[data-countideal="day"]','3');
+  assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.ideal),{day:0,night:1},'explicit edit is clamped to zero; untouched sibling keeps raw one');
+  capped(a);await reload(a,r,b=>{assert.deepStrictEqual(clone(b.A.state.rules.profile.positions.work.ideal),{day:0,night:1});capped(b);});
+  a.change('[data-countideal="day"]','');a.A.readSettings();a.A.readSettings();
+  const cleared=b=>{assert.deepStrictEqual(clone(b.A.state.rules.profile.positions.work.ideal),{night:1},'explicit deletion owns only day and is not restored by readback');assert.deepStrictEqual(clone({count:b.A.state.rules.profile.positions.work.count,min:b.A.state.rules.profile.positions.work.min}),bounds,'ideal deletion leaves count and minimum unchanged');capped(b,true);};
+  cleared(a);await reload(a,r,b=>{b.enter();b.A.readSettings();cleared(b);});
  });
- test('staffing: partial day-type count retains missing-day default of one',rulesFor({count:{weekday:0},min:1,ideal:1}),a=>{
-  editYears(a);assert.strictEqual(a.A.state.rules.profile.positions.work.min.day,1);assert.strictEqual(a.A.state.rules.profile.positions.work.ideal.day,1);
-  assert.strictEqual(P(a).countOf([1,'day']),1);assert.strictEqual(P(a).countOf([2,'day']),0);
+ test('staffing: partial day-type count retains missing-day default of one',rulesFor({count:{weekday:0},min:1,ideal:1}),async(a,r)=>{
+  const capped=(b,cleared=false)=>{const p=P(b);for(const shift of ['day','night'])for(const [day,expected] of [[1,1],[2,0]]){
+   assert.strictEqual(p.countOf([day,shift]),expected);assert.strictEqual(p.countMinOf([day,shift]),expected);assert.strictEqual(p.countIdealOf([day,shift]),cleared&&shift==='day'?null:expected);
+  }for(const slot of p.slots){assert(p.countMinOf(slot)<=p.countOf(slot));assert(p.countIdealOf(slot)==null||p.countIdealOf(slot)<=p.countOf(slot));}};
+  editYears(a);assert.strictEqual(a.A.state.rules.profile.positions.work.ideal,1,'unrelated edit retains accepted raw ideal');
+  for(const shift of ['day','night']){
+   assert.strictEqual(a.A.state.rules.profile.positions.work.min[shift],1,'existing minimum storage normalization is unchanged');
+   assert.strictEqual(a.q(`[data-countideal="${shift}"]`).value,'1');
+  }
+  capped(a);const before=semantics(a);a.A.readSettings();await reload(a,r,b=>{assert.strictEqual(b.A.state.rules.profile.positions.work.ideal,1);capped(b);assert.deepStrictEqual(semantics(b),before);});
+  const bounds=clone({count:a.A.state.rules.profile.positions.work.count,min:a.A.state.rules.profile.positions.work.min});
+  a.change('[data-countideal="day"]','3');
+  assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.ideal),{day:1,night:1},'explicit edit uses the existing day-type maximum of one; untouched sibling keeps raw one');
+  capped(a);await reload(a,r,b=>{assert.deepStrictEqual(clone(b.A.state.rules.profile.positions.work.ideal),{day:1,night:1});capped(b);});
+  a.change('[data-countideal="day"]','');a.A.readSettings();a.A.readSettings();
+  const cleared=b=>{assert.deepStrictEqual(clone(b.A.state.rules.profile.positions.work.ideal),{night:1},'explicit deletion owns only day and is not restored by readback');assert.deepStrictEqual(clone({count:b.A.state.rules.profile.positions.work.count,min:b.A.state.rules.profile.positions.work.min}),bounds,'ideal deletion leaves count and minimum unchanged');capped(b,true);};
+  cleared(a);await reload(a,r,b=>{b.enter();b.A.readSettings();cleared(b);});
  });
  for(const [label,ideal] of [['scalar zero',0],['per-shift zero',{day:0,night:0}],['partial shift zero',{day:0}],['empty object',{}]]){
   const r=rulesFor({count:1,min:0,ideal});r.rule_states.count_target='off';

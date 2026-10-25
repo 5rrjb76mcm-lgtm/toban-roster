@@ -367,13 +367,15 @@
       });
       let minimumEdited = false;
       const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (noteStaffingEdit(x)) minimumEdited = true; if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
-      const ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => {
+      const idealEdited = new Set(), ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => {
         const edited = noteStaffingEdit(x) || x.dataset.idealEdited === "1", k = x.dataset.countideal;
-        if (edited) staffingEdited = true;
-        if (x.value !== "") ideals[k] = Math.max(0, Math.min(maxOf(count[k]), +x.value || 0));
-        // A present per-shift null has an ideal of one in the model; an absent
-        // shift has no ideal. The blank projection alone cannot request removal.
-        else if (!edited && isObj(posOld.ideal) && Object.prototype.hasOwnProperty.call(posOld.ideal, k) && posOld.ideal[k] === null) ideals[k] = null;
+        if (edited) { staffingEdited = true; idealEdited.add(k); }
+        // Preserve an untouched shift's accepted raw value. A root scalar applies
+        // to both shifts (including "", whose model default is one); direct empty
+        // branches also differ from absence. Only edits use the numeric UI bounds.
+        if (!edited && posOld.ideal != null && !isObj(posOld.ideal)) ideals[k] = posOld.ideal;
+        else if (!edited && isObj(posOld.ideal) && Object.prototype.hasOwnProperty.call(posOld.ideal, k) && posOld.ideal[k] !== undefined) ideals[k] = posOld.ideal[k];
+        else if (x.value !== "") ideals[k] = Math.max(0, Math.min(maxOf(count[k]), +x.value || 0));
       });
       const hadIdeal = posOld.ideal !== undefined && posOld.ideal !== null;
       // An unchanged shorthand is accepted storage, not an implicit request to flatten it.
@@ -385,7 +387,10 @@
         // Present empty/null minima use the model's fallback of one, unlike absent min
         // (fixed count). A blank display is not a request to remove that accepted value.
         else if (!minimumEdited && posOld.min !== undefined) next.min = posOld.min;
-        if (Object.keys(ideals).length) next.ideal = ideals;
+        // Preserve unedited accepted storage, including root "", null and empty
+        // containers. Only an explicit ideal edit reconstructs the represented shifts.
+        if (!idealEdited.size && Object.prototype.hasOwnProperty.call(posOld, "ideal")) next.ideal = posOld.ideal;
+        else if (Object.keys(ideals).length) next.ideal = ideals;
         (R.profile.positions ||= {}).work = next;
       }
       { const qm = document.querySelector("#setQuotaMode"); if (qm) { if (qm.value === "share") R.profile.quota_mode = "share"; else delete R.profile.quota_mode; } } // 目安の決め方
