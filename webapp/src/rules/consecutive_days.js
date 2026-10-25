@@ -33,7 +33,9 @@ T.rules.register({
   // 説明資料の第 9 節（調整目標の達成状況）の行
   report(ctx, prm) {
     const { P, t } = ctx; if (P.state("consecutive_days") !== "soft") return;
-    const lines = []; for (const n of ctx.names) { const cc = []; for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1 && ctx.anyWork(n, d) && ctx.anyWork(n, d + 1)) cc.push(`${P.label(d)}→${P.label(d + 1)}`); if (cc.length) lines.push(`${n}: ${cc.join(ctx.sep())}`); }
+    const lines = []; for (const n of ctx.names) { const cc = []; for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1 && ctx.anyWork(n, d) && ctx.anyWork(n, d + 1)) cc.push(`${P.label(d)}→${P.label(d + 1)}`);
+      if (P.nextFixedAny() && P.nextFixedWorks(n) && ctx.anyWork(n, P.N)) cc.push(`${P.label(P.N)}→${P.label(P.N + 1)}`);
+      if (cc.length) lines.push(`${n}: ${cc.join(ctx.sep())}`); }
     ctx.line(t("連日の実勤務（減点 consecutive_days）: {items}", { items: lines.join("／") || t("なし") }));
   },
   // 入力チェック: 連日の枠に同じ人を固定している

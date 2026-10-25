@@ -105,6 +105,7 @@
     "削除": "Delete",
     "役割を追加": "Add a role",
     "役割の変更を取り消しました: {err}": "Role change canceled: {err}",
+    "役割ID「{id}」は残っている名簿・月データが参照しています。別のIDを指定してください。": "Role ID “{id}” is still referenced by retained roster or monthly data. Choose a different ID.",
     "設定の {field} は0以上の有限の数にしてください（勤務回数の目安。小数も使えます）": "{field} must be a finite non-negative number (shift quota; fractional values are allowed).",
     "月の設定の {field} は0以上の有限の数にしてください（当月の勤務目標。小数も使えます）": "{field} must be a finite non-negative number (this month's shift target; fractional values are allowed).",
     "この変更は取り消せません: 役割の識別子を変えた後に月別条件も変更されているため、設定だけを戻すと固定OCなしの役割との対応が壊れます。手で直してください（{what}）": "Cannot undo this change: the monthly inputs changed after the role IDs changed. Restoring only the settings would break the role references in fixed no-on-call assignments. Correct them manually ({what}).",

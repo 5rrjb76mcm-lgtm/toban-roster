@@ -30,6 +30,7 @@ run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
 run test_merge_scalar_clear_node.js
 run test_merge_paid_entry_node.js
+run test_merge_person_day_tuple_node.js
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
@@ -49,6 +50,7 @@ run test_profile_alias_uniqueness_dom_node.js
 run test_report_change_identity_node.js
 run test_report_duty_state_node.js
 run test_report_next_duty_scope_node.js
+run test_report_boundary_penalty_consistency_node.js
 if [ -x "$PY" ]; then echo "== Python next-duty report scope"; "$PY" ../tools/test_report_next_duty_scope.py || fail=1; else echo "-- Python next-duty report scope skipped (venv unavailable)"; fi
 run test_dayoff_raw_projection_dom_node.js
 run test_weight_readback_preservation_dom_node.js
@@ -57,6 +59,7 @@ run test_historical_name_guard_dom_node.js
 run test_history_cleanup_dom_node.js
 run test_role_edit_preservation_node.js
 run test_role_metadata_preservation_node.js
+run test_post47_role_identity_reservation_dom_node.js
 run test_profile_day_flags_preservation_dom_node.js
 run test_profile_list_projection_dom_node.js
 run test_profile_text_preservation_dom_node.js
@@ -108,6 +111,7 @@ run test_header_layout_contract_dom_node.js
 run test_import_previous_role_identity_node.js
 run test_history_numeric_carry_node.js
 run test_solve_guard_node.js
+run test_worker_url_cleanup_node.js
 run test_solve_input_snapshot_node.js "$HP"
 run test_absent_assignment_node.js
 run test_diagnose_node.js "$HP"

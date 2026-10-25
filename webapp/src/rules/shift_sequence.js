@@ -68,7 +68,13 @@ T.rules.register({
   // 説明資料の第 9 節（調整目標の達成状況）の行
   report(ctx, prm) {
     const { P, t } = ctx; if (P.state("shift_sequence") !== "soft") return;
-    const lines = []; for (const r of prm.rules) for (const n of ctx.names) { const ds = []; for (let d = 1; d < P.N; d++) if (ctx.worked(n, [d, r.from])) for (const k of (r.to === "any" ? ["day", "night"] : [r.to])) if (ctx.worked(n, [d + 1, k])) ds.push(`${P.label(d)}→${P.label(d + 1)}`); if (ds.length) lines.push(`${n}: ${ds.join(ctx.sep())}`); }
+    const lines = []; for (const r of prm.rules) for (const n of ctx.names) { const ds = [];
+      const targets = r.to === "any" ? ["day", "night"] : [r.to];
+      if (P.prevWorked([0, r.from], n)) for (const k of targets) if (ctx.has([1, k]) && ctx.worked(n, [1, k])) ds.push(`${P.label(0)}→${P.label(1)}`);
+      for (let d = 1; d < P.N; d++) if (ctx.has([d, r.from]) && ctx.worked(n, [d, r.from])) for (const k of targets) if (ctx.has([d + 1, k]) && ctx.worked(n, [d + 1, k])) ds.push(`${P.label(d)}→${P.label(d + 1)}`);
+      // Match the single next-boundary penalty term even when "any" matches two shifts.
+      if (P.nextFixedAny() && ctx.has([P.N, r.from]) && ctx.worked(n, [P.N, r.from]) && nextFixedIn(ctx, n, r.to)) ds.push(`${P.label(P.N)}→${P.label(P.N + 1)}`);
+      if (ds.length) lines.push(`${n}: ${ds.join(ctx.sep())}`); }
     ctx.line(t("勤務帯のつながりの禁止（減点 shift_sequence）: {items}", { items: lines.join("／") || t("なし") }));
   },
   python: false,
