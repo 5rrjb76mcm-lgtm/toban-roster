@@ -54,7 +54,18 @@ T.rules.register({
     const { P, t } = ctx, lines = [];
     for (const n of ctx.names) { const cc = [];
       for (let i = 0; i + 1 < P.allSlots.length; i++) { const s1 = P.allSlots[i], s2 = P.allSlots[i + 1]; if (s2[0] < 1 || s1[0] === s2[0]) continue; if (!(ctx.engaged(n, s1) && ctx.engaged(n, s2)) || (ctx.worked(n, s1) && ctx.worked(n, s2))) continue; const p1 = P.periodOfSlot[`${s1[0]}:${s1[1]}`], p2 = P.periodOfSlot[`${s2[0]}:${s2[1]}`]; if (P.isRole(n, "charge") && p1 != null && p1 === p2) continue; cc.push(`${P.label(s1[0])}${P.shiftLabel(s1[1])}→${P.label(s2[0])}${P.shiftLabel(s2[1])}`); }
-      if (!P.isRole(n, "charge")) for (let d = ctx.firstPrev; d < P.N; d++) if (ctx.has([d + 1, "day"]) && ctx.engaged(n, [d, "night"]) && ctx.engaged(n, [d + 1, "night"]) && !(ctx.worked(n, [d, "night"]) && ctx.worked(n, [d + 1, "night"]))) cc.push(`${P.label(d)}${P.shiftLabel("night")}→${P.label(d + 1)}${P.shiftLabel("night")}`);
+      if (!P.isRole(n, "charge")) for (let d = ctx.firstPrev; d < P.N; d++) if (d + 1 >= 1 && ctx.has([d, "night"]) && ctx.has([d + 1, "day"]) && ctx.has([d + 1, "night"]) && ctx.engaged(n, [d, "night"]) && ctx.engaged(n, [d + 1, "night"]) && !(ctx.worked(n, [d, "night"]) && ctx.worked(n, [d + 1, "night"]))) cc.push(`${P.label(d)}${P.shiftLabel("night")}→${P.label(d + 1)}${P.shiftLabel("night")}`);
+      if (P.nextFixedAny() && ctx.has([P.N, "night"]) && ctx.engaged(n, [P.N, "night"])) {
+        const firstK = P.nextFirstSlotKind(), cross = P.lastCrossingPeriod();
+        const append = k => {
+          if (!P.nextSlotExists(k) || !P.nextFixedEngaged(n, k)) return;
+          const nextWork = P.nextFixed.charge !== n && (P.nextFixed[k] || []).includes(n) && !(P.nextFixed[k + "_oc"] || []).includes(n);
+          if (nextWork && ctx.worked(n, [P.N, "night"])) return;
+          cc.push(`${P.label(P.N)}${P.shiftLabel("night")}→${P.label(P.N + 1)}${P.shiftLabel(k)}`);
+        };
+        if (!(P.isRole(n, "charge") && cross)) append(firstK);
+        if (!P.isRole(n, "charge") && firstK === "day") append("night");
+      }
       if (cc.length) lines.push(`${n}: ${cc.join(ctx.sep())}`); }
     ctx.line(t("OC を含む隣接枠の連続（減点 oc_consecutive。同日の日勤帯→夜間は除く）: {items}", { items: lines.join("／") || t("なし") }));
   },

@@ -40,7 +40,9 @@
     for (const [k, tg] of Object.entries(m.fixed_tags || {})) if (tg) { const [sl, ...ns] = k.split("|"), n = ns.join("|"), [d, kind] = sl.split(":"); put(`ftag:${d}:${kind}:${n}`, tg); } // 固定の印（氏名内の | は区切らない）
     for (const [d, ids] of Object.entries(m.day_flags || {})) for (const id of [].concat(ids || []).filter(Boolean)) f[`dflag:${+d}:${id}`] = "1"; // 日ごとの区分
     for (const [d, txt] of Object.entries(m.day_notes || {})) if (txt) put(`dnote:${+d}`, txt); // 日ごとの予定
-    for (const [id, byName] of Object.entries(m.person_days || {})) for (const [n, byDay] of Object.entries(byName || {})) for (const [d, v] of Object.entries(byDay || {})) if (v !== "" && v != null) put(`pday:${id}:${n}:${+d}`, v); // 職員別カレンダーの拡張の欄
+    // 欄 ID と氏名の両方が ':' を含められる。ID の UTF-16 長を持たせて境界を確定する。
+    // 氏名の生 NUL は app-folder の削除・改名保護が検出するので、JSON/URI 符号化で隠さない。
+    for (const [id, byName] of Object.entries(m.person_days || {})) for (const [n, byDay] of Object.entries(byName || {})) for (const [d, v] of Object.entries(byDay || {})) if (v !== "" && v != null) put(`pday2:${id.length}:${id}${n}:${+d}`, v); // 一時的な統合キーだけ。保存する person_days の形は変えない
     for (const [d, n] of Object.entries(fx.weekend_charge || {})) put(`fc:${d}`, n);
     for (const [d, ns] of Object.entries(fx.day_oc || {})) for (const n of ns || []) f[`fdo:${d}:${n}`] = "1";
     for (const [d, ns] of Object.entries(fx.night_oc || {})) for (const n of ns || []) f[`fno:${d}:${n}`] = "1";
@@ -55,8 +57,12 @@
     return f;
   }
   // 氏名には ':' も使える。日付・時間帯など既知の両端だけを区切り、氏名は元に戻す。
-  // 展開キーの形式は変えず、復元と衝突の表示で同じ解釈を使う。
+  // 復元と衝突の表示で同じ解釈を使う。旧 pday は従来の解釈で読めるが、新規生成は長さ付き。
   function keyParts(k) {
+    if (k.startsWith("pday2:")) {
+      const start = k.indexOf(":", 6) + 1, end = start + Number(k.slice(6, start - 1)), day = k.lastIndexOf(":");
+      return ["pday", k.slice(start, end), k.slice(end, day), k.slice(day + 1)];
+    }
     const p = k.split(":");
     switch (p[0]) {
       case "duty": return [p[0], p.slice(1, -2).join(":"), ...p.slice(-2)];

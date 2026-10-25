@@ -38,7 +38,7 @@ function context(lang = "en", useWorker = false) {
     setInterval: f => { intervals.set(++timer, f); return timer; }, clearInterval: id => intervals.delete(id),
     Date: class extends Date { static now() { return now; } },
     Blob: class { constructor(parts) { this.parts = parts; } },
-    URL: { createObjectURL: () => "blob:synthetic-worker" },
+    URL: { createObjectURL: () => "blob:synthetic-worker", revokeObjectURL() {} },
     document: { querySelector: s => s.startsWith("#fixedPane ") ? targets.get(s) || null : el(s),
       querySelectorAll: s => s === "[data-diagnostic-highlight]" ? rows.filter(r => r.hasAttribute("data-diagnostic-highlight")) : [],
       createTextNode: s => ({ textContent: s }), createElement: tag => { const n = node(tag); if (tag === "button") buttons.push(n); return n; }, addEventListener() {},

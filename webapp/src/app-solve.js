@@ -65,21 +65,32 @@
     if (!src || typeof Worker === "undefined") throw new Error("Worker を使えません");
     const boot = "\nself.onmessage = async (e) => { const m = e.data; try { if (m.type === 'init') { self._h = await Module({ wasmBinary: m.wasm, print: () => {}, printErr: () => {} }); postMessage({ id: m.id, ok: true }); return; } const sol = self._h.solve(m.text, m.opts); postMessage({ id: m.id, sol }); } catch (err) { postMessage({ id: m.id, err: String((err && err.message) || err) }); } };";
     const url = URL.createObjectURL(new Blob([src + boot], { type: "text/javascript" }));
-    const w = new Worker(url);
+    let urlReleased = false;
+    // init の応答まではソースを保つ。読込み完了後と失敗・中止時に、一度だけ登録を解放する。
+    const releaseURL = () => { if (!urlReleased) { urlReleased = true; URL.revokeObjectURL(url); } };
+    let w;
+    try { w = new Worker(url); } catch (e) { releaseURL(); throw e; }
     const pending = new Map(); let seq = 0, terminated = false, terminalError = null;
+    let workerReleased = false;
+    const releaseWorker = () => { if (!workerReleased) { workerReleased = true; try { w.terminate(); } catch (e) { } } releaseURL(); };
     const failAll = msg => { for (const p of pending.values()) p.reject(new Error(msg)); pending.clear(); };
     w.onmessage = ev => { const d = ev.data || {}; const p = pending.get(d.id); if (!p) return; pending.delete(d.id); if (d.err) p.reject(new Error(d.err)); else p.resolve(d.sol ?? d.ok); };
-    w.onerror = ev => { terminalError = (ev && ev.message) || T.t("Worker でエラー"); failAll(terminalError); };
-    const call = msg => new Promise((resolve, reject) => { if (terminated) { reject(new Error("中止しました")); return; } if (terminalError !== null) { reject(new Error(terminalError)); return; } const id = ++seq; pending.set(id, { resolve, reject }); w.postMessage(Object.assign({ id }, msg)); });
-    return { isWorker: true, get usable() { return !terminated && terminalError === null; }, init: () => call({ type: "init", wasm: T.b64ToBytes(T.WASM_B64) }), solve: (text, opts) => call({ type: "solve", text, opts }), terminate: () => { terminated = true; try { w.terminate(); } catch (e) { } failAll("中止しました"); } };
+    w.onerror = ev => { if (terminated || terminalError !== null) return; terminalError = (ev && ev.message) || T.t("Worker でエラー"); releaseWorker(); failAll(terminalError); };
+    const call = msg => new Promise((resolve, reject) => { if (terminated) { reject(new Error("中止しました")); return; } if (terminalError !== null) { reject(new Error(terminalError)); return; } const id = ++seq; pending.set(id, { resolve, reject }); try { w.postMessage(Object.assign({ id }, msg)); } catch (e) { pending.delete(id); reject(e); } });
+    return { isWorker: true, get usable() { return !terminated && terminalError === null; },
+      init: async () => { try { const ready = await call({ type: "init", wasm: T.b64ToBytes(T.WASM_B64) }); releaseURL(); return ready; } catch (e) { releaseWorker(); throw e; } },
+      solve: (text, opts) => call({ type: "solve", text, opts }),
+      terminate: () => { if (terminated) return; terminated = true; releaseWorker(); failAll("中止しました"); } };
   }
   async function ensureHighs() {
     if (A.highs && A.highs.usable !== false) return A.highs;
     if (A.highs && A.highs.terminate) A.highs.terminate(); // 失敗した Worker は次のクリックで作り直す
     A.highs = null;
     $("#calcLog").textContent += T.t("計算エンジンを読み込み中…") + "\n"; await new Promise(r => setTimeout(r, 30));
-    try { const hw = makeHighsWorker(); await hw.init(); A.highs = hw; }
+    let hw;
+    try { hw = makeHighsWorker(); await hw.init(); A.highs = hw; }
     catch (e) {
+      if (hw) hw.terminate(); // 初期化に失敗した Worker を残したまま同期版へ移らない
       $("#calcLog").textContent += T.t("（別スレッドを使えない環境のため画面内で計算します。計算中はブラウザが「ページが応答しません」と表示することがありますが、そのまま待ってください）") + "\n";
       A.highs = await Module({ wasmBinary: T.b64ToBytes(T.WASM_B64), print: () => { }, printErr: () => { } });
     }
@@ -122,7 +133,7 @@
     const baseAsg = useBase ? JSON.parse(JSON.stringify(state.result.asg)) : null, markChanges = !!(useBase && $("#markChanges").checked);
     let res;
     try { res = await T.solveWithAvoidRef(P, A.highs, { timeLimit, base: baseAsg }); }
-    catch (e) { done(); log(/中止/.test(String(e.message)) ? T.t("計算を中止しました。もう一度「計算する」を押すと最初からやり直します") : T.t("計算を続けられませんでした: {e}。もう一度「計算する」を押すと最初からやり直します", { e: e.message })); A.highs = null; return; }
+    catch (e) { done(); log(/中止/.test(String(e.message)) ? T.t("計算を中止しました。もう一度「計算する」を押すと最初からやり直します") : T.t("計算を続けられませんでした: {e}。もう一度「計算する」を押すと最初からやり直します", { e: e.message })); if (A.highs && A.highs.terminate) A.highs.terminate(); A.highs = null; return; }
     done();
     const inputsStillCurrent = () => {
       // 編集中の欄は change がまだ発火していない。画面を隠す前に通常の確定処理（設定の Undo も含む）を通してから比べる。
@@ -157,7 +168,7 @@
       const ddone = () => { clearInterval(dprog); $("#calcStatus").textContent = ""; $("#btnSolve").disabled = false; $("#btnCancel").hidden = true; };
       let diag;
       try { diag = await T.diagnose(P, A.highs, perTrial, pr => { dpr = pr; dat = Date.now(); dcur = diagnosticProgress(pr); dshow(); }, { totalTimeLimit }); }
-      catch (e) { ddone(); const err = String(e && e.message || e); log((e && e.cancelled) || /中止/.test(err) ? T.t("診断を中止しました") : T.t("診断を続けられませんでした: {e}。条件を変えずに再計算するか、作成者に知らせてください", { e: err })); A.highs = null; return; }
+      catch (e) { ddone(); const err = String(e && e.message || e); log((e && e.cancelled) || /中止/.test(err) ? T.t("診断を中止しました") : T.t("診断を続けられませんでした: {e}。条件を変えずに再計算するか、作成者に知らせてください", { e: err })); if (A.highs && A.highs.terminate) A.highs.terminate(); A.highs = null; return; }
       ddone();
       if (!inputsStillCurrent()) return;
       log(T.t("診断 {s} 秒", { s: Math.round((Date.now() - d0) / 1000) }));

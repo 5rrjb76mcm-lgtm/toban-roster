@@ -273,6 +273,17 @@
   }
   // 役割の表は読み戻しの最初に一括検査する。不正な識別子・役目で、名簿や月の入力を一部だけ書き換えない。
   const rawRoleOf = (R, id) => (Array.isArray(R.profile?.roles) ? R.profile.roles : []).find(raw => String((raw || {}).id || "").trim() === id);
+  // Deleted roles may still own month exceptions (including the next month’s first day).
+  // Reserve actual references, not historical IDs: never erase monthly input to make an ID free.
+  function retainedRoleIds(R) {
+    const ids = new Set((R.doctors || []).map(d => d.team).filter(Boolean));
+    for (const k of ["day_oc_none", "night_oc_none"]) {
+      for (const v of Object.values((state.month?.fixed || {})[k] || {})) {
+        for (const id of [].concat(v || [])) ids.add(String(id));
+      }
+    }
+    return ids;
+  }
   function stageRoles(R) {
     const rows = [...document.querySelectorAll("#roleTbl tr[data-ri]")], renames = new Map();
     if (!rows.length) return { roles: null, renames };
@@ -290,6 +301,10 @@
       return r;
     });
     T.normalizeRolesOf({ profile: { roles } }); // 本体と同じ識別子・役目の検査を、実際の設定に触れずに行う
+    const live = new Set(oldRoles.map(r => r.id)), retained = retainedRoleIds(R);
+    for (const id of renames.values()) if (!live.has(id) && retained.has(id)) {
+      throw new Error(T.t("役割ID「{id}」は残っている名簿・月データが参照しています。別のIDを指定してください。", { id }));
+    }
     return { roles, renames };
   }
   function readHardRules(R, roleEdit) {
@@ -980,7 +995,9 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (b.dataset.act === "roleAdd" || b.dataset.act === "roleDel") { // 役割の追加・削除
         const roles = T.normalizeRolesOf(R).map(x => Object.assign({}, rawRoleOf(R, x.id), { id: x.id, label: x.labelRaw ?? x.label, refs: [...x.refs], standby: x.standby }));
         if (b.dataset.act === "roleAdd") {
-          let i = roles.length + 1, id = `R${i}`; while (roles.some(r => r.id === id)) id = `R${++i}`;
+          const reserved = retainedRoleIds(R);
+          for (const r of roles) reserved.add(r.id);
+          let i = roles.length + 1, id = `R${i}`; while (reserved.has(id)) id = `R${++i}`;
           roles.push({ id, label: id, refs: [], standby: false });
           // 新しい役割は OC 資格が無い間も行・列を明示的な 0 で持つ。後の改名で既定 ID を再使用しても
           // 古い保存データ向けの欠損補完（Problem の既定人数）を新規入力として復活させない。

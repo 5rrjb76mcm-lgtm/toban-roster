@@ -27,7 +27,7 @@ function context(lang = "en", useWorker = false) {
     setInterval: f => { intervals.set(++timer, f); return timer; }, clearInterval: id => intervals.delete(id),
     Date: class extends Date { static now() { return now; } },
     Blob: class { constructor(parts) { this.parts = parts; } },
-    URL: { createObjectURL: () => "blob:synthetic-worker" },
+    URL: { createObjectURL: () => "blob:synthetic-worker", revokeObjectURL() {} },
     document: { querySelector: el, querySelectorAll: () => [], addEventListener() {},
       getElementById: id => useWorker && id === "highsSrc" ? { textContent: "synthetic worker" } : null },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },

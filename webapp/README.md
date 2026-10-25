@@ -126,6 +126,13 @@ Python 参照実装でも `rule_states.oncall: off` は対応します。設定 
 
 ## テスト
 
+以下の post47 回帰はソースとして追加した段階で、クラウドでは未実行です。記載件数は静的 authored 数であり、実行・合格件数ではありません。
+
+- `test_post47_role_identity_reservation_dom_node.js` — 11ケース。役割の削除→追加、保存された OC 免除の ID 予約、改名拒否・通常改名・Undo・未知の名簿参照を jsdom の設定イベントで確認する。既存 jsdom が必要。対象は現在開いている月の組込み参照で、未読込月・任意 plugin 参照の全履歴を保証しない。
+- `test_report_boundary_penalty_consistency_node.js` — 46シナリオ × ja/en = 92ケース。3規則の前月/翌月の報告を独立採点と照合し、説明資料HTML、off/hard、実在枠、OC/勤務の区別、期間責任者の免除を確認する。solver・ブラウザ不要。
+- `test_merge_person_day_tuple_node.js` — 11ケース。person_days の field/person/day の可逆性、キー衝突、競合表示、既知/未知名のフォルダ autosave、削除名 marker の保護を確認する。保存フォルダは代替で、実ブラウザ試験ではない。
+- `test_worker_url_cleanup_node.js` — 12ケース。Worker/URL 代替で成功・cancel/retry・constructor/init/runtime失敗・fallback・診断失敗の cleanup を確認する。Node built-ins のみで、実 Chrome の cancel/restart は別途必要。
+
 - `test_report_next_duty_scope_node.js` — 夜勤翌日の午後・終日の業務を「午前のみ」と表示しないことを、日本語・英語、規則の必須／なし、固定による許容、翌月1日の接続、説明資料HTMLで確かめる（架空データ、ソルバー・ブラウザ不要）。
 - `../tools/test_report_next_duty_scope.py` — Python参照実装の同じ報告を、対応済みの必須／既定値、固定による許容、翌月1日の接続で実CP-SAT・検算と照合する。未対応の `duty_conflicts: off` の拒否は変えない。
 
