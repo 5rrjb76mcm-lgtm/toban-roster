@@ -36,7 +36,14 @@
       // 連勤日数の不正な配列・オブジェクトは内側の空値も区別し、空欄への修正を保存・Undoで見落とさない。日数のnull・空文字は既定のまま。
       // 勤務帯別の人数（count / min / ideal）の null は「その帯の既定」を意味し、未指定（目安なし）とは別の値なので署名でも区別する（空欄化の保存・Undo を見落とさない）
       const perShiftNull = k => path.length === 4 && path[0] === "profile" && path[1] === "positions" && path[2] === "work" && ["count", "min", "ideal"].includes(path[3]) && v[k] === null;
-      const keepOf = k => LOCAL_KEY.test(path.length ? path[0] : k) || runValue || perShiftNull(k) || (path.length === 1 && path[0] === "run_length" && ["max", "min"].includes(k) && v[k] !== null && typeof v[k] === "object");
+      // Staffing selectors use presence, not truthiness: an empty minimum means one,
+      // while an absent minimum means the full count. Empty shift/day-type branches
+      // also override sibling fallbacks. Preserve only these model-owned paths.
+      const staffingPart = k => ["day", "night", "weekday", "off_days"].includes(k);
+      const staffingValue = k => path[0] === "profile" && path[1] === "positions" && path[2] === "work" &&
+        (path.length === 3 && (["count", "min"].includes(k) || staffingPart(k) || k === "ideal" && v[k] === "") ||
+          path.length >= 4 && (["count", "min", "ideal"].includes(path[3]) ? path.slice(4).every(staffingPart) : path.slice(3).every(staffingPart)) && staffingPart(k));
+      const keepOf = k => LOCAL_KEY.test(path.length ? path[0] : k) || runValue || perShiftNull(k) || staffingValue(k) || (path.length === 1 && path[0] === "run_length" && ["max", "min"].includes(k) && v[k] !== null && typeof v[k] === "object");
       const o = {}; // プラグインの項目（根の直下の local_… / local.…）では空値も JSON のまま区別する（統合と同じ。未指定と null・[]・{} は別）
       for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; if (x === false && !path.length && MONTH_FALSE_ABSENT.has(k)) continue; o[k] = canon(x, path.concat(k)); } return o; }
     return v;

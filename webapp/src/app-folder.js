@@ -734,7 +734,10 @@
     const consent = roleLoadConsent(o);
     if (consent && !confirmRoleLoad(o, opts.roleConsent || consent, !!opts.roleConsent)) return false; // 確認付きの選択画面を経た場合だけ二重に聞かない
     // 型検査・既定値の補完・月の整形は複製の上で済ませ、成功したときだけ状態をまとめて差し替える（途中で失敗しても、読み込む前の設定・月・結果・改名の記録・統合の基準は変わらない）
-    let month2, rules2; try { const clone = x => JSON.parse(JSON.stringify(x)); rules2 = clone(rules || state.rules); T.fillDefaultRules(rules2); month2 = clone(month); T.normalizeMonth(month2, rules2); }
+    let month2, rules2; try { const clone = x => JSON.parse(JSON.stringify(x)); rules2 = clone(rules || state.rules); T.fillDefaultRules(rules2);
+      // normalizeMonth can suppress a Problem error while estimating the next day.
+      // Reject unsupported shifts on the clone, before persistence or clearing Undo.
+      T.normalizeShiftsOf(rules2); month2 = clone(month); T.normalizeMonth(month2, rules2); }
     catch (e) { return alert(T.t("読み込み失敗: {err}", { err: e && e.message || e })); }
     state.renames = []; // 丸ごと読み込むので、手元の改名の記録は消す
     state.month = month2; if (rules) state.rules = rules2; state.result = result;

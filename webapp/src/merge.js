@@ -91,7 +91,7 @@
       else if (p[0] === "target") m.targets[p.slice(1).join(":")] = v; else if (p[0] === "cmin") m.count_min[p.slice(1).join(":")] = v; else if (p[0] === "cmax") m.count_max[p.slice(1).join(":")] = v;
       else if (p[0] === "duty") ((m.duty_days[p[1]] ||= {})[+p[2]] ||= {})[p[3]] = v;
       else if (p[0] === "cal") for (const one of String(v).split("+")) { const paid = /_paid$/.test(one), pv = one.replace(/_paid$/, ""); // 並べた値は 1 つずつ戻す
-        if (pv === "night") (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
+        if (pv === "night" && !paid) (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
       else if (p[0] === "wkwish") m.wishes.weekend_dayshift.push(p[1]);
       else if (p[0] === "wish") (m.wishes.night_on[p[1]] ||= []).push(+p[2]);
       else if (p[0] === "wishd") ((m.wishes.day_on ||= {})[p[1]] ||= []).push(+p[2]);

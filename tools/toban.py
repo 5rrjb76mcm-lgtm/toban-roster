@@ -185,7 +185,8 @@ class Problem:
         if any((x or {}).get("oncall") is False for x in sh):
             raise SystemExit("Python 版は勤務帯ごとのオンコールの付け外し（profile.shifts の oncall）に未対応です（JS 版で計算してください）")
         states = self.rules.get("rule_states") or {}
-        unsupported = [k for k in ("run_length_max", "run_length_min", "shift_sequence", "days_off_min", "days_off_pair", "wish_off_cap", "composition", "shift_balance") if states.get(k, "off") != "off"]
+        unsupported = [k for k in ("run_length_max", "run_length_min", "shift_sequence", "days_off_min", "days_off_pair", "wish_off_cap", "composition", "shift_balance",
+                                   "shift_run_max", "shift_count_range", "rest_after_ake", "dayoff_weekday_cap") if states.get(k, "off") != "off"]
         unsupported += [k for k in ALWAYS_ON_PY if states.get(k, "hard") == "off"]  # これらを「なし」にできるのは JS 版だけ
         if unsupported:
             raise SystemExit("Python 版は次の規則に未対応です（JS 版で計算してください）: " + "、".join(unsupported))
@@ -198,6 +199,10 @@ class Problem:
         soft = sorted(k for k, v in states.items() if v == "soft" and k not in SOFT_OK_PY and k != "dayoff_work_cap")
         if soft:
             raise SystemExit("Python 版は次の規則の「減点」に未対応です（JS 版で計算してください）: " + "、".join(soft))
+        # 名簿の fixed_only は JS 専用。規則を off にしても回数目安等の免除は残るため、
+        # 通常の当番候補へ読み替えて解く・検算することはできない。
+        if any(d.get("duty") == "fixed_only" for d in self.doctors.values()):
+            raise SystemExit("Python 版は名簿の duty=fixed_only に未対応です（JS 版で計算してください）")
         st = lambda rid, default: states.get(rid, default)
         self.oncall_on = st("oncall", "hard") != "off"
         if not self.oncall_on:
@@ -1656,7 +1661,8 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
             if n in A.oc((d, "night")):
                 notes.append(f"| {P.label(d)} 夜間OC | {n} | 翌{P.label(nd)} {'・'.join(dict.fromkeys(its))} |")
             if A.worked(n, (d, "night")):
-                notes.append(f"| {P.label(d)} 夜勤 | {n} | 翌{P.label(nd)} {'・'.join(dict.fromkeys(its))}（午前のみ） |")
+                scope = "（午前のみ）" if P.busy(n, nd, "am") and not P.busy(n, nd, "pm") else ""
+                notes.append(f"| {P.label(d)} 夜勤 | {n} | 翌{P.label(nd)} {'・'.join(dict.fromkeys(its))}{scope} |")
     if notes:
         L.append("| 担当 | 医師 | 翌日の業務 |")
         L.append("| --- | --- | --- |")

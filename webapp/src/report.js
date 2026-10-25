@@ -111,7 +111,7 @@
       const its = [...new Set(["am", "pm"].flatMap(h => P.dutyItems(n, nd, h).map(i => tv("{half}{kind}", { half: tx(h === "am" ? "午前" : "午後"), kind: T.kindLabel(i.kind) }))))];
       if (!its.length) continue;
       if (A.oc([d, "night"]).includes(n)) rows7.push([`${esc(P.label(d))} ${esc(tx("夜間OC"))}`, esc(n), esc(tv("翌{day} {items}", { day: P.label(nd), items: its.join(T.nameSep()) }))]);
-      if (A.worked(n, [d, "night"])) rows7.push([`${esc(P.label(d))} ${esc(P.shiftLabel("night"))}`, esc(n), esc(tv("翌{day} {items}（午前のみ）", { day: P.label(nd), items: its.join(T.nameSep()) }))]);
+      if (A.worked(n, [d, "night"])) rows7.push([`${esc(P.label(d))} ${esc(P.shiftLabel("night"))}`, esc(n), esc(tv(P.busy(n, nd, "am") && !P.busy(n, nd, "pm") ? "翌{day} {items}（午前のみ）" : "翌{day} {items}", { day: P.label(nd), items: its.join(T.nameSep()) }))]);
     }
     // 午後外勤日の全件（同日の夜勤・夜間OCの有無と「間に合う」確認の登録）
     for (const n of P.dutyNames) for (let d = 1; d <= P.N; d++) if (P.busy(n, d, "pm", ["external"])) {

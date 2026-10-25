@@ -62,7 +62,25 @@ for(const [name,work] of [['canonical',{count:{day:41,night:2}}],['shorthand',{d
 test('lower-bound edit retains unedited upper counts',{count:41},async a=>{a.change('[data-countmin="night"]','1');assert.equal(problem(a).countOf([1,'day']),41);assert.equal(problem(a).countOf([1,'night']),41);assert.equal(problem(a).countMinOf([1,'night']),1);await persisted(a,semantics(a));});
 for(const [value,expected] of [['42',40],['35',35],['0',0],['',1]])test('explicit count '+JSON.stringify(value)+' keeps existing edit semantics',{count:{day:41,night:2}},async a=>{a.change('[data-count="night"]',value);assert.equal(problem(a).countOf([1,'night']),expected);assert.equal(problem(a).countOf([1,'day']),41,'untouched sibling is not clamped');await persisted(a,semantics(a));});
 test('work metadata and unchanged high bounds survive',{count:41,min:41,ideal:41,local_work:{keep:'Synthetic work metadata'}},async a=>{const before=semantics(a),metadata=clone(a.A.state.rules.profile.positions.work.local_work),unrelated=fields(a);a.change('#setProfLabel','Synthetic renamed metadata');assert.deepStrictEqual(semantics(a),before);assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.local_work),metadata);assert.deepStrictEqual(fields(a),unrelated);const out=await persisted(a,before);assert.deepStrictEqual(out.profile.positions.work.local_work,metadata);});
-test('zero upper count still caps visible min and ideal',{count:0,min:1,ideal:1},a=>{a.change('#setProfLabel','Synthetic renamed zero');for(const shift of ['day','night']){assert.equal(a.A.state.rules.profile.positions.work.min[shift],0);assert.equal(a.A.state.rules.profile.positions.work.ideal[shift],0);}});
+test('zero upper count caps model bounds while untouched ideal raw survives',{count:0,min:1,ideal:1},async a=>{
+ a.change('#setProfLabel','Synthetic renamed zero');
+ assert.equal(a.A.state.rules.profile.positions.work.ideal,1,'unrelated edits retain the accepted raw ideal');
+ for(const shift of ['day','night']){
+  assert.equal(a.q(`[data-countideal="${shift}"]`).value,'1','the editor displays the preserved raw ideal');
+  assert.equal(problem(a).countMinOf([1,shift]),0,'effective minimum is capped at zero');
+  assert.equal(problem(a).countIdealOf([1,shift]),0,'effective ideal is capped at zero');
+ }
+ for(const shift of ['day','night']){
+  a.change(`[data-count="${shift}"]`,'2');
+  assert.equal(a.A.state.rules.profile.positions.work.ideal,1,'an upper-count edit does not own the raw ideal');
+  assert.equal(problem(a).countIdealOf([1,shift]),1,'restoring the upper count restores the untouched target');
+ }
+ a.change('[data-countideal="day"]','3');
+ assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.ideal),{day:2,night:1},'only an explicit ideal edit applies the existing numeric upper bound');
+ assert.equal(problem(a).countIdealOf([1,'day']),2);
+ assert.equal(problem(a).countIdealOf([1,'night']),1,'the untouched sibling keeps its raw target');
+ await persisted(a,semantics(a));
+});
 test('input-only sibling edit is read before export',{count:{day:41,night:2}},async a=>{const el=a.q('[data-count="night"]');el.value='3';el.dispatchEvent(new a.w.Event('input',{bubbles:true}));const out=await exported(a);assert.equal(out.profile.positions.work.count.day,41);assert.equal(out.profile.positions.work.count.night,3);});
 test('production checker keeps accepted41 and rejects40 after unrelated edit',{count:41},async a=>{
  const r=clone(a.A.state.rules);r.profile.label='Synthetic41 checker';r.profile.shifts=[{id:'day',on:'none'},{id:'night',on:'all'}];r.doctors=Array.from({length:41},(_,i)=>({name:'Fictional Staff '+(i+1),team:'S',quota:30}));r.name_order=r.doctors.map(d=>d.name);await importFile(a,r);a.enter();
