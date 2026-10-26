@@ -205,3 +205,10 @@ Python 参照実装でも `rule_states.period_charge: off` は対応済みです
 - `test_month_shift_import_atomic_dom_node.js` — Whole-month external/folder adoption rejects unsupported shift definitions before replacing state, browser recovery data or Undo, including months with already expanded `duty_days`. Accepted missing/empty/partial definitions and repairable numeric-invalid settings remain raw. Static-authored candidate; not executed during preparation.
 
 - `test_profile_empty_ideal_preservation_dom_node.js` — 設定画面の読み戻しで未編集の人数目安を保持し、root の空文字（目安 1）を片側の勤務帯だけで編集・削除しても反対側を変えないことを、架空データの 50 ケースで確かめます。null・未指定・空配列・空 object の対照、反復読取、書き出し、保存再読込、Undo と編集フラグの解除、未編集帯の空コンテナや上限を超える目安の raw 保持を含みます（jsdom、実ブラウザではありません）。
+
+### 追加の入力境界・説明資料回帰
+
+- `test_merge_shift_import_atomic_dom_node.js` — 共有フォルダの自動統合で未対応勤務帯を採用前に拒否し、月・設定・統合基準・保存先・Undoを保持することを、実DOMと代替フォルダで確認する。
+- `test_asg_boundary_authority_node.js` / `../tools/test_asg_boundary_authority.py` — 保存結果の余剰キーで正式な前月末勤務・OCを上書きせず、非空の不正枠は必須違反として扱うことを確認する。
+- `test_report_work_gap_scope_node.js` / `../tools/test_report_work_gap_scope.py` — 勤務間隔の説明で予備職員と前月内だけの組を除き、実際に採点する当月・月境界の組を保持することを確認する。
+- `test_report_holiday_assignments_node.js` — 第5節が施設固有ルールを推測せず、休日の全勤務者・役割・固定タグ・実際の日夜OCを日本語・英語で表示することを確認する。

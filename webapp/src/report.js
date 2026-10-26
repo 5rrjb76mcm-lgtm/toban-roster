@@ -68,21 +68,15 @@
 <li>${esc(tv("前月までの履歴込み: {v}（履歴 {h}）", { v: T.fmtHalf(hist), h: T.fmt(P.histWeekend) }))}</li>
 <li>${esc(tv("祝日の担当: {v}（履歴 {h}）", { v: T.fmt(hc), h: T.fmt(P.histHoliday) }))}</li>
 <li>${esc(tv("連続する週末担当: {v}", { v: cons.join(T.listSep()) || tx("なし") }))}</li></ul>` });
-    // 5 同日集約
+    // 5 休日の実際の配置。施設固有の同日集約の意味を本体で推測しない。
     const rows5 = [];
     for (let d = 1; d <= P.N; d++) {
       if (!P.isHoliday(d)) continue;
-      const wd = A.work([d, "day"]), wn = A.work([d, "night"]), td = Tm[wd], tn = Tm[wn];
-      let res;
-      const yoc = s => A.oc(s).filter(x => P.isRole(x, "junior")).join(T.nameSep());
-      if (tn === P.refId("junior") && [P.refId("charge"), P.refId("other")].includes(td)) res = A.oc([d, "day"]).includes(wn) ? L(tv("夜勤の{who}が日勤帯の{junior}OC（適用）", { who: wn })) : L(tv("別担当（日勤帯の{junior}OC={oc}）", { oc: yoc([d, "day"]) || "―" }));
-      else if (td === P.refId("junior") && [P.refId("charge"), P.refId("other")].includes(tn)) res = A.oc([d, "night"]).includes(wd) ? L(tv("日勤の{who}が夜間の{junior}OC（適用）", { who: wd })) : L(tv("別担当（夜間の{junior}OC={oc}）", { oc: yoc([d, "night"]) || "―" }));
-      else if (td === P.refId("other") && tn === P.refId("other")) res = L(tv("{junior}OCを日勤・夜間に各1名（{a} / {b}）", { a: yoc([d, "day"]) || "―", b: yoc([d, "night"]) || "―" }));
-      else if (td === P.refId("junior") && tn === P.refId("junior")) res = L("{junior}OC不要（{charge}OCのみ）");
-      else res = tx("対象外");
-      rows5.push([esc(P.label(d)), `${esc(wd)}（${esc(P.roleLabel(td))}）`, `${esc(wn)}（${esc(P.roleLabel(tn))}）`, `${esc(P.roleLabel(td))}+${esc(P.roleLabel(tn))}`, esc(res)]);
+      const workers = k => P.slotExists(d, k) ? A.workers([d, k]).map(n => `${P.nameWithTag([d, k], n)}（${P.roleLabel(Tm[n])}）`).join(T.nameSep()) || "―" : "―";
+      const oncall = k => P.slotExists(d, k) ? join(A.oc([d, k])) || "―" : "―";
+      rows5.push([esc(P.label(d)), esc(workers("day")), esc(workers("night")), esc(oncall("day")), esc(oncall("night"))]);
     }
-    S.push({ id: "s5", title: tx("5 同日集約の対象一覧（全土日祝、昼夜両方向）"), html: table(["日付", "日勤者", "夜勤者", "組合せ", "適用結果"].map(tx), rows5) });
+    S.push({ id: "s5", title: tx("5 休日の勤務・オンコール一覧"), html: table(["日付", "日勤者", "夜勤者", "日勤OC", "夜間OC"].map(tx), rows5) });
     // 6 週休日
     let s6 = table(["{person}", "週休日発生数", "対象勤務日", "外勤あり"].map(tx), order.map(n => [esc(n), met[n].rest.length, esc(met[n].rest.join(T.listSep()) || "―"), P.hasExternal(n) ? "○" : ""]));
     // 月の休みの日数と 2 連休（規則 days_off_min / days_off_pair を使う施設だけ）

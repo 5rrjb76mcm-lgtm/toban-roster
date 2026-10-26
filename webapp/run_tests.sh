@@ -31,6 +31,9 @@ run test_merge_node.js
 run test_merge_scalar_clear_node.js
 run test_merge_paid_entry_node.js
 run test_merge_person_day_tuple_node.js
+run test_merge_shift_import_atomic_dom_node.js
+run test_asg_boundary_authority_node.js
+if [ -x "$PY" ]; then echo "== Python assignment boundary authority"; "$PY" ../tools/test_asg_boundary_authority.py || fail=1; else echo "-- Python assignment boundary authority skipped (venv unavailable)"; fi
 run test_delimited_names_node.js "$HP"
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
@@ -51,6 +54,9 @@ run test_report_change_identity_node.js
 run test_report_duty_state_node.js
 run test_report_next_duty_scope_node.js
 run test_report_boundary_penalty_consistency_node.js
+run test_report_work_gap_scope_node.js
+run test_report_holiday_assignments_node.js
+if [ -x "$PY" ]; then echo "== Python work-gap report scope"; "$PY" ../tools/test_report_work_gap_scope.py || fail=1; else echo "-- Python work-gap report scope skipped (venv unavailable)"; fi
 if [ -x "$PY" ]; then echo "== Python next-duty report scope"; "$PY" ../tools/test_report_next_duty_scope.py || fail=1; else echo "-- Python next-duty report scope skipped (venv unavailable)"; fi
 run test_dayoff_raw_projection_dom_node.js
 run test_weight_readback_preservation_dom_node.js

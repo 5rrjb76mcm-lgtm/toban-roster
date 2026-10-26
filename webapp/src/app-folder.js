@@ -120,7 +120,13 @@
     const changed = () => (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
-    let theirs; try { theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules); } catch (e) { return null; }
+    let theirs; try {
+      // Expanded duty_days skips Problem construction; next-day migration also catches
+      // its errors. Validate peer shifts before changing state, the merge base or Undo,
+      // just as whole-month adoption does. Keep raw settings and repairable numbers.
+      T.normalizeShiftsOf(f.data.rules || state.rules);
+      theirs = T.normalizeMonth(JSON.parse(JSON.stringify(f.data.month)), f.data.rules || state.rules);
+    } catch (e) { return null; }
     if (!A.isMonthObj(theirs) || A.tag(theirs) !== A.tag() || !A.isMonthObj(base) || A.tag(base) !== A.tag()) return null; // 相手・共通の元が同じ年月でなければ統合しない（別の月の中身を当てない）
     // 固定「OCなし」は氏名ではなく役割の ID を持つ。役割の改名・入れ替えの対応は記録していないので、
     // 定義が異なる版どうしを推測で混ぜない（古い ID が別の役割になっていても、入力チェックでは分からない）。

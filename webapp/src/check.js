@@ -7,7 +7,10 @@
     constructor(P, asg) {
       this.P = P; this.a = {};
       for (const [k, v] of Object.entries(P.prevFixed)) this.a[k] = { work: v.work, oc: [...v.oc] };
-      for (const [k, v] of Object.entries(asg)) this.a[k] = { work: v.work, oc: [...(v.oc || [])] };
+      // Saved results own only current slots. Even an empty stale key must not
+      // erase authoritative previous-month work/OC. check() still inspects the
+      // raw result below, so nonempty extra slots remain structural violations.
+      for (const [k, v] of Object.entries(asg)) if (P.slotSet.has(k)) this.a[k] = { work: v.work, oc: [...(v.oc || [])] };
     }
     // 勤務者は 1 名なら文字列、複数名なら配列で入る（1 枠 1 名の施設では保存形が変わらない）
     workers(s) { const w = (this.a[key(s)] || {}).work; return w == null || w === "" ? [] : (Array.isArray(w) ? w.filter(Boolean) : [w]); }
