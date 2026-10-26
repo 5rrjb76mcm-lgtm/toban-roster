@@ -27,8 +27,10 @@ T.rules.register({
   // 説明資料の第 9 節（調整目標の達成状況）の行
   report(ctx, prm) {
     const { P, t } = ctx;
-    for (const n of ctx.names) { const wk = d => d > P.N ? P.nextFixedWorks(n) : ctx.anyWork(n, d), g1 = [], g2 = [];
-      for (let d = ctx.firstPrev; d <= P.N; d++) { if (!wk(d)) continue; if (d + 2 <= P.N + 1 && wk(d + 2)) g1.push(`${P.label(d)}→${P.label(d + 2)}`); if (d + 3 <= P.N + 1 && wk(d + 3)) g2.push(`${P.label(d)}→${P.label(d + 3)}`); }
+    for (const n of ctx.names) { if (P.isRole(n, "reserve")) continue;
+      const wk = d => d > P.N ? P.nextFixedWorks(n) : ctx.anyWork(n, d), g1 = [], g2 = [];
+      // 前月どうしは当月の採点対象外。前月→当月・当月→翌月の実勤務は残す。
+      for (let d = ctx.firstPrev; d <= P.N; d++) { if (!wk(d)) continue; if (d + 2 >= 1 && d + 2 <= P.N + 1 && wk(d + 2)) g1.push(`${P.label(d)}→${P.label(d + 2)}`); if (d + 3 >= 1 && d + 3 <= P.N + 1 && wk(d + 3)) g2.push(`${P.label(d)}→${P.label(d + 3)}`); }
       if (g1.length || g2.length) ctx.line(t("{who} の勤務間隔が短い組（減点対象）: {items}", { who: n, items: [g1.length ? t("中1日 {v}", { v: g1.join(ctx.sep()) }) : "", g2.length ? t("中2日 {v}", { v: g2.join(ctx.sep()) }) : ""].filter(Boolean).join("／") })); }
   },
   python: true,

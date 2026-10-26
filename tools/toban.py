@@ -1188,9 +1188,12 @@ class Asg:
         self.a = {}
         for s, v in P.prev_fixed.items():
             self.a[s] = {"work": v["work"], "oc": list(v.get("oc") or [])}
+        # Saved results own canonical current slots, never previous constants.
+        # Keep raw extra-slot rejection in check(), separately from this view.
+        current = {f"{d}:{kind}": (d, kind) for d, kind in P.slots}
         for k, v in asg.items():
-            d, kind = k.split(":")
-            self.a[(int(d), kind)] = {"work": v["work"], "oc": list(v.get("oc") or [])}
+            if k in current:
+                self.a[current[k]] = {"work": v["work"], "oc": list(v.get("oc") or [])}
 
     def work(self, s):
         return self.a.get(s, {}).get("work")
@@ -1241,6 +1244,16 @@ def check(P: Problem, asg: dict):
 
     def slab(s):
         return f"{lab(s[0]) if s[0] >= 1 else '前月'+str(s)}{'日勤' if s[1]=='day' else '夜勤'}"
+
+    # Like JS, retain raw nonempty extra slots as hard structural violations.
+    # Empty legacy placeholders are harmless, but cannot replace prev_fixed.
+    current = {f"{d}:{kind}" for d, kind in P.slots}
+    for k, v in asg.items():
+        if k not in current:
+            work, oc = v.get("work"), v.get("oc")
+            occupants = (work if isinstance(work, list) else [work]) + (oc if isinstance(oc, list) else [oc])
+            if any(occupants):
+                viol(f"{k}: 当月の勤務帯の設定にない枠に割当があります。再計算してください")
 
     # 1 充足とチーム構成
     for s in P.slots:
@@ -1729,13 +1742,16 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         if cc:
             soft.append(f"- {n} の隣接しない連日の当番: {'、'.join(cc)}")
     for n in P.duty_names:
+        if T[n] == "C":  # 勤務間隔の採点と同じく予備は対象外。
+            continue
         lo = min([s[0] for s in P.prev_slots], default=1)
         def wk(d, n=n):
             if d > P.N:
                 return P.next_fixed_works(n)
             return any(A.worked(n, (d, k)) for k in ("day", "night") if (d, k) in P.all_slots_set)
-        g1 = [f"{P.label(d)}→{P.label(d + 2)}" for d in range(lo, P.N + 1) if wk(d) and d + 2 <= P.N + 1 and wk(d + 2)]
-        g2 = [f"{P.label(d)}→{P.label(d + 3)}" for d in range(lo, P.N + 1) if wk(d) and d + 3 <= P.N + 1 and wk(d + 3)]
+        # 前月内だけの組は、当月の目的関数にも含まれない。
+        g1 = [f"{P.label(d)}→{P.label(d + 2)}" for d in range(lo, P.N + 1) if wk(d) and 1 <= d + 2 <= P.N + 1 and wk(d + 2)]
+        g2 = [f"{P.label(d)}→{P.label(d + 3)}" for d in range(lo, P.N + 1) if wk(d) and 1 <= d + 3 <= P.N + 1 and wk(d + 3)]
         if g1 or g2:
             parts = [x for x in ["中1日 " + "、".join(g1) if g1 else "", "中2日 " + "、".join(g2) if g2 else ""] if x]
             soft.append(f"- {n} の勤務間隔が短い組（減点対象）: {'／'.join(parts)}")
