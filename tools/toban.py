@@ -170,6 +170,14 @@ class Problem:
             got = {(r or {}).get("id"): ((r or {}).get("refs") or [None])[0] for r in roles}
             if got != want:
                 raise SystemExit("Python 版は役割の識別子の変更に未対応です（JS 版で計算してください）: " + "、".join(sorted(got)))
+            # JS normalizeRoles uses !!standby; an omitted flag on an explicit
+            # role is false (only an absent/empty roles array gets defaults).
+            # JSON arrays/objects are truthy in JS even when empty.
+            standby = {(r or {}).get("id") for r in roles
+                       if isinstance((r or {}).get("standby"), (list, dict))
+                       or bool((r or {}).get("standby"))}
+            if standby != {"I", "Y"}:
+                raise SystemExit("Python 版はオンコール対象役割の変更に未対応です（profile.roles.standby を確認するか、JS 版で計算してください）")
         pos = (((self.rules.get("profile") or {}).get("positions") or {}).get("work") or {})
         cnt = pos.get("count", pos if not isinstance(pos, dict) or "count" in pos else 1)
         if not _single_worker_count(cnt):
