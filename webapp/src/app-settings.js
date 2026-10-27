@@ -90,7 +90,7 @@
         if (pl.length) lines.push(T.t("組み立て時に取り込んだ施設のプラグイン: {list}", { list: pl.map(p => `${p.dir}（${Object.entries(p.files).map(([k, v]) => `${k} ${v.length}`).join(", ")}）`).join(T.listSep()) }));
         if (fl.length) lines.push(T.t("保存フォルダから読み込んだプラグイン: {list}", { list: fl.map(x => x.ok ? `${x.name}（${x.ids.join("・") || "—"}）` : T.t("{name}（読めません: {err}）", { name: x.name, err: x.error })).join(T.listSep()) }));
         el.hidden = !lines.length; el.textContent = lines.join("\n"); } }
-    $("#rulesJson").value = JSON.stringify(R, null, 1);
+    { const ed = $("#rulesJson"); ed.value = JSON.stringify(R, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; } // dataset が無い試験用の最小要素でも描画を止めない
   }
 
   // ---------- 施設の構成（役割・勤務帯・人数）と規則 ----------
@@ -963,13 +963,14 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
+    $("#rulesJson").addEventListener("input", ev => { if (ev.target && ev.target.dataset) ev.target.dataset.pluginDraft = "1"; });
     const cleanupPanel = $("#historyCleanup");
     if (cleanupPanel) {
       cleanupPanel.addEventListener("toggle", renderHistoryCleanup);
       cleanupPanel.addEventListener("change", ev => { if (ev.target.name === "historyCleanupPerson") $("#btnHistoryCleanup").disabled = false; });
       cleanupPanel.addEventListener("click", ev => { if (ev.target.id === "btnHistoryCleanup") cleanSelectedHistory(); });
     }
-    $("#btnReloadPlugins").addEventListener("click", () => A.transition("plugins", async () => { if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (!n) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); renderSettings(); }));
+    $("#btnReloadPlugins").addEventListener("click", () => A.transition("plugins", async () => { if (!A.dirHandle) return A.toast(T.t("保存フォルダに接続していません")); const n = await A.loadFolderPlugins(); if (n === 0) A.toast(T.t("保存フォルダに plugins/ のプラグインはありません")); }));
     $("#settings").addEventListener("click", ev => {
       const b = ev.target.closest("button"); if (!b || !b.dataset.act) return;
       const act = b.dataset.act, mod = (T.RULE_DEFS || []).find(d => d.ui && d.ui.acts && d.ui.acts[act]); // プラグインの設定欄のボタン（表の行の追加・削除など）

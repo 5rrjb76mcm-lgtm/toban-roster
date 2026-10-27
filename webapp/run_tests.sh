@@ -32,6 +32,16 @@ run test_merge_scalar_clear_node.js
 run test_merge_paid_entry_node.js
 run test_merge_person_day_tuple_node.js
 run test_merge_shift_import_atomic_dom_node.js
+# post49: static-authored candidate regressions (local validation required)
+run test_merge_new_identity_dom_node.js
+run test_plugin_load_generation_node.js
+run test_plugin_reload_draft_dom_node.js
+run test_days_off_min_person_lint_node.js "$HP"
+if [ -x "$PY" ]; then
+  echo "== Python standby-role guards"
+  "$PY" ../tools/test_standby_role_guard.py || fail=1
+  run test_python_standby_roles_node.js "$PY"
+else echo "-- Python standby-role guards skipped (venv unavailable)"; fi
 run test_asg_boundary_authority_node.js
 if [ -x "$PY" ]; then echo "== Python assignment boundary authority"; "$PY" ../tools/test_asg_boundary_authority.py || fail=1; else echo "-- Python assignment boundary authority skipped (venv unavailable)"; fi
 run test_delimited_names_node.js "$HP"

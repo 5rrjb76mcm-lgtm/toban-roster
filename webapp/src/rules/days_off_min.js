@@ -110,6 +110,9 @@ T.rules.register({
         if (need > cap) ctx.push("LINT_SHIFT_CAPACITY", { shift: sh.label, need, cap }); }
       ctx.provide("busy_days", { people, use, busyOf, note: daysOffSupplyNote(P) }); // 構成の規則の入力チェックが使う（事実）
     }
+    // 「以上」は勤務日の上限だけで、個人にその日数の勤務を要求しない。
+    // 全体・勤務帯の供給上限の診断は上で済ませ、「ちょうど」のときだけ個人の必要勤務日を調べる。
+    if (!prm.exact) return;
     // 人ごと（夜勤に入れない人だけ。夜勤があると明けで勤務日が 2 日ずつ動き、見積もりが立たない）: 入れる日と、休みから決まる勤務日を比べる
     const forbid = (n, s) => P.state("composition") === "hard" && P.comp.some(c => c.max === 0 && P.compOn(c, s) && P.compMatch(c, n)); // 構成の規則で最大 0
     const ok = (n, s) => ctx.canWork(n, s) && !forbid(n, s);

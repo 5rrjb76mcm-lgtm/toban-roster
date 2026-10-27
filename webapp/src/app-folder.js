@@ -139,6 +139,16 @@
         f.mergeBlockedReason = T.t("役割の定義が共通の元・このブラウザ・相手の版で一致しないか、共通の元の設定がありません。固定「OCなし」を別の役割に移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null;
       }
     }
+    // 相手の改名・追加の履歴は保存JSONにない。元にいない新しい氏名が両側に現れても、
+    // 同じ本人とは限らない（手元の新規追加と相手の別人の改名など）。設定の採用先や
+    // 入力の有無によらず、月・結果を氏名だけで結び付ける前に全版選択へ戻す。
+    // 共通の元の本人から追跡できる手元の改名は、既存の改名処理に任せる。
+    if (state.baseRules && Array.isArray(state.baseRules.doctors) && f.data.rules && Array.isArray(f.data.rules.doctors)) {
+      const originalNames = state.baseRules.doctors.map(d => d.name), peerNames = new Set(f.data.rules.doctors.map(d => d.name));
+      const uncertain = (state.rules.doctors || []).some(d => !originalNames.includes(d.name) && peerNames.has(d.name)
+        && T.renameOrigin(state.renames, originalNames, d.name) === null);
+      if (uncertain) { f.mergeBlockedReason = T.t("同期の後に追加した氏名が相手の名簿にもありますが、同じ本人か確認できません。入力や計算結果を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
+    }
     // 1) 設定（名簿・規則・重み）の採用先を先に決める（氏名をどちらの名簿に揃えるかが、これで決まる）
     // 共通の元と比べる: 相手だけ変えたなら相手の、自分だけ変えたなら自分の、両方なら聞く
     let rulesPick = "theirs";
@@ -358,7 +368,7 @@
     for (const [savedTag, saved] of monthWrites) if (saved.root === root && saved.gen === gen && saved.serial > write) dirs.push(savedTag);
     A.monthDirs = [...new Set(dirs)].sort(); renderFolderBar(); renderHeader();
     if (A.solving) { if (pluginsFor !== root) { A.pluginsPending = true; A.toast(T.t("計算中のため、フォルダのプラグインは計算が終わってから読みます")); } } // 計算中は登録を変えない（計算した規則と検算する規則がずれる）。計算後に loadPendingPlugins が読む
-    else if (pluginsFor !== root) { pluginsFor = root; A.pluginsPending = false; await loadFolderPlugins(root); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）。保留分もここで済む
+    else if (pluginsFor !== root) { A.pluginsPending = false; await loadFolderPlugins(root); } // 接続したフォルダごとに 1 回（「プラグインを読み直す」で再読）。保留分もここで済む
   }
   // 接続直後: フォルダのファイルとブラウザ内の状態を照合し、フォルダの方が新しければそちらを読む
   async function reconcileWithFolder() { try { await reconcileCore(); } finally { if (A.dirHandle && A.isDirty()) A.save(); } } // 接続後に未保存の変更があれば自動保存を予約
@@ -400,33 +410,96 @@
   }
   // 計算中に接続したフォルダのプラグインを、計算が終わってから読む（app-solve.js の runSolve が計算の後始末で呼び、読み終わるまで次の計算を受け付けない）
   async function loadPendingPlugins() {
-    if (!A.pluginsPending) return 0; A.pluginsPending = false;
-    if (!A.dirHandle || A.solving) return 0;
-    pluginsFor = A.dirHandle; return loadFolderPlugins();
+    if (!A.pluginsPending || !A.dirHandle || A.solving) return 0;
+    // 断られた切替では保留を消さない。保存の行列の外（計算の後始末）からだけ呼ぶ。
+    return A.transition("plugins", async () => {
+      if (!A.pluginsPending || !A.dirHandle || A.solving) return 0;
+      A.pluginsPending = false;
+      return loadFolderPlugins();
+    });
   }
-  // 保存フォルダの plugins/（rules/ calendars/ docx/ lang/ profiles/）を読んで登録する。無ければ何もしない。docs/rule-modules.md §8
+  let pluginLoadEpoch = 0;
+  // ファイルは先に全て読む。待機中は登録口も画面も変更せず、最後に一括して反映する。
+  // 同じフォルダの再読込も世代で区別する（古い本文・失敗を新しい登録へ混ぜない）。
   async function loadFolderPlugins(root = A.dirHandle) {
-    if (!root) return 0;
-    if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return 0; } // 画面からは窓口（A.transition("plugins")）が先に断る。ここは保存処理の中からの接続など窓口を通らない経路の安全側
-    T.plugins.beginFolder(); // 前のフォルダで読んだ分（規則・区分・拡張・暦・様式・文面・訳・プロファイル）を最初の写しへ戻す。保存データが参照する規則が無ければ入力チェック（LINT_PLUGIN_MISSING）が知らせる
-    // plugins/ が無いのは正常（NotFoundError）。それ以外（権限・読取り障害）は読み込みの失敗として記録し、直るまで計算・帳票を止める
-    let pdir = null; try { pdir = await root.getDirectoryHandle("plugins"); } catch (e) { if (!notFound(e)) { T.plugins.fail("rules", "plugins/", e); A.toast(T.t("フォルダの plugins/ を開けません: {err}", { err: e && e.message || e })); } A.renderAll(); if (typeof A.renderLangs === "function") A.renderLangs(); return 0; }
-    let n = 0; const errs = [];
-    for (const kind of T.plugins.KINDS) {
-      let kd = null; try { kd = await pdir.getDirectoryHandle(kind); } catch (e) { if (!notFound(e)) { T.plugins.fail(kind, `${kind}/`, e); errs.push(`${kind}/: ${e && e.message || e}`); n++; } continue; }
-      const files = []; try { for await (const [name, h] of kd.entries()) if (h.kind === "file" && (kind === "lang" || kind === "profiles" ? /\.json$/i : /\.js$/i).test(name)) files.push([name, h]); } catch (e) { T.plugins.fail(kind, `${kind}/`, e); errs.push(`${kind}/: ${e && e.message || e}`); n++; continue; }
+    if (!root || root !== A.dirHandle) return null;
+    if (A.solving) { A.toast(T.t("計算中はプラグインを読み直せません。計算が終わってからもう一度押してください")); return null; }
+    const epoch = ++pluginLoadEpoch, gen = A.dirGen;
+    const current = () => epoch === pluginLoadEpoch && root === A.dirHandle && gen === A.dirGen;
+    const staged = [];
+    let pdir = null, rootError = null;
+    try { pdir = await root.getDirectoryHandle("plugins"); }
+    catch (e) { if (!current()) return null; if (!notFound(e)) rootError = e; }
+    if (!current()) return null;
+    if (pdir) for (const kind of T.plugins.KINDS) {
+      let kd = null;
+      try { kd = await pdir.getDirectoryHandle(kind); }
+      catch (e) { if (!current()) return null; if (!notFound(e)) staged.push({ kind, name: `${kind}/`, error: e }); continue; }
+      if (!current()) return null;
+      const files = [];
+      try { for await (const [name, h] of kd.entries()) {
+        if (!current()) return null;
+        if (h.kind === "file" && (kind === "lang" || kind === "profiles" ? /\.json$/i : /\.js$/i).test(name)) files.push([name, h]);
+      } }
+      catch (e) { if (!current()) return null; staged.push({ kind, name: `${kind}/`, error: e }); continue; }
+      if (!current()) return null;
       files.sort((a, b) => a[0].localeCompare(b[0]));
-      for (const [name, h] of files) { let text; try { text = await (await h.getFile()).text(); } catch (e) { T.plugins.fail(kind, `${kind}/${name}`, e); errs.push(`${kind}/${name}: ${e && e.message || e}`); n++; continue; } // 本文を読めない（load を通らない）失敗も記録
-        const rec = T.plugins.load(kind, `${kind}/${name}`, text, "folder"); n++; if (!rec.ok) errs.push(`${kind}/${name}: ${rec.error}`); }
+      for (const [name, h] of files) {
+        try {
+          const file = await h.getFile(); if (!current()) return null;
+          const text = await file.text(); if (!current()) return null;
+          staged.push({ kind, name: `${kind}/${name}`, text });
+        } catch (e) { if (!current()) return null; staged.push({ kind, name: `${kind}/${name}`, error: e }); }
+      }
     }
-    if (n) { // 新しい規則の状態・重みを補い、一覧を描き直す
-      T.fillDefaultRules(state.rules); A.ensureMonth(state.month); A.renderAll();
+    if (!current()) return null;
+    // 保存中の接続は transition を通らない。読取中に計算が始まった場合も登録は変えない。
+    if (A.solving) { A.pluginsPending = true; return null; }
+    // 置き換える登録が無い（このフォルダに plugins/ が無い・空で、前のフォルダからも何も読んでいない）なら、従来どおり入力・登録・画面に触らない。
+    // 登録口の世代だけは基準どおり進める（beginFolder）。
+    const had = (T.plugins.loaded || []).length > 0;
+    if (!staged.length && !rootError && !had) { T.plugins.beginFolder(); pluginsFor = root; A.pluginsPending = false; if (typeof A.renderLangs === "function") A.renderLangs(); return 0; }
+    // 入力中の値は旧プラグインの read フックで確保する。この先は await なしで反映・描画まで済ませる。
+    const settings = $("#settings"), editor = $("#rulesJson");
+    const settingsVisible = settings && !settings.hidden && !(typeof settings.closest === "function" && settings.closest("[hidden]"));
+    // JSON エディタは「反映」するまでは入力案。勝手に適用せず、編集中の本文を描画の後で戻す。
+    const jsonDraft = editor && editor.dataset && editor.dataset.pluginDraft === "1" && editor.value !== JSON.stringify(state.rules, null, 1) ? { value: editor.value, focused: document.activeElement === editor, start: editor.selectionStart, end: editor.selectionEnd } : null;
+    const flushFailed = error => {
+      if (!current()) return;
+      // 旧定義は入力の修正に残すが、別フォルダの規則で計算・帳票を作らせない。
+      pluginsFor = null; A.pluginsPending = true; T.plugins.fail("rules", "plugins/", error);
+    };
+    try {
+      if (settingsVisible && typeof A.readSettings === "function") {
+        if (A.readSettings("プラグインの読み直し") === false) { flushFailed("Pending settings could not be saved before reloading plug-ins. Correct the settings and reload."); return null; }
+      } else if (typeof A.readAll === "function") {
+        if (typeof A.pushUndo === "function") A.pushUndo("プラグインの読み直し", { auto: true });
+        A.readAll();
+      }
+    } catch (e) { flushFailed(e); throw e; }
+    if (!current()) return null;
+    if (A.solving) { A.pluginsPending = true; return null; }
+    T.plugins.beginFolder();
+    let n = 0; const errs = [];
+    if (rootError) {
+      T.plugins.fail("rules", "plugins/", rootError);
+      A.toast(T.t("フォルダの plugins/ を開けません: {err}", { err: rootError && rootError.message || rootError }));
+    }
+    for (const item of staged) {
+      const rec = item.error ? T.plugins.fail(item.kind, item.name, item.error) : T.plugins.load(item.kind, item.name, item.text, "folder");
+      n++; if (!rec.ok) errs.push(`${item.name}: ${rec.error}`);
+    }
+    // 空になったフォルダも描き直す（削除した規則の入力欄を残さない）。
+    T.fillDefaultRules(state.rules); A.ensureMonth(state.month); A.renderAll();
+    if (n) {
       const ver = $("#ver"); if (ver && !/\+plugins/.test(ver.textContent)) ver.textContent += " +plugins";
       A.toast((errs.length ? T.t("フォルダのプラグインを {n} 件読み込みました（うち {e} 件は読めませんでした。設定タブの管理者向けを確認）", { n, e: errs.length }) : T.t("フォルダのプラグインを {n} 件読み込みました", { n }))
-        + (state.result && state.result.asg ? T.t("。いまの結果はこの規則を使っていないので、もう一度「計算する」を押してください") : "")); // 読み込んだ規則は既存の結果に入っていない
+        + (state.result && state.result.asg ? T.t("。いまの結果はこの規則を使っていないので、もう一度「計算する」を押してください") : ""));
     }
-    if (typeof A.renderLangs === "function") A.renderLangs(); // 訳のプラグインで言語が増えた・減った（フォルダを替えた）ときに、言語の選択肢を作り直す
-    return n;
+    if (typeof A.renderLangs === "function") A.renderLangs();
+    if (jsonDraft) { const input = $("#rulesJson"); if (input) { input.value = jsonDraft.value; input.dataset.pluginDraft = "1"; if (jsonDraft.focused && input.focus) input.focus(); if (input.setSelectionRange && jsonDraft.start != null) input.setSelectionRange(jsonDraft.start, jsonDraft.end); } }
+    pluginsFor = root; A.pluginsPending = false;
+    return rootError ? null : n;
   }
   function renderFolderBar() {
     const el = $("#folderBar");
