@@ -32,6 +32,12 @@ run test_merge_scalar_clear_node.js
 run test_merge_paid_entry_node.js
 run test_merge_person_day_tuple_node.js
 run test_merge_shift_import_atomic_dom_node.js
+# post50: static-authored candidates; execute in the local verification environment
+run test_merge_rename_projection_dom_node.js
+run test_plugin_noop_language_draft_dom_node.js
+run test_report_next_fixed_names_node.js
+run test_soft_shortfall_bounds_node.js "$HP"
+run test_cath_multi_postnight_node.js
 # post49: static-authored candidate regressions (local validation required)
 run test_merge_new_identity_dom_node.js
 run test_plugin_load_generation_node.js

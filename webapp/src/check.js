@@ -145,10 +145,10 @@
     const rows = [];
     for (let d = 1; d <= P.N; d++) {
       if (P.isHoliday(d)) continue;
-      const r = req[DOW[P.dow(d)]], post = A.work([d - 1, "night"]), nightoc = A.oc([d - 1, "night"]), offA = P.cathOffA.has(d), offI = P.cathOffI.has(d);
+      const r = req[DOW[P.dow(d)]], post = A.workers([d - 1, "night"]), nightoc = A.oc([d - 1, "night"]), offA = P.cathOffA.has(d), offI = P.cathOffI.has(d);
       for (const half of ["am", "pm"]) {
         // 夜勤明け: 午前は候補に数えてよい（数えて初めて足りる場合は減点対象として postUsed）。午後は除外
-        const av = group => { const ok = [], ex = [], strict = []; for (const n of group) { const its = P.dutyItems(n, d, half, ["outpatient", "ward", "external", "absent"]); if (its.length) ex.push(`${n}(${its.map(i => T.kindLabel(i.kind)).join("/")})`); else if (P.leave(n, d, half)) ex.push(`${n}(${T.t("不可")})`); else if (exclPost && post === n) { if (half === "am") ok.push(`${n}(${T.t("夜勤明け")})`); else ex.push(`${n}(${T.t("夜勤明け")})`); } else { ok.push(n + (nightoc.includes(n) ? "*" : "")); strict.push(n); } } return [ok, ex, strict]; };
+        const av = group => { const ok = [], ex = [], strict = []; for (const n of group) { const its = P.dutyItems(n, d, half, ["outpatient", "ward", "external", "absent"]); if (its.length) ex.push(`${n}(${its.map(i => T.kindLabel(i.kind)).join("/")})`); else if (P.leave(n, d, half)) ex.push(`${n}(${T.t("不可")})`); else if (exclPost && post.includes(n)) { if (half === "am") ok.push(`${n}(${T.t("夜勤明け")})`); else ex.push(`${n}(${T.t("夜勤明け")})`); } else { ok.push(n + (nightoc.includes(n) ? "*" : "")); strict.push(n); } } return [ok, ex, strict]; };
         const [okA, exA, stA] = av(P.cathA), [okI, exI, stI] = av(P.cathI), ng = [], needA = offA ? 0 : +r[`A_${half}`], needI = offI ? 0 : +(r.I ?? 1);
         if (okA.length < needA) ng.push({ code: "CATH_OTHER_SHORT", args: { got: okA.length, need: needA } });
         if (okI.length < needI) ng.push({ code: "CATH_CHARGE_SHORT", args: { got: okI.length, need: needI } });
