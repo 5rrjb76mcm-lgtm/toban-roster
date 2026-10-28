@@ -10,7 +10,7 @@ T.rules.register({
     for (const [n, k] of Object.entries(prm.min)) { if (!ctx.names.includes(n)) continue;
       const cnt = LP.sum(ctx.slots.filter(s => s[1] === "night" && P.dow(s[0]) === 4).map(s => ctx.work(s, n)));
       if (st === "hard") lp.add(cnt, ">=", +k);
-      else { const v = lp.auxInt("frisc", 0, 31); lp.add(LP.sum([cnt, v]), ">=", +k); lp.objAdd(P.softW("friday_night_min"), v); } // 減点: 足りない回数
+      else { const v = lp.auxInt("frisc", 0, Math.max(31, Math.ceil(+k))); lp.add(LP.sum([cnt, v]), ">=", +k); lp.objAdd(P.softW("friday_night_min"), v); } // 減点: 大きい目標も不足を全て数え、補助変数の上限で解なしにしない
     }
   },
   check(ctx, prm) {

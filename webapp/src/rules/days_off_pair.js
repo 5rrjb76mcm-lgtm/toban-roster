@@ -15,7 +15,7 @@ T.rules.register({
         prs.push(pr); }
       if (!prs.length) continue;
       if (st === "hard") lp.add(LP.sum(prs), ">=", prm.min);
-      else { const v = lp.auxInt("prs", 0, P.N); lp.add(LP.sum([...prs, v]), ">=", prm.min); lp.objAdd(P.softW("days_off_pair"), v); } } // 減点: 足りない回数
+      else { const v = lp.auxInt("prs", 0, Math.max(P.N, prm.min)); lp.add(LP.sum([...prs, v]), ">=", prm.min); lp.objAdd(P.softW("days_off_pair"), v); } } // 減点: 目標が暦日数より大きくても不足を全て数える
   },
   check(ctx, prm) {
     for (const n of ctx.names) { if (ctx.P.isExempt(n)) continue; const c = ctx.pairs(n); if (c < prm.min) ctx.viol("DAYS_OFF_PAIR_SHORT", { who: n, pairs: c, min: prm.min }, null, n); }
