@@ -196,7 +196,14 @@
     } catch (e) { A.toast(T.t("別のPCの変更との統合を止めました: プラグインの人ごとのデータを、改名に合わせて読み替えられませんでした（{err}）。プラグインの作成者に知らせてください", { err: e && e.message || e })); return false; } }
     // 採用する名簿にいない氏名が、統合で新しく月データに入るなら自動では統合しない（両方が同じ人を別の氏名に変えたときなど、氏名の対応を推測しない。読み込むか上書きするかを利用者が選ぶ）
     const strangers = m => Object.keys(T.monthNameRefs(m)).filter(n => !roster.has(n) && !known.has(n)).concat(hasMark(m) ? [NUL] : []); // 内部の印（外した人・足した人）が残る結果も採らない
-    let pre; try { pre = T.mergeMonth(base, mine, theirs); } catch (e) { return null; }
+    // Capacity follows the settings already chosen above and each possible merged
+    // calendar. Construct only when competing worker choices need the information.
+    // Invalid settings safely fall back to whole-version choice, never guessed union.
+    const capacityProblems = new WeakMap(), mergeOptions = { fixedWorkCapacity: (month, day, kind) => {
+      if (!capacityProblems.has(month)) capacityProblems.set(month, new T.Problem(rulesPick === "mine" ? state.rules : f.data.rules, month));
+      return capacityProblems.get(month).countOf([day, kind]);
+    } };
+    let pre; try { pre = T.mergeMonth(base, mine, theirs, undefined, mergeOptions); } catch (e) { return null; }
     if (strangers(pre.merged).length) return null;
     let prefer = "theirs";
     if (pre.conflicts.length) {
@@ -208,7 +215,7 @@
       if (!w) return false; prefer = w;
     }
     if (changed()) return false;
-    const r = T.mergeMonth(base, mine, theirs, prefer);
+    let r; try { r = T.mergeMonth(base, mine, theirs, prefer, mergeOptions); } catch (e) { return null; }
     if (strangers(r.merged).length) return null;
     // 計算結果: 新しい方を採るが、氏名を採用する名簿に揃える（相手の結果＋自分の名簿なら改名を当て、自分の結果＋相手の名簿なら改名の前に戻す。割当・変更前の割当・避けたい日の基準回数とも）。
     // 揃えても名簿に対応しない氏名が残る結果（出どころの名簿にはいた人が、採用する名簿にいない）は採らない。どちらも採れなければ結果なしにして、計算し直してもらう
