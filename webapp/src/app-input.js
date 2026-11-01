@@ -247,7 +247,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     doctorSelection = { name, person: docs[0], context: doctorContext() };
   }
   const doctorChooser = n => `<label for="docSel">${esc(T.t("編集する{person}を選んでください"))}</label> ${A.sel([["", T.t("編集する{person}を選んでください")], ...A.names().map(x => [x, x])], n || "", 'id="docSel"')}`;
-  function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if (hasDay(m.unavailable_night?.[n], d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +x.day === d); return a ? "avoid_" + (a.part || "allday") : ""; }
+  function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if (hasDay(m.unavailable_night?.[n], d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +(x.day ?? x.date) === d); return a ? "avoid_" + (a.part || "allday") : ""; }
   function renderDoctor() {
     const m = state.month, root = $("#doctorPane");
     if (curDoctor()) A.ensureMonth(m); // 正規化の後で本人をもう一度確認する（プラグインによる名簿変更も安全側へ）。

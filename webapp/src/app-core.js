@@ -111,7 +111,10 @@
   }
 
   function download(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
-  const tag = (m = state.month) => `${m.year}${String(m.month).padStart(2, "0")}`;
+  // Calendar admission accepts numeric strings. File identity must use their
+  // numeric meaning, not spelling ("011" / "11.0" / " 11 " are November).
+  // Keep the imported JSON values intact; do not rename existing folders here.
+  const tag = (m = state.month) => `${String(+m.year).padStart(4, "0")}${String(+m.month).padStart(2, "0")}`;
   // 保存するファイルの名前。英語で、表示言語では変えない（同じフォルダを別の言語で開いても同じファイルを使う）。
   // 版の表題（確認版 / 確定版）は draft / final にする
   const labelSlug = l => ({ "確認版": "draft", "確定版": "final" })[l] || String(l || "draft").replace(/[\\/:*?"<>|\s]+/g, "_");
