@@ -141,10 +141,10 @@
     }
   }
   // 3者統合。戻り値 {merged, mineChanges, theirChanges, conflicts:[{key,label,mine,theirs}]}
-  function merge3(base, mine, theirs, prefer) {
+  function merge3(base, mine, theirs, prefer, options = {}) {
     const B = flatten(base || {}), A = flatten(mine), C = flatten(theirs);
     const keys = new Set([...Object.keys(B), ...Object.keys(A), ...Object.keys(C)]);
-    const out = {}, conflicts = []; let mineChanges = 0, theirChanges = 0;
+    const out = {}, alternate = {}, conflicts = []; let mineChanges = 0, theirChanges = 0;
     for (const k of keys) {
       const b = B[k], a = A[k], c = C[k];
       let v;
@@ -154,8 +154,33 @@
       else if (a === c) v = a;
       else { conflicts.push({ key: k, label: label(k), mine: a === undefined ? "（なし）" : JSON.parse(a), theirs: c === undefined ? "（なし）" : JSON.parse(c) }); v = prefer === "mine" ? a : c; }
       if (v !== undefined) out[k] = v;
+      const other = a !== b && c !== b && a !== c ? (prefer === "mine" ? c : a) : v;
+      if (other !== undefined) alternate[k] = other;
     }
     const merged = unflatten(out, theirs);
+    // Single-worker slots are choices, not independent set memberships. Preserve the
+    // legacy API/set union for callers without capacity information and for multiwork.
+    // Check both conflict preferences: choosing a different holiday/calendar value
+    // must not make a fixed-slot conflict appear only after the user already chose.
+    if (typeof options.fixedWorkCapacity === "function") {
+      const alt = unflatten(alternate, theirs);
+      const members = (m, kind, day) => [...new Set([].concat(((m || {}).fixed || {})[kind]?.[day] || []).filter(Boolean))].sort();
+      for (const kind of ["day", "night"]) {
+        const days = new Set([base, mine, theirs].flatMap(m => Object.keys(((m || {}).fixed || {})[kind] || {})));
+        for (const day of days) {
+          const b = members(base, kind, day), a = members(mine, kind, day), c = members(theirs, kind, day);
+          if (J(a) === J(b) || J(c) === J(b) || J(a) === J(c)) continue;
+          if (options.fixedWorkCapacity(merged, +day, kind) !== 1 && options.fixedWorkCapacity(alt, +day, kind) !== 1) continue;
+          conflicts.push({ key: `fixedwork:${kind}:${day}`, label: `${day}日 ${kind === "day" ? "日勤" : "夜勤"}の固定`, mine: a, theirs: c });
+          const chosen = prefer === "mine" ? a : c, rejected = prefer === "mine" ? c : a;
+          if (chosen.length) merged.fixed[kind][day] = chosen.length === 1 ? chosen[0] : chosen.slice();
+          else delete merged.fixed[kind][day];
+          // Only remove tags for explicitly rejected workers. Unrelated slots and
+          // surviving workers retain their independently merged tags.
+          for (const n of rejected) if (!chosen.includes(n)) delete merged.fixed_tags[`${+day}:${kind}|${n}`];
+        }
+      }
+    }
     // 版の履歴は和集合（同じ番号は手元の記録）
     const vers = {}; for (const v of [...(theirs.doc_versions || []), ...(mine.doc_versions || [])]) vers[v.ver] = v;
     // 帳票の完了情報（fp: 保存先にある帳票の中身の印）だけは、ほかの項目と同じく 3 者で比べる: 同じ番号・同じ内容の記録で、手元が共通の元から変えておらず相手だけが変えていれば、相手の印を採る

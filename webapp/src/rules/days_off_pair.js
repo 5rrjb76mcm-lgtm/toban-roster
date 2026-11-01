@@ -39,7 +39,12 @@ T.rules.register({
   // 入力チェック: 2 連休の回数が休みの日数に収まらない
   lint(ctx, prm) {
     const { P } = ctx;
-    if (P.state("days_off_min") !== "off" && prm.min * 2 > P.minDaysOff) ctx.push("LINT_PAIR_VS_DAYS_OFF", { pair: prm.min, days: prm.min * 2, min: P.minDaysOff });
+    // A minimum is not a cap. Only two hard requirements with an exact
+    // per-person target prove a contradiction; paid leave increases that target.
+    if (!P.isHard("days_off_pair") || !P.isHard("days_off_min") || !P.offExact || prm.min <= 0) return;
+    const days = prm.runs ? prm.min * 2 : prm.min + 1; // Adjacent pairs may overlap.
+    for (const n of P.dutyNames) if (!P.isExempt(n) && days > P.offTarget(n))
+      ctx.push("LINT_PAIR_VS_DAYS_OFF", { who: n, pair: prm.min, days, min: P.offTarget(n) });
   },
   python: false,
 });

@@ -289,7 +289,14 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
       const keepChoice = (opts, value) => value && !opts.some(o => o[0] === value) ? opts.concat([[value, ({ dayoc: T.t("日勤OC"), nightoc: T.t("夜間OC"), charge: T.term("{charge}担当", R) })[value] + T.t("（現在は使わない値）")]]) : opts;
       const nightOpts = nightSlot ? [...workOption("night", nightVal), ...(isOC ? [["nightoc", T.t("夜間OC")]] : [])] : nightVal ? [[nightVal, (nightVal === "night" ? shiftLabel(R, "night") : T.t("夜間OC")) + T.t("（現在は使わない値）")]] : [];
       const night = nightSlot || nightVal ? A.sel(keepChoice([["", "―"], ...nightOpts], nightVal), nightVal, `data-cal="fixed" data-k="night" data-d="${d}" data-shown="${esc(nightVal)}" title="${esc(T.t("夜間の固定"))}"`) + tagSel(d, "night") : "";
-      if (!holiday) return night;
+      if (!holiday) {
+        // A removed day slot may still own fixed input. Show only that retained
+        // choice and the blank, as for inactive nights; never offer a new assignment.
+        if (!dayVal) return night;
+        const label = dayVal === "day" ? shiftLabel(R, "day") : dayVal === "dayoc" ? T.t("日勤OC") : T.term("{charge}担当", R);
+        const day = A.sel([["", "―"], [dayVal, label + T.t("（現在は使わない値）")]], dayVal, `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(dayVal)}" title="${esc(T.t("日勤帯の固定"))}"`);
+        return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
+      }
       const day = A.sel(keepChoice([["", "―"], ...workOption("day", dayVal), ...(isOC ? [["dayoc", T.t("日勤OC")]] : []), ...(isI ? [["charge", T.term("{charge}担当", R)]] : [])], dayVal), dayVal, `data-cal="fixed" data-k="day" data-d="${d}" data-shown="${esc(dayVal)}" title="${esc(T.t("日勤帯の固定"))}"`); // data-shown: 描いたときの値。未変更なら非表示の条件も含めて保持する。
       return `${esc(T.t("日"))}${day}${tagSel(d, "day")} ${esc(T.t("夜"))}${night}`;
     };
@@ -496,7 +503,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       const ocCells = (tbl, exists = true) => { const arr = fx[tbl]?.[d] || [], i1 = pick(arr, chargeId), y1 = yVal(tbl);
         const keep = (opts, val) => exists ? opts : [["", "―"], ...opts.filter(o => val && o[0] === val).map(([v, label]) => [v, label + T.t("（現在は使わない値）")])];
         return `<td>${exists || i1 ? S(keep(iOpts, i1), i1, tbl === "day_oc" ? "dayI" : "nightI") : ""}</td><td>${exists || y1 ? S(keep(yOpts, y1), y1, tbl === "day_oc" ? "dayY" : "nightY") : ""}${extras(arr, [i1, y1], `${tbl}:${d}`)}</td>`; };
-      const dayCells = daySlot ? `<td>${SW(fx.day?.[d], "day")}</td>${ocCells("day_oc")}` : `<td class="empty"></td><td class="empty"></td><td class="empty"></td>`;
+      const dayCells = `<td>${SW(fx.day?.[d], "day", daySlot)}</td>${ocCells("day_oc", daySlot)}`;
       rows.push(`<tr class="${cls}"><th>${label}</th>${dayCells}<td>${SW(fx.night?.[d], "night", nightSlot)}</td>${ocCells("night_oc", nightSlot)}<td>${holiday ? S(fx.weekend_charge?.[d] && !iN.includes(fx.weekend_charge[d]) ? iOpts.concat([[fx.weekend_charge[d], fx.weekend_charge[d] + T.t("（現在は使わない値）")]]) : iOpts, fx.weekend_charge?.[d] || "", "charge") : ""}</td></tr>`);
     }
         const TM = s2 => T.term(T.t(s2), R), dayL = shiftLabel(R, "day"), nightL = shiftLabel(R, "night");

@@ -1,5 +1,5 @@
 // 規則のプラグイン: 連勤の下限（run_length_min）。連を始めたら min 日は続ける（原則。減点だけ）。月末と本人の不可で切れる分は数えない。docs/rule-modules.md
-// 夜勤の翌日が休みの施設では夜勤ごとに連が終わるので、夜勤の数に対して下限が長いと短い連が避けられない（入力チェックが知らせる。解く側には下界を上げる切除を足す）
+// 夜勤の翌日が休みの施設では夜勤ごとに連が終わる。解く側の切除は不可・月境界・固定の例外を考慮して下界を上げる。
 T.rules.register({
   id: "run_length_min", api: 1, order: 710, group: "combo",
   label: "連勤の下限（続けるなら何日以上か。原則）", states: ["soft", "off"], def: "off",
@@ -41,17 +41,11 @@ T.rules.register({
         if (value === "") delete R.run_length.min; else R.run_length.min = Number.isFinite(Number(value)) ? Number(value) : value; } },
   },
   summary(P, prm, tv) { return tv("始めたら {n} 日は続ける", { n: prm.min }); },
-  // 入力チェック: 連日禁止と両立しない。夜勤の数に対して下限が長すぎる（短い連が避けられず、計算も長引く）
+  // 入力チェック: 連日禁止との競合。目安は勤務回数の上限ではなく、
+  // 不可・月境界・対象外の人もあるため、夜勤数から減点の下界は断定しない。
   lint(ctx, prm) {
-    const { P } = ctx, L = prm.min;
+    const { P } = ctx;
     if (P.state("consecutive_days") === "hard") ctx.push("LINT_RUN_VS_CONSECUTIVE_MIN");
-    if (!akeEndsRun(P)) return;
-    // 夜勤 1 回ごとに連が 1 本終わるので、L 日以上の連を夜勤の数だけ作るには 1 人 L × 夜勤回 の勤務が要る。
-    // 全員の目安から作れる L 日以上の連の本数（Σ floor(目安 / L)）が夜勤の延べ数に足りなければ、その差の分だけ短い連が避けられない
-    const people = P.dutyNames.filter(n => P.runApplies(n) && !P.isRole(n, "reserve"));
-    const runs = people.reduce((a, n) => a + Math.floor(P.quota(n) / L), 0), qsum = people.reduce((a, n) => a + P.quota(n), 0);
-    const nights = P.slots.filter(s => s[1] === "night").reduce((a, s) => a + P.countMinOf(s), 0);
-    if (qsum > 0 && nights > runs) ctx.push("LINT_RUN_MIN_VS_NIGHTS", { min: L, nights, runs, short: nights - runs });
   },
   messages: {
     LINT_RUN_MIN_VS_NIGHTS: { en: "Shortest run {min} days: the month has {nights} night shifts, each ending a run, but the targets allow at most {runs} runs of {min}+ days — at least {short} short runs are unavoidable", ja: "連勤の下限 {min} 日: 夜勤は月 {nights} 回あり（夜勤ごとに連が 1 本終わる）、目安から作れる {min} 日以上の連は {runs} 本まで。短い連が最低 {short} 本は避けられません" },

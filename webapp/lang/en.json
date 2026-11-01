@@ -1442,7 +1442,7 @@
     "LINT_DAYS_OFF_TOO_MANY_HINT": "Review the scheduled hours under settings → rules → minimum days off per month",
     "LINT_QUOTA_VS_DAYS_OFF": "{who}'s target of {quota} shifts does not fit with {min} days off a month (at most {maxWork} working days)",
     "LINT_QUOTA_VS_DAYS_OFF_HINT": "Lower the target on the settings tab, or review the minimum days off",
-    "LINT_PAIR_VS_DAYS_OFF": "{pair} two-day breaks need {days} days off, but the monthly minimum of days off is {min}",
+    "LINT_PAIR_VS_DAYS_OFF": "{who}: {pair} two-day breaks need at least {days} days off, but the required exact total including paid leave is {min}",
     "LINT_PAIR_VS_DAYS_OFF_HINT": "Review the minimum number of two-day breaks or the minimum days off under settings → rules",
     "LINT_REST_DAY_IMPOSSIBLE": "{who} has outside work and so needs one weekly rest day, but no day shift on a day off or night before one is open to them",
     "LINT_REST_DAY_IMPOSSIBLE_HINT": "Per-person calendar → {who}: review the unavailability",

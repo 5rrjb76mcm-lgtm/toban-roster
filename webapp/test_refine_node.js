@@ -274,12 +274,13 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     { const pin = T.solve(P, highs, { timeLimit: 60, pin: r.asg }), pen = T.penalty(P, r.asg); assert(pin.asg, "全枠固定で解ける"); assert(Math.abs(pin.objective - pen.total) < 1e-6, `必須の構成を固定で許容しても、目的関数 ${pin.objective} ＝ 減点 ${pen.total}`); assert(!(pen.items || {}).composition_miss, "必須のときは構成の減点を足さない: " + (pen.items || {}).composition_miss);
       const soft = JSON.parse(JSON.stringify(rules)); soft.rule_states.composition = "soft"; const Ps = new T.Problem(soft, month), pins = T.solve(Ps, highs, { timeLimit: 60, pin: r.asg }), pens = T.penalty(Ps, r.asg); assert(pins.asg && Math.abs(pins.objective - pens.total) < 1e-6, `減点のときも一致: ${pins.objective} / ${pens.total}`); assert((pens.items || {}).composition_miss > 0, "減点のときは上限の超過を数える"); }
   });
-  test("連勤の下限が夜勤の数に対して長すぎるときは、避けられない短い連の本数を入力チェックが知らせる", () => {
+  test("連勤の下限: 目安と夜勤の数だけで避けられない減点を断定しない", () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, "data/fixtures/ward-2shift.json"), "utf8"));
     const mk = r => { T.fillDefaultRules(r); return new T.Problem(r, T.normalizeMonth({ year: 2026, month: 11, holidays: [3, 23] }, r)); };
     const P2 = mk(clone(rules)); assert.strictEqual(P2.runMin, 2); assert(!T.lint(P2).some(x => x.code === "LINT_RUN_MIN_VS_NIGHTS"), "下限 2 日なら指摘なし");
     const r3 = clone(rules); r3.run_length.min = 3; const P3 = mk(r3); const it = T.lint(P3).find(x => x.code === "LINT_RUN_MIN_VS_NIGHTS");
-    assert(it, "下限 3 日では指摘が出る"); assert.strictEqual(it.args.nights, 60, "夜勤 2 名 × 30 日"); assert(it.args.short >= 1 && it.args.runs < 60, JSON.stringify(it.args)); assert(it.hint.length > 0);
+    assert.strictEqual(P3.slots.filter(s => s[1] === "night").reduce((a, s) => a + P3.countMinOf(s), 0), 60, "夜勤2名×30日の元のfixtureを維持");
+    assert(!it, "目安は上限ではなく、不可・月境界の例外もあるため減点下界を断定しない");
     const r4 = clone(r3); r4.rule_states.shift_sequence = "off"; assert(!T.lint(mk(r4)).some(x => x.code === "LINT_RUN_MIN_VS_NIGHTS"), "明け休みが無い施設では夜勤で連が終わらないので指摘しない");
   });
   test("名簿にない人の入力: 一覧に出て、入力チェックが知らせ、まとめて消せる", () => {
@@ -910,11 +911,13 @@ test("翌月1日が土日の月: 月末の夜勤の翌日は休日として扱�
     assert(T.lint(new T.Problem(rules, T.normalizeMonth(clone(month), rules))).some(x => new RegExp(`${n0} の希望休が 3 日で上限 2 日`).test(x.msg)), "上限超過を指摘");
     rules.wish_off.max = 5;
     assert(!T.lint(new T.Problem(rules, T.normalizeMonth(clone(month), rules))).some(x => /希望休が/.test(x.msg)), "上限内なら出ない");
-    // 2 連休の回数が休みの日数と両立しない
+    // A lower bound is not a cap, and adjacent two-day pairs may overlap.
     const r2 = clone(real.rules);
     r2.rule_states = Object.assign({}, r2.rule_states, { days_off_min: "hard", days_off_pair: "hard" });
     r2.days_off = { pair_min: 6 }; T.fillDefaultRules(r2);
-    assert(T.lint(new T.Problem(r2, T.normalizeMonth(clone(real.month), r2))).some(x => /2 連休 6 回には休みが 12 日要ります/.test(x.msg)), "両立しない組合せを指摘");
+    assert(!T.lint(new T.Problem(r2, T.normalizeMonth(clone(real.month), r2))).some(x => x.code === "LINT_PAIR_VS_DAYS_OFF"), "最低9日と6組の連休は矛盾しない");
+    r2.days_off = { min: 3, mode: "exact", pair_min: 2, pair_count: "runs" };
+    assert(T.lint(new T.Problem(r2, T.normalizeMonth(clone(real.month), r2))).some(x => x.code === "LINT_PAIR_VS_DAYS_OFF" && x.args.days === 4), "ちょうど3日では独立した2連休を2回作れない");
   });
   // ---- 表示言語 ----
   test("表示言語: 訳があれば置き換え、無ければ日本語のまま。{名前} の差し込みも効く", () => {
