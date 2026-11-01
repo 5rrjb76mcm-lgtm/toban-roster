@@ -75,9 +75,18 @@ T.rules.register({
     const { P } = ctx, lab = ctx.lab;
     // 休みの日数が設定として成り立つか（減点でも見る）
     if (prm.min >= P.N) ctx.push("LINT_DAYS_OFF_TOO_MANY", { min: prm.min, N: P.N });
-    else for (const n of P.dutyNames) { const q = P.quota(n); if (P.isExempt(n)) continue;
+    else for (const n of P.dutyNames) { if (P.isExempt(n)) continue;
       if (P.offTarget(n) > P.N) ctx.push("LINT_DAYS_OFF_PAID_OVER", { who: n, min: prm.min, paid: P.offTarget(n) - prm.min, N: P.N }); // 有給込みの必要日数が月を超える
-      if (q - P.tol > P.N - prm.min) ctx.push("LINT_QUOTA_VS_DAYS_OFF", { who: n, quota: q, min: prm.min, maxWork: P.N - prm.min }); }
+      // Quotas count shifts, not distinct work days. Only an active hard lower
+      // bound can contradict hard days off; this month's count_min overrides quota.
+      if (P.isHard("days_off_min") && P.isHard("quota_range")) {
+        const maxWork = Math.max(0, Math.floor(P.N - P.offTarget(n)));
+        const daily = Array.from({ length: P.N }, (_, i) => P.slots.filter(s => s[0] === i + 1));
+        const doubles = daily.reduce((a, ss) => a + Math.max(0, ss.filter(s => P.isFixedWork(s, n)).length - 1), 0);
+        const maxShifts = P.isHard("same_day_double") ? maxWork + doubles : maxWork * Math.max(0, ...daily.map(ss => ss.length));
+        const lower = Math.max(0, Math.ceil(P.countLo(n)));
+        if (lower > maxShifts) ctx.push("LINT_QUOTA_VS_DAYS_OFF", { who: n, quota: lower, min: P.offTarget(n), maxWork, maxShifts });
+      } }
     if (!P.isHard("days_off_min")) return;
     // 休みの日数から決まる勤務日の合計と、枠が求める延べの勤務日（休みをちょうどにすると、人数と枠が整数で合わないと解が無い）。
     // 明けを休みに数えない施設で、夜勤の翌日は勤務に入れない（明け休みが必須）なら、月末以外の夜勤は明けの 1 日も使う。
@@ -88,16 +97,35 @@ T.rules.register({
       const requiredBusy = n => Math.max(0, P.N - P.offTarget(n));
       const akeUse = !P.akeIsOff && P.isHard("shift_sequence") && P.seqRules.some(r => r.from === "night" && r.to === "any");
       const use = s => akeUse && s[1] === "night" && s[0] < P.N ? 2 : 1; // 1 枠 1 人が使う勤務日
+      // Distinct busy days can be shared by fixed same-day work and fixed
+      // night -> next-day work. Under the hard guards above, every such
+      // overlap must be fixed. Count excess multiplicity per day (not pairs:
+      // previous night + day + night has credit 2, not 3).
+      const overlapCredit = n => {
+        const days = Array(P.N + 1).fill(0);
+        if (akeUse && P.prevWorked([0, "night"], n)) days[1]++;
+        for (const s of P.slots) if (P.isFixedWork(s, n)) {
+          days[s[0]]++;
+          if (use(s) === 2) days[s[0] + 1]++;
+        }
+        return days.reduce((a, count) => a + Math.max(0, count - 1), 0);
+      };
       // 休みの規則を免除された人も枠を埋められる。固定限定が必須なら当月の実勤務固定、
       // 「なし」なら未固定枠も上限に含める（目安・休みの免除は解く側と同じく保つ）。
       // 固定による同日2枠・明け勤務の許容があるため、免除者は日数で丸めず枠の重みで過大側に見積もる。
       const busyOf = n => {
-        if (!P.isExempt(n)) return requiredBusy(n);
+        if (!P.isExempt(n)) return requiredBusy(n) + overlapCredit(n);
         const ss = P.slots.filter(s => !P.isFixedOnly(n) || !P.isHard("fixed_only") || P.isFixedWork(s, n));
         return P.isRole(n, "reserve") ? Math.max(0, ...ss.map(use)) : ss.reduce((a, s) => a + use(s), 0);
       }; // 予備の実勤務は許可した月でも1枠まで。OC・翌月・不存在枠は供給に含めない。
-      let lo = 0, hi = 0; for (const s of P.slots) { lo += P.countMinOf(s) * use(s); hi += P.countOf(s) * use(s); }
-      if (akeUse) { const c = regular.filter(n => P.prevWorked([0, "night"], n)).length; lo += c; hi += c; } // 休みの規則の対象者だけ、前月夜勤の明けも勤務日の上限を使う
+      // The lower demand uses only disjoint (or credited fixed) contributions.
+      // The upper bound for exact days off must include post-night days even
+      // without hard sequence protection: overlaps can only reduce this upper.
+      let lo = 0, hi = 0; for (const s of P.slots) {
+        lo += P.countMinOf(s) * use(s);
+        hi += P.countOf(s) * (!P.akeIsOff && s[1] === "night" && s[0] < P.N ? 2 : 1);
+      }
+      if (!P.akeIsOff) { const c = regular.filter(n => P.prevWorked([0, "night"], n)).length; if (akeUse) lo += c; hi += c; }
       const supply = people.reduce((a, n) => a + busyOf(n), 0);
       const range = lo === hi ? String(lo) : `${lo}〜${hi}`;
       const required = regular.reduce((a, n) => a + requiredBusy(n), 0); // 免除者の任意の供給上限を「ちょうど」の必須勤務日と取り違えない
@@ -106,7 +134,7 @@ T.rules.register({
       // 勤務帯ごと: その勤務帯に入れる人（構成の規則で最大 0 とされた人を除く）の勤務日で、最低人数を埋め切れるか
       for (const sh of P.shifts) { const ss = P.slots.filter(s => s[1] === sh.id); if (!ss.length) continue;
         const need = ss.reduce((a, s) => a + P.countMinOf(s) * use(s), 0), cap = people.filter(n => P.shiftEligible(n, sh.id) ||
-          P.isExempt(n) && ss.some(s => P.isFixedWork(s, n))).reduce((a, n) => a + busyOf(n), 0); // 構成の最大0でも固定だけの超過は許容される
+          ss.some(s => P.isFixedWork(s, n))).reduce((a, n) => a + busyOf(n), 0); // 構成の最大0でも固定だけの超過は許容される（通常職員も）
         if (need > cap) ctx.push("LINT_SHIFT_CAPACITY", { shift: sh.label, need, cap }); }
       ctx.provide("busy_days", { people, use, busyOf, note: daysOffSupplyNote(P) }); // 構成の規則の入力チェックが使う（事実）
     }

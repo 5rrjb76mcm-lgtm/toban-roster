@@ -28,6 +28,11 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post52: static-authored regression sources; runtime validation required
+run test_month_tag_identity_node.js
+run test_calendar_avoid_date_dom_node.js
+run test_composition_slack_bounds_node.js "$HP"
+run test_days_off_overlap_lint_node.js "$HP"
 # post51: authored regression sources; runtime validation is required
 run test_merge_single_fixed_conflict_node.js
 run test_inactive_day_fixed_dom_node.js
