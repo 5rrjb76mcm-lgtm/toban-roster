@@ -14,6 +14,7 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "手元の改名を相手の名簿に当てると、別の2人が同じ氏名になります。入力や計算結果を混ぜないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "Local renames would assign two people in the other roster to the same name. Automatic merging was stopped to avoid mixing their inputs or results. Choose the settings and month data together from one version.",
     "同期の後に追加した氏名が相手の名簿にもありますが、同じ本人か確認できません。入力や計算結果を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "A name added since the last synchronization also appears in the other roster, but we cannot confirm it is the same person. Automatic merging was stopped to avoid assigning inputs or results to someone else. Choose the settings and month data together from one version.",
     "プロファイルの読み込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度読み込んでください": "Profile import was canceled because input changed during the read. Finish the edit, then import the profile again.",
     "名簿の個人別の欄を安全に除けないため、共有用の書き出しを中止しました。プラグインの欄の変換を確認してください": "Cannot export a shared profile because personal roster columns could not be cleared safely. Check the plug-in's column conversion.",

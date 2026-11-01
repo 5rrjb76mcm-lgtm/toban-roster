@@ -29,7 +29,8 @@ T.rules.register({
     const { P, LP } = ctx;
     for (const [k, r] of Object.entries(prm.range)) for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue;
       const tot = LP.sum(ctx.slots.filter(s => s[1] === k).map(s => ctx.work(s, n))), mx = maxOf(P, n, k, r), fx = P.slots.filter(s => s[1] === k && ctx.fixedWorkAt(s, n)).length;
-      if (r.min != null) ctx.limit("shift_count_range", tot, ">=", r.min, { aux: "scrl", ub: 31, names: [n] });
+      // 減点なら達成不能な大きい目標も不足として数える。勤務0回の不足は目標そのもの。
+      if (r.min != null) ctx.limit("shift_count_range", tot, ">=", r.min, { aux: "scrl", ub: r.min, names: [n] });
       if (mx != null) ctx.limit("shift_count_range", tot, "<=", mx, { aux: "scru", ub: 31, fixed: fx > mx, fixedExcess: Math.max(0, fx - mx), names: [n] }); } // 固定だけで上限を超えるなら、検算と同じく「固定指定により許容」（減点 fixed_conflict）
   },
   check(ctx, prm) {

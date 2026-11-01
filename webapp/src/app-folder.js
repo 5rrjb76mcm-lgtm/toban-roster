@@ -148,6 +148,14 @@
       const uncertain = (state.rules.doctors || []).some(d => !originalNames.includes(d.name) && peerNames.has(d.name)
         && T.renameOrigin(state.renames, originalNames, d.name) === null);
       if (uncertain) { f.mergeBlockedReason = T.t("同期の後に追加した氏名が相手の名簿にもありますが、同じ本人か確認できません。入力や計算結果を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
+      // 手元では元の本人を追跡できても、相手が別人を同じ改名先へ移していることがある。
+      // 実際の変換順と同じく削除した本人を先に隔離し、同時改名後の相手名簿が単射か調べる。
+      // 入れ替え・空いた氏名の再利用は、行き先が別々なら妨げない。
+      const projectedRenames = T.effectiveRenames(state.renames, originalNames, (state.rules.doctors || []).map(d => d.name));
+      const removedNames = new Set(projectedRenames.filter(([, n]) => String(n).startsWith(T.GONE)).map(([o]) => o));
+      const renameMap = new Map(projectedRenames.filter(([, n]) => !String(n).startsWith(T.GONE)));
+      const projectedNames = [...peerNames].map(n => removedNames.has(n) ? T.GONE + n : renameMap.get(n) || n);
+      if (new Set(projectedNames).size !== projectedNames.length) { f.mergeBlockedReason = T.t("手元の改名を相手の名簿に当てると、別の2人が同じ氏名になります。入力や計算結果を混ぜないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
     }
     // 1) 設定（名簿・規則・重み）の採用先を先に決める（氏名をどちらの名簿に揃えるかが、これで決まる）
     // 共通の元と比べる: 相手だけ変えたなら相手の、自分だけ変えたなら自分の、両方なら聞く
@@ -458,7 +466,8 @@
     // 置き換える登録が無い（このフォルダに plugins/ が無い・空で、前のフォルダからも何も読んでいない）なら、従来どおり入力・登録・画面に触らない。
     // 登録口の世代だけは基準どおり進める（beginFolder）。
     const had = (T.plugins.loaded || []).length > 0;
-    if (!staged.length && !rootError && !had) { T.plugins.beginFolder(); pluginsFor = root; A.pluginsPending = false; if (typeof A.renderLangs === "function") A.renderLangs(); return 0; }
+    // 訳の登録も変わらない。renderLangs は保存済み言語の変化で renderAll を呼ぶため、入力案を保持するこの経路では呼ばない。
+    if (!staged.length && !rootError && !had) { T.plugins.beginFolder(); pluginsFor = root; A.pluginsPending = false; return 0; }
     // 入力中の値は旧プラグインの read フックで確保する。この先は await なしで反映・描画まで済ませる。
     const settings = $("#settings"), editor = $("#rulesJson");
     const settingsVisible = settings && !settings.hidden && !(typeof settings.closest === "function" && settings.closest("[hidden]"));
