@@ -346,6 +346,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
 </table>
 <p><button data-act="patAdd">${esc(T.t("行を追加"))}</button> <button data-act="patExpand">${esc(T.t("パターンをカレンダーに展開（{who} の業務と避けたい日を上書き）", { who: n }))}</button> <label><input type="checkbox" id="patHol" ${m.duties_on_holidays ? "checked" : ""}> ${esc(T.t("土日祝にも展開する"))}</label> <button data-act="calClear">${esc(T.t("{who} の業務を全消去", { who: n }))}</button></p>
 </details></div>`;
+    root.querySelectorAll('[data-cal="pfield"]').forEach(el => { el.dataset.shown = el.value; }); // DOM 上の表示だけを比較し、未編集の保存値（数値・真偽値など）はそのまま残す。
   }
 
   function readDoctor() {
@@ -412,9 +413,15 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       root.querySelectorAll('[data-cal="ftag"]').forEach(el => { const d = +el.dataset.d, k = el.dataset.k, key = `${d}:${k}|${n}`; // 固定の印（選択肢があるカレンダー）
         if (el.value && [].concat((fx[k] || {})[d] || []).includes(n)) m.fixed_tags[key] = el.value; else delete m.fixed_tags[key]; });
       root.querySelectorAll('[data-cal="dflag"]').forEach(readDayFlag); // 日付の見出しの区分（その日の全員に効く）
-      if (root.querySelector('[data-cal="pfield"]')) { m.person_days ||= {}; const got = {}; // 施設のプラグインが足した日ごとの欄（この人の分を作り直す）
-        root.querySelectorAll('[data-cal="pfield"]').forEach(el => { const id = el.dataset.id; got[id] ||= {}; if (el.value !== "") got[id][+el.dataset.d] = el.value; });
-        for (const [id, byDay] of Object.entries(got)) { m.person_days[id] ||= {}; if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n]; } }
+      // 施設の欄は変更した日だけ更新する。未編集の値の型・画面にない日・他の人の記録は保持する。
+      root.querySelectorAll('[data-cal="pfield"]').forEach(el => {
+        if (el.dataset.shown !== undefined && el.value === el.dataset.shown) return;
+        const id = el.dataset.id, d = +el.dataset.d; m.person_days ||= {}; m.person_days[id] ||= {};
+        const byDay = Object.assign({}, m.person_days[id][n] || {});
+        if (el.value !== "") byDay[d] = el.value; else delete byDay[d];
+        if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n];
+        el.dataset.shown = el.value;
+      });
       root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) el.dataset.shown = el.value; }); // 読み戻した値を次の比較基準に（この画面で付けた期間責任者の固定も、次に外せば消える）
       if (conflicts.length) A.toast(T.t("固定できません: {list}", { list: conflicts.join(T.listSep()) }));
       const fixedShownNow = el => { const d = +el.dataset.d, k = el.dataset.k;
