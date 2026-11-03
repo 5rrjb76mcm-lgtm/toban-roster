@@ -1,6 +1,11 @@
 // 当直表アプリ: 月データの3者統合（base=最後に保存した版, mine=このブラウザ, theirs=相手が保存したファイル）
 (function (T) {
   const J = v => JSON.stringify(v);
+  // Opaque calendar IDs are data keys, never inherited containers.
+  const ownPersonDayMap = (parent, key) => {
+    if (!Object.prototype.hasOwnProperty.call(parent, key) || !parent[key]) Object.defineProperty(parent, key, { value: {}, enumerable: true, writable: true, configurable: true });
+    return parent[key];
+  };
   // flatten が個別に扱う月データの項目（と、版の履歴・旧形式の項目）。ここに無いトップレベルの項目（プラグインの規則の ui.month が書く m.local_<施設> など）は、値全体を 1 項目（x:<名前>）として 3 者比較する
   const KNOWN = new Set(["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id", "exceptions", "holidays", "plugins_used", "closure_days",
     "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "count_min", "count_max", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
@@ -105,7 +110,7 @@
       else if (p[0] === "fc") m.fixed.weekend_charge[+p[1]] = v;
       else if (p[0] === "ftag") (m.fixed_tags ||= {})[`${+p[1]}:${p[2]}|${p[3]}`] = v;
       else if (p[0] === "dflag") ((m.day_flags ||= {})[+p[1]] ||= []).push(p.slice(2).join(":")); else if (p[0] === "dnote") (m.day_notes ||= {})[+p[1]] = v;
-      else if (p[0] === "pday") (((m.person_days ||= {})[p[1]] ||= {})[p[2]] ||= {})[+p[3]] = v;
+      else if (p[0] === "pday") ownPersonDayMap(ownPersonDayMap(m.person_days, p[1]), p[2])[+p[3]] = v;
       else if (p[0] === "fdo") (m.fixed.day_oc[+p[1]] ||= []).push(p[2]); else if (p[0] === "fno") (m.fixed.night_oc[+p[1]] ||= []).push(p[2]);
       else if (p[0] === "fdon") (m.fixed.day_oc_none[+p[1]] ||= []).push(p[2]); else if (p[0] === "fnon") (m.fixed.night_oc_none[+p[1]] ||= []).push(p[2]);
       else if (p[0] === "cpm") m.confirmed_pm_external_night.push({ name: p[1], day: +p[2] });

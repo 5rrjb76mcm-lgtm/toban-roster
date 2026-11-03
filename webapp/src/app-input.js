@@ -5,6 +5,18 @@
   const esc = T.esc;
   const state = A.state;
 
+  // Compare live DOM projections, not sticky edited flags or normalized model values.
+  // A draft may predate an autosave and must survive its asynchronous peer read.
+  // Scope: the three input subpanes. Settings/its unapplied JSON editor are separate.
+  const committedInputs = new WeakMap(), draftRoots = ["monthSettings", "doctorPane", "fixedPane"];
+  const inputProjection = el => el.type === "checkbox" || el.type === "radio" ? el.checked : el.value;
+  const draftControls = root => [...(root?.querySelectorAll?.("input,textarea,select") || [])].filter(el => !["button", "submit", "file", "hidden"].includes(el.type) && !el.disabled && !el.readOnly);
+  function rememberInputs(root) { for (const el of draftControls(root)) committedInputs.set(el, inputProjection(el)); }
+  function hasPendingInputDrafts() {
+    return draftRoots.some(id => { const root = $("#" + id); if (!root || root.hidden || root.closest?.("[hidden]")) return false;
+      return draftControls(root).some(el => committedInputs.has(el) && committedInputs.get(el) !== inputProjection(el)); });
+  }
+
   const DOWS = T.DOW; // 曜日の識別子（model.js と共通）
   const KINDS = T.KINDS; // 勤務内容（model.js と共通）
   // 表示言語に訳すのは T.t(日本語, 差し込み)（i18n.js）
@@ -116,6 +128,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     $("#monthSettings").querySelectorAll('[data-path="notes"],[data-dnote]').forEach(el => { el.dataset.textShown = el.value; }); // Compare after the DOM normalizes textarea/input text; untouched source text stays intact.
     $("#monthSettings").querySelectorAll('[data-path][data-type="days"]').forEach(el => { el.dataset.daysShown = el.value; }); // Untouched imported day lists retain the model's numeric semantics.
     $("#monthSettings").querySelectorAll("[data-prev-names]").forEach(el => { el.dataset.shown = el.value; }); // input の表示値（改行等の正規化後）を比較基準にする
+    rememberInputs($("#monthSettings"));
   }
 
   function readSettingsMonth() {
@@ -174,7 +187,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     if (root.querySelector("[data-hist]")) { const els = [...root.querySelectorAll("[data-hist]")].map(el => { const [kind, ...ns] = el.dataset.hist.split(":"); return [el, kind, ns.join(":")]; }); // 種別の後ろは ':' を含めて氏名
       for (const k of ["weekend_charge", "holiday_charge"]) { const mineEls = els.filter(x => x[1] === k); if (!mineEls.length) continue; const h = keepHidden(m.history[k], new Set(mineEls.map(x => x[2]))); for (const [el, , n] of mineEls) { const v = historyInput(el, m.history[k]?.[n]); if (v != null && v !== "") h[n] = v; } m.history[k] = h; } }
     root.querySelectorAll("[data-rmonth]").forEach(box => { const mu = ((T.RULE_BY_ID[box.dataset.rmonth] || {}).ui || {}).month; if (mu && mu.read) try { mu.read(m, box); } catch (e) { /* プラグインの欄の読み戻しの失敗は、その欄の分だけ前の値のまま */ } }); // 規則（プラグイン）の月ごとの欄
-    A.save();
+    rememberInputs(root); A.save();
   }
 
   function bindSettingsMonth() {
@@ -247,6 +260,11 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     doctorSelection = { name, person: docs[0], context: doctorContext() };
   }
   const doctorChooser = n => `<label for="docSel">${esc(T.t("編集する{person}を選んでください"))}</label> ${A.sel([["", T.t("編集する{person}を選んでください")], ...A.names().map(x => [x, x])], n || "", 'id="docSel"')}`;
+  // Calendar field IDs are opaque keys; an inherited object is not a field map.
+  const ownPersonDayMap = (parent, key) => {
+    if (!Object.prototype.hasOwnProperty.call(parent, key) || !parent[key]) Object.defineProperty(parent, key, { value: {}, enumerable: true, writable: true, configurable: true });
+    return parent[key];
+  };
   function unavailPart(m, n, d) { const u = (m.unavailable_other || []).find(x => x.name === n && +x.day === d); if (u) return u.paid ? "paid" : u.part; if (hasDay(m.unavailable_night?.[n], d)) return "night"; const a = (m.avoid || []).find(x => x.name === n && +(x.day ?? x.date) === d); return a ? "avoid_" + (a.part || "allday") : ""; }
   function renderDoctor() {
     const m = state.month, root = $("#doctorPane");
@@ -347,6 +365,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
 <p><button data-act="patAdd">${esc(T.t("行を追加"))}</button> <button data-act="patExpand">${esc(T.t("パターンをカレンダーに展開（{who} の業務と避けたい日を上書き）", { who: n }))}</button> <label><input type="checkbox" id="patHol" ${m.duties_on_holidays ? "checked" : ""}> ${esc(T.t("土日祝にも展開する"))}</label> <button data-act="calClear">${esc(T.t("{who} の業務を全消去", { who: n }))}</button></p>
 </details></div>`;
     root.querySelectorAll('[data-cal="pfield"]').forEach(el => { el.dataset.shown = el.value; }); // DOM 上の表示だけを比較し、未編集の保存値（数値・真偽値など）はそのまま残す。
+    rememberInputs(root);
   }
 
   function readDoctor() {
@@ -416,10 +435,11 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       // 施設の欄は変更した日だけ更新する。未編集の値の型・画面にない日・他の人の記録は保持する。
       root.querySelectorAll('[data-cal="pfield"]').forEach(el => {
         if (el.dataset.shown !== undefined && el.value === el.dataset.shown) return;
-        const id = el.dataset.id, d = +el.dataset.d; m.person_days ||= {}; m.person_days[id] ||= {};
-        const byDay = Object.assign({}, m.person_days[id][n] || {});
+        const id = el.dataset.id, d = +el.dataset.d; m.person_days ||= {};
+        const byName = ownPersonDayMap(m.person_days, id);
+        const byDay = Object.assign({}, Object.prototype.hasOwnProperty.call(byName, n) ? byName[n] : {});
         if (el.value !== "") byDay[d] = el.value; else delete byDay[d];
-        if (Object.keys(byDay).length) m.person_days[id][n] = byDay; else delete m.person_days[id][n];
+        if (Object.keys(byDay).length) Object.defineProperty(byName, n, { value: byDay, enumerable: true, writable: true, configurable: true }); else delete byName[n];
         el.dataset.shown = el.value;
       });
       root.querySelectorAll('[data-cal="fixed"]').forEach(el => { if (el.dataset.shown !== undefined) el.dataset.shown = el.value; }); // 読み戻した値を次の比較基準に（この画面で付けた期間責任者の固定も、次に外せば消える）
@@ -438,7 +458,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       if (cb && cb.checked) it.carry = true; else delete it.carry;
       pats.push(it); });
     m.regular_duties[n] = pats;
-    A.save();
+    rememberInputs(root); A.save();
   }
 
   function bindDoctor() {
@@ -520,6 +540,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
 <p class="note">${esc(T.t("名前の後ろに（ ）で印を書くと、勤務表と説明資料に名前(印)で出ます（例: 研修・会議）。"))}</p>
 <p><button data-act="fxClear">${esc(T.t("固定をすべて消去"))}</button> <span class="note">${esc(T.t("入力の矛盾（不可日との衝突、同じ人の勤務とOCの重複など）は「2 計算」の前に具体名で指摘されます。"))}</span></p></div>`;
     $("#fixedPane").querySelectorAll("input[data-fx][data-multi]").forEach(el => { el.dataset.shown = el.value; }); // 実際の入力欄の値を比較基準にする
+    rememberInputs($("#fixedPane"));
   }
   function readFixed() {
     const m = state.month, root = $("#fixedPane"); if (!root.children.length) return;
@@ -551,7 +572,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
     m.fixed = fx; m.fixed_tags = tags;
     root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { el.dataset.shown = el.value; });
     root.querySelectorAll("[data-extras]").forEach(el => { const [tbl, d] = el.dataset.extras.split(":"), k = tbl === "day_oc" ? "day" : "night", val = x => (root.querySelector(`select[data-fx="${k}${x}"][data-d="${d}"]`) || {}).value || ""; el.textContent = extrasText(fx[tbl][+d], [val("I"), val("Y")]); }); // 欄の横の「＋名前」も、読み戻した結果に合わせる
-    A.save();
+    rememberInputs(root); A.save();
   }
   function bindFixed() {
     const root = $("#fixedPane");
@@ -559,5 +580,5 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
     root.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b || b.dataset.act !== "fxClear") return; undoPoint("固定配置の変更"); if (!confirm(T.t("この月の固定指定をすべて消します。よろしいですか"))) return; state.month.fixed = { day: {}, night: {}, weekend_charge: {}, day_oc: {}, night_oc: {}, day_oc_none: {}, night_oc_none: {} }; state.month.fixed_tags = {}; A.save(); renderFixed(); }); // 固定の印も消す（固定が無ければ印は意味を持たない）
   }
 
-  Object.assign(A, { renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, resetDoctorSelection, doctorNormalizationCheckpoint, doctorUndoCheckpoint, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
+  Object.assign(A, { hasPendingInputDrafts, renderSettingsMonth, readSettingsMonth, bindSettingsMonth, renderDoctor, bindDoctor, resetDoctorSelection, doctorNormalizationCheckpoint, doctorUndoCheckpoint, readAll, renderFixed, bindFixed }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

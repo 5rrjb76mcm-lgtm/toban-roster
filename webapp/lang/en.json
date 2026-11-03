@@ -14,6 +14,7 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "候補＝資格者から外来・病棟番・外勤・不在・不可を除いた人。設定により、夜勤明けも午前・午後とも通常の候補に含める（夜勤明けによる除外・減点なし）。* は前夜の夜間OC。実際の配置は当月条件で確定させる。": "Available = qualified people minus clinic, ward, outside work, absence and unavailability. With this setting, someone off a night shift is an ordinary candidate both morning and afternoon (no exclusion or penalty for being post-night). * marks night on-call the evening before. The actual assignment is settled against this month's conditions.",
     "手元の改名を相手の名簿に当てると、別の2人が同じ氏名になります。入力や計算結果を混ぜないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "Local renames would assign two people in the other roster to the same name. Automatic merging was stopped to avoid mixing their inputs or results. Choose the settings and month data together from one version.",
     "同期の後に追加した氏名が相手の名簿にもありますが、同じ本人か確認できません。入力や計算結果を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "A name added since the last synchronization also appears in the other roster, but we cannot confirm it is the same person. Automatic merging was stopped to avoid assigning inputs or results to someone else. Choose the settings and month data together from one version.",
     "プロファイルの読み込みを中止しました（読み取りの間に入力が変更されました）。入力を確定してから、もう一度読み込んでください": "Profile import was canceled because input changed during the read. Finish the edit, then import the profile again.",
@@ -404,6 +405,7 @@
     "- 「{label}」を外しても時間内に判定できず（解なしとも解ありとも言えません）": "- Dropping \"{label}\": undecided within the time limit (neither feasible nor infeasible was proven)",
     "{y}年{m}月 勤務表 説明資料": "{y}-{m} roster report",
     "自動保存に失敗しました: {err}。入力はブラウザ内に残っています": "Autosave failed: {err}. Your inputs remain in this browser",
+    "保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください": "Saving stopped because an input is still being edited. Finish editing, then save again.",
     "{ym} を保存できませんでした（{why}）。切り替えると未保存の入力が失われます。": "{ym} could not be saved ({why}). Switching now would lose the unsaved inputs.",
     "保存を見送ったか、統合の確認で中止": "save skipped or merge cancelled",
     "書き込みに失敗": "write failed",
