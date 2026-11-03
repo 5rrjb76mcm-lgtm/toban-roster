@@ -147,9 +147,14 @@ T.rules.register({
     for (const n of P.dutyNames) { if (P.isExempt(n) || P.slots.some(s => s[1] === "night" && ok(n, s))) continue;
       const avail = []; for (let d = 1; d <= P.N; d++) if (P.slots.some(s => s[0] === d && ok(n, s))) avail.push(d);
       const need = Math.max(0, P.N - P.offTarget(n));
-      if (avail.length < need) { ctx.push("LINT_PERSON_TOO_FEW_DAYS", { who: n, avail: avail.length, need }); continue; }
-      if (avail.length === need && P.isHard("run_length_max") && P.runApplies(n)) { let run = 0, mx = 0, at = 0;
-        for (let d = 1; d <= P.N; d++) { run = avail.includes(d) ? run + 1 : 0; if (run > mx) { mx = run; at = d - run + 1; } }
+      // A previous-month night can supply day 1's busy day without any
+      // current work. Count that day once, and never force actual day-1 work
+      // merely because every available busy day is needed for exact rest.
+      const carry = !P.akeIsOff && P.prevWorked([0, "night"], n);
+      const busyAvail = avail.length + (carry && !avail.includes(1) ? 1 : 0);
+      if (busyAvail < need) { ctx.push("LINT_PERSON_TOO_FEW_DAYS", { who: n, avail: busyAvail, need }); continue; }
+      if (busyAvail === need && P.isHard("run_length_max") && P.runApplies(n)) { let run = 0, mx = 0, at = 0;
+        for (let d = 1; d <= P.N; d++) { run = avail.includes(d) && !(carry && d === 1) ? run + 1 : 0; if (run > mx) { mx = run; at = d - run + 1; } }
         if (mx > P.runMax) ctx.push("LINT_PERSON_FORCED_RUN", { who: n, len: mx, from: lab(at), max: P.runMax }); } }
   },
   python: false,

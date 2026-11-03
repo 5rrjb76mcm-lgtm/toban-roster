@@ -44,8 +44,9 @@
         (path.length === 3 && (["count", "min"].includes(k) || staffingPart(k) || k === "ideal" && v[k] === "") ||
           path.length >= 4 && (["count", "min", "ideal"].includes(path[3]) ? path.slice(4).every(staffingPart) : path.slice(3).every(staffingPart)) && staffingPart(k));
       const keepOf = k => LOCAL_KEY.test(path.length ? path[0] : k) || runValue || perShiftNull(k) || staffingValue(k) || (path.length === 1 && path[0] === "run_length" && ["max", "min"].includes(k) && v[k] !== null && typeof v[k] === "object");
+      // Copy own keys as data properties so names such as __proto__ remain in signatures.
       const o = {}; // プラグインの項目（根の直下の local_… / local.…）では空値も JSON のまま区別する（統合と同じ。未指定と null・[]・{} は別）
-      for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; if (x === false && !path.length && MONTH_FALSE_ABSENT.has(k)) continue; o[k] = canon(x, path.concat(k)); } return o; }
+      for (const k of Object.keys(v).sort()) { const x = v[k]; if (x === undefined) continue; if (!keepOf(k) && (x === null || x === "" || (Array.isArray(x) && !x.length) || (x && typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length))) continue; if (x === false && !path.length && MONTH_FALSE_ABSENT.has(k)) continue; Object.defineProperty(o, k, { value: canon(x, path.concat(k)), enumerable: true, writable: true, configurable: true }); } return o; }
     return v;
   }
   const MONTH_FALSE_ABSENT = new Set(["duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty"]); // 月データの根の直下のこの印は、未指定と false が同じ意味（統合の展開が false を補う。補われた false で署名・版が変わらないように、ここだけ false を「無い」と同じにする）。ほかの false は保持する（設定の「明けも休みに数える」を外す・勤務帯の oncall: false は変更）

@@ -28,6 +28,11 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post53: static-authored candidates; local runtime validation required
+run test_calendar_person_field_preservation_dom_node.js
+run test_days_off_carry_person_lint_node.js "$HP"
+run test_report_capacity_node.js
+run test_merge_history_own_keys_node.js
 # post52: static-authored regression sources; runtime validation required
 run test_month_tag_identity_node.js
 run test_calendar_avoid_date_dom_node.js

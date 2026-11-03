@@ -15,11 +15,17 @@
     const tx = s2 => T.t(s2);
     const tv = (s2, vars) => T.t(s2, vars); // 差し込みのある文（{name} をその言語の文面に入れる）
     const nHol = [...Array(P.N)].filter((_, i) => P.isHoliday(i + 1)).length;
-    const byShift = P.shifts.map(sh => tv("{shift} {n}", { shift: sh.label, n: P.slots.filter(x => x[1] === sh.id).length })).join(T.listSep());
+    // Count person-assignments, not day/shift cells. Optional staffing remains a
+    // range: neither the capacity nor a soft ideal is a mandatory requirement.
+    const workRange = slots => {
+      const lo = slots.reduce((n, s) => n + P.countMinOf(s), 0), hi = slots.reduce((n, s) => n + P.countOf(s), 0);
+      return lo === hi ? lo : `${lo}〜${hi}`;
+    };
+    const byShift = P.shifts.map(sh => tv("{shift} {n}", { shift: sh.label, n: workRange(P.slots.filter(x => x[1] === sh.id)) })).join(T.listSep());
     const head = [
       tv("対象月 {y}年{m}月　{status}", { y: P.year, m: P.month,
         status: info.status ? tv("ソルバー状態 {st}{sec}", { st: info.status, sec: info.seconds != null ? tv("（{s}秒）", { s: info.seconds.toFixed(1) }) : "" }) : tx("検算") }),
-      tv("必要枠: {detail}、計{total}枠。目安合計 {quota}", { detail: byShift, total: P.slots.length, quota: P.dutyNames.reduce((a, n) => a + P.quota(n), 0) }),
+      tv("必要枠: {detail}、計{total}枠。目安合計 {quota}", { detail: byShift, total: workRange(P.slots), quota: P.dutyNames.reduce((a, n) => a + P.quota(n), 0) }),
     ];
     const summary = (T.rulesSummary(P) || []).map(g => `<h4>${esc(g.head)}</h4><ul>${g.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>`).join("");
     S.push({ id: "s0", title: tx("概要"), html: `<ul>${head.map(h => `<li>${esc(h)}</li>`).join("")}</ul>`

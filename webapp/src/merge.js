@@ -109,7 +109,8 @@
       else if (p[0] === "fdo") (m.fixed.day_oc[+p[1]] ||= []).push(p[2]); else if (p[0] === "fno") (m.fixed.night_oc[+p[1]] ||= []).push(p[2]);
       else if (p[0] === "fdon") (m.fixed.day_oc_none[+p[1]] ||= []).push(p[2]); else if (p[0] === "fnon") (m.fixed.night_oc_none[+p[1]] ||= []).push(p[2]);
       else if (p[0] === "cpm") m.confirmed_pm_external_night.push({ name: p[1], day: +p[2] });
-      else if (p[0] === "hist") m.history[p[1]][p[2]] = v;
+      // Historical names are data keys, including __proto__; do not invoke the legacy setter.
+      else if (p[0] === "hist") Object.defineProperty(m.history[p[1]], p[2], { value: v, enumerable: true, writable: true, configurable: true });
       else if (k === "prev:last_days") m.prev_month.last_days = v;
       else if (k === "s:prev_month.last_weekend_charge") m.prev_month.last_weekend_charge = v;
       else if (k === "s:prev_month.prev_weekend_charge") m.prev_month.prev_weekend_charge = v;
