@@ -101,6 +101,7 @@
   // 衝突（同じ項目を両方が変えた）がなければ確認なしで統合し、衝突があるときだけどちらを採るかを聞く。
   // 戻り値: true=統合した（このブラウザの状態は相手の版より新しい扱いになる）, false=利用者がやめた, null=安全に統合できない（共通の元・氏名や役割の対応が不明など）
   async function tryAutoMerge(f, ctx, stale) { // stale: 確認を待つ間に接続先・月が替わっていないか（呼ぶ側が渡す。替わっていたら何もしない）
+    if (pendingInputDraft()) return false;
     if (noteRoleLoadConsent(f)) return null;
     // 旧版は削除の印を再利用したり、復元した人を既存の別人と同名の連なりにした。
     // 複数の本人が同じ印・氏名を持つ記録は後から判別できないため、自動統合しない。
@@ -117,7 +118,7 @@
     // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。
     // 同じ年月でも古い入力の写しで統合しない（確認をやり直せるよう、状態には触れず止める）。
     const month0 = state.month, rules0 = state.rules, input0 = A.inputSig();
-    const changed = () => (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0;
+    const changed = () => pendingInputDraft() || (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try {
@@ -241,9 +242,13 @@
   // 手元（設定と月）と相手（設定と月）に記録された施設 id が 1 つに揃っていなければ「別の施設」（設定と月の id が食い違っている状態も含む。自動統合・無確認の上書きの対象にしない）
   // 保存前の読取・確認は、始めた接続先・月・同期基準にだけ有効。
   // フォルダ選択中に予約済みの自動保存が始まることもあるため、切替窓口の待機だけに頼らない。
+  function pendingInputDraft() {
+    if (!A.hasPendingInputDrafts?.()) return false;
+    A.toast(T.t("保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください")); return true;
+  }
   function saveGuard() {
     const g = A.switchMark(), guard = { root: A.dirHandle, tag: A.tag(), monthDirs: A.monthDirs.slice(), saveGen: A.saveGen };
-    guard.stale = () => A.switchStale(g) || A.dirHandle !== guard.root || A.saveGen !== guard.saveGen;
+    guard.stale = () => pendingInputDraft() || A.switchStale(g) || A.dirHandle !== guard.root || A.saveGen !== guard.saveGen;
     return guard;
   }
   const saveFileStamp = f => JSON.stringify([f.where || null, f.data || null, f.corrupt || null]);
@@ -279,7 +284,7 @@
   }
   async function autosaveJson() { return A.serialized(autosaveCore); }
   async function autosaveCore() { // 返り値: "saved" / "skipped" / "failed"
-    if (!A.dirHandle || !A.isDirty()) return "skipped";
+    if (!A.dirHandle || !A.isDirty() || pendingInputDraft()) return "skipped";
     const guard = saveGuard();
     if (!(await checkConflict(guard)) || guard.stale()) return "skipped";
     try { const at = new Date().toISOString(), snap = A.snapshot(at); const dir = await guard.root.getDirectoryHandle(snap.tag, { create: true }); await verifySaveFile(guard, snap.tag); await writeFile(dir, A.FILES.data(snap.tag), new Blob([snap.payload], { type: "application/json" })); recordSavedMonth(guard.root, snap); A.markSaved(undefined, at, snap); clearSaveFailure(guard.root, snap.tag, "data"); return "saved"; } // 自動保存は月データだけを書く。帳票の記録には触れない

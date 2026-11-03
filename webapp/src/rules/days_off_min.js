@@ -143,7 +143,8 @@ T.rules.register({
     if (!prm.exact) return;
     // 人ごと（夜勤に入れない人だけ。夜勤があると明けで勤務日が 2 日ずつ動き、見積もりが立たない）: 入れる日と、休みから決まる勤務日を比べる
     const forbid = (n, s) => P.state("composition") === "hard" && P.comp.some(c => c.max === 0 && P.compOn(c, s) && P.compMatch(c, n)); // 構成の規則で最大 0
-    const ok = (n, s) => ctx.canWork(n, s) && !forbid(n, s);
+    // Callers use existing P.slots: only this exact fixed work bypasses composition max 0.
+    const ok = (n, s) => ctx.canWork(n, s) && (P.isFixedWork(s, n) || !forbid(n, s));
     for (const n of P.dutyNames) { if (P.isExempt(n) || P.slots.some(s => s[1] === "night" && ok(n, s))) continue;
       const avail = []; for (let d = 1; d <= P.N; d++) if (P.slots.some(s => s[0] === d && ok(n, s))) avail.push(d);
       const need = Math.max(0, P.N - P.offTarget(n));
