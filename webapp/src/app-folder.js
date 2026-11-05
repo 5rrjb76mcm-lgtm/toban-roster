@@ -243,7 +243,10 @@
   // 保存前の読取・確認は、始めた接続先・月・同期基準にだけ有効。
   // フォルダ選択中に予約済みの自動保存が始まることもあるため、切替窓口の待機だけに頼らない。
   function pendingInputDraft() {
-    if (!A.hasPendingInputDrafts?.()) return false;
+    // The JSON editor is an unapplied draft, including while its pane is hidden.
+    // Never read/parse it as a side effect of saving or automatic peer adoption.
+    const editor = $("#rulesJson"), jsonDraft = editor?.dataset?.pluginDraft === "1" && editor.value !== JSON.stringify(state.rules, null, 1);
+    if (!jsonDraft && !A.hasPendingInputDrafts?.()) return false;
     A.toast(T.t("保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください")); return true;
   }
   function saveGuard() {
@@ -412,6 +415,7 @@
     const sameSaved = !other && state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
     if (sameSaved && !f.roleConsent) return; // 自分が最後に保存したファイルそのもの
     if (f.roleConsent || other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
+      if (pendingInputDraft()) return; // Even a clean model may have an unapplied DOM draft.
       let roleConsent;
       if (A.isDirty()) {
         // 未保存の変更がある: 共通の元があれば自動で統合し、統合結果をフォルダに書き戻す（別の施設なら統合しない）
@@ -424,7 +428,7 @@
         if (!roleLoadCurrent(choiceMark, f.data)) { A.toast(roleLoadChanged()); return; }
         roleConsent = f.roleConsent;
       }
-      if (stale()) return;
+      if (stale() || pendingInputDraft()) return;
       applyLoaded(f.data, T.t("フォルダの {tag} データ（保存 {at}）を読み込みました", { tag: A.tag(), at: fileAt ? new Date(fileAt).toLocaleString(T.dateLocale()) : T.t("時刻不明") }), { roleConsent });
     }
   }

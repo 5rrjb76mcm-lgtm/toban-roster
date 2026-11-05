@@ -66,6 +66,7 @@
   複数名の設定では `oncall` / `period_charge` / `same_day_team` を「なし」にしないと `Problem` が止まる（勤務者 1 名が前提の規則のため）。
   勤務帯（当番枠の種別）は `rules.profile.shifts` で決める（`{id, label, on}`。on は off_days / all / weekdays）。id は `day` と `night` の 2 つで、
   知らない id は `Problem` が理由を添えて止める。「その日にその枠があるか」の判定は `P.slotExists(d, kind)` を使う（`isHoliday` で代用しない）。
+  `profile.shifts` の保存順や片方だけの定義は、勤務帯の時間順を変えない。OC の隣接判定用 `P.allSlots` は日付順・同日は日勤→夜勤で、設定の保存順と `P.slots` の並びは保持する。
   設定タブの「必須条件の設定」には**施設プロファイルの選択**（同梱は `data/profiles/*.json`。`build.py` が `T.PROFILES` として埋め込む）と、
   **規則の状態の表**がある。規則ごとに「必須（守れないときは解なし）／減点（重みで避ける）／なし」を選ぶ。
   一覧と既定値は `model.js` の `RULE_DEFS`、保存先は `rules.rule_states`。旧キー（`rest_day_required`, `same_day_IA`,
@@ -212,3 +213,4 @@ Python 参照実装でも `rule_states.period_charge: off` は対応済みです
 - `test_asg_boundary_authority_node.js` / `../tools/test_asg_boundary_authority.py` — 保存結果の余剰キーで正式な前月末勤務・OCを上書きせず、非空の不正枠は必須違反として扱うことを確認する。
 - `test_report_work_gap_scope_node.js` / `../tools/test_report_work_gap_scope.py` — 勤務間隔の説明で予備職員と前月内だけの組を除き、実際に採点する当月・月境界の組を保持することを確認する。
 - `test_report_holiday_assignments_node.js` — 第5節が施設固有ルールを推測せず、休日の全勤務者・役割・固定タグ・実際の日夜OCを日本語・英語で表示することを確認する。
+- `test_oc_shift_order_node.js` — 正順・逆順・夜勤だけを記載した設定で、OC 隣接の意味が同じことを確かめる静的作成の回帰候補（128ケース、準備時は未実行）。実 HiGHS の固定解、独立採点、検算、日英説明を照合し、月内・前月・翌月、勤務／OC、同日除外、非隣接除外、期間責任者の免除、連日必須の固定例外、規則なし、保存順の保持を含む。同期 solve 中は試験内の 300 秒タイマーが割り込めないため、単独・全件とも外側のプロセスタイムアウトを必須とし、時間超過は未完了として扱う。

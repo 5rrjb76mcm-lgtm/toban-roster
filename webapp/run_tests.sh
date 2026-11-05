@@ -28,6 +28,11 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post55: static-authored candidates; local runtime validation required
+run test_save_rules_json_draft_dom_node.js
+run test_oc_shift_order_node.js "$HP"
+run test_month_name_refs_own_keys_dom_node.js
+run test_report_period_state_node.js
 # post54: static-authored candidates; local runtime validation required
 run test_autosave_pending_dom_node.js
 run test_days_off_fixed_composition_person_lint_node.js "$HP"
