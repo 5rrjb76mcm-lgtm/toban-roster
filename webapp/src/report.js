@@ -55,6 +55,9 @@
     const rows3b = order.map(n => [esc(n), esc(met[n].days.map(d => `${P.month}/${d}`).join(T.listSep()))]);
     S.push({ id: "s3", title: tx("3 個人別集計（第9節）"), html: table(["{person}", "目安", "当月目標", "日勤", "夜勤", "計", "日勤OC", "夜間OC", "当番開始日数", "休日当番日数", "当番のある週末数", "同日兼務日数", "週休日発生数"].map(tx), rows3, "num") + `<h4>${esc(tx("当番開始日"))}</h4>` + table(["{person}", "当番開始日"].map(tx), rows3b) });
     // 4 週末・祝日の期間責任者
+    const chargeOn = T.rules.isOn(P, "period_charge"); // 規則が「なし」なら担当・交代・接続を推測しない。実際の休日配置は第5節に残す。
+    if (!chargeOn) S.push({ id: "s4", title: L("4 週末・祝日の{charge}担当"), html: `<p>${esc(tx("対象外"))}</p>` });
+    else {
     const rows4 = P.periods.map(p => { const kind = tx(p.kind === "weekend" && p.full ? "完全な土日" : p.kind === "weekend" ? "月またぎ土日" : "祝日"); const cd = charge[p.id]; const ds = p.slots.filter(s => s[1] === "day" && A.work(s) === cd[s[0]]).map(s => `${P.month}/${s[0]}`).join(T.listSep()); return [esc(p.name), kind, esc(T.chargeLabel(P, p, cd)), esc(ds || tx("なし"))]; });
     const fw = T.fullWeekendUnits(P, charge), fv = Object.values(fw);
     const allw = {}; for (const n of P.I) allw[n] = fw[n] + 2 * P.periods.filter(p => p.kind === "weekend" && !p.full && Object.values(charge[p.id]).includes(n)).length;
@@ -74,6 +77,7 @@
 <li>${esc(tv("前月までの履歴込み: {v}（履歴 {h}）", { v: T.fmtHalf(hist), h: T.fmt(P.histWeekend) }))}</li>
 <li>${esc(tv("祝日の担当: {v}（履歴 {h}）", { v: T.fmt(hc), h: T.fmt(P.histHoliday) }))}</li>
 <li>${esc(tv("連続する週末担当: {v}", { v: cons.join(T.listSep()) || tx("なし") }))}</li></ul>` });
+    }
     // 5 休日の実際の配置。施設固有の同日集約の意味を本体で推測しない。
     const rows5 = [];
     for (let d = 1; d <= P.N; d++) {
@@ -133,7 +137,7 @@
     const l10 = [];
     for (let d = Math.max(1, P.N - 1); d <= P.N; d++) l10.push(`${P.label(d)}: ` + P.shifts.filter(sh => P.slotExists(d, sh.id)).map(sh => tv("{shift} {who}（OC {oc}）", { shift: sh.label, who: A.workText([d, sh.id]), oc: join(A.oc([d, sh.id])) || "―" })).join(T.listSep()));
     const last = P.periods[P.periods.length - 1];
-    if (last && last.kind === "weekend" && last.crossing && !last.prevDays.length) l10.push(L(`月またぎの土日 ${last.name}: {charge}担当 ${T.chargeLabel(P, last, charge[last.id])}（翌月1日へ接続）`));
+    if (chargeOn && last && last.kind === "weekend" && last.crossing && !last.prevDays.length) l10.push(L(`月またぎの土日 ${last.name}: {charge}担当 ${T.chargeLabel(P, last, charge[last.id])}（翌月1日へ接続）`));
     { const nx = P.dutyNames.map(n => { const its = [...new Set(["am", "pm"].flatMap(h => P.dutyItems(n, P.N + 1, h).map(i => tv("{half}{kind}", { half: tx(h === "am" ? "午前" : "午後"), kind: T.kindLabel(i.kind) }))))]; return its.length ? `${n} ${its.join(T.nameSep())}` : null; }).filter(Boolean);
       l10.push(tv("翌月1日 {day} の定期業務（{person}別カレンダーの翌月1日欄。{last} の夜勤・夜間OCの翌日制約に適用）: {items}。翌月条件が確定したら再確認", { day: P.nextLabel(), last: `${P.month}/${P.N}`, items: nx.length ? nx.join(T.listSep()) : tx("なし") }));
       if (P.nextFixedAny()) { const x = P.nextFixed, fx = []; if (x.day.length) fx.push(`${P.shiftLabel("day")} ${x.day.join(T.nameSep())}`); if (x.day_oc.length) fx.push(`${tx("日勤OC")} ${x.day_oc.join(T.nameSep())}`); if (x.night.length) fx.push(`${P.shiftLabel("night")} ${x.night.join(T.nameSep())}`); if (x.night_oc.length) fx.push(`${tx("夜間OC")} ${x.night_oc.join(T.nameSep())}`); if (x.charge) fx.push(L(`{charge}担当 ${x.charge}`)); l10.push(tv("翌月1日 {day} の固定指定: {items}（{last} との連続禁止と月またぎの接続に適用。翌月作成時に1日の固定として引き継ぐ）", { day: P.nextLabel(), items: fx.join(T.listSep()), last: `${P.month}/${P.N}` })); } }

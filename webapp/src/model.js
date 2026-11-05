@@ -521,7 +521,12 @@
       if (this.offBasis === "holidays") { let c = 0; for (let d = 1; d <= this.N; d++) if (this.isHoliday(d)) c++; this.minDaysOff = c; } // その月の土日祝の数
       this.prevSlots = Object.keys(this.prevFixed).map(k => { const [d, kind] = k.split(":"); return [+d, kind]; })
         .sort((a, b) => a[0] - b[0] || (a[1] === "day" ? -1 : 1));
-      this.allSlots = this.prevSlots.concat(this.slots);
+      // Adjacency follows time, not the saved/display order of profile.shifts.
+      // A partial definition containing only night appends the default day last.
+      // Keep slots (and the saved profile) in their existing order; only the
+      // combined timeline used by cross-slot rules must be chronological.
+      this.allSlots = this.prevSlots.concat(this.slots)
+        .sort((a, b) => a[0] - b[0] || (a[1] === "day" ? 0 : 1) - (b[1] === "day" ? 0 : 1));
       this.allSlotSet = new Set(this.allSlots.map(Problem.key));
 
       this.periods = []; const used = new Set();
@@ -678,7 +683,10 @@
   function isOffDay(rules, y, m, d) { const w = new Date(y, m - 1, d).getDay(); return w === 0 || w === 6 || holidaysOf(rules, y, m).holidays.includes(d); }
   // 月の入力（当月分）に出てくる氏名 → どこに出てくるか（種類の一覧）。前月末の接続と履歴は記録なので含めない
   function monthNameRefs(m) {
-    const out = {}, add = (n, kind) => { if (!n) return; (out[n] ||= []); if (!out[n].includes(kind)) out[n].push(kind); };
+    const out = {}, add = (n, kind) => { if (!n) return;
+      // Imported or former staff names are data, including inherited Object keys.
+      if (!Object.prototype.hasOwnProperty.call(out, n)) Object.defineProperty(out, n, { value: [], enumerable: true, writable: true, configurable: true });
+      if (!out[n].includes(kind)) out[n].push(kind); };
     const keysOf = (o, kind) => { for (const [n, v] of Object.entries(o || {})) if (v && (!Array.isArray(v) || v.length) && (typeof v !== "object" || Array.isArray(v) || Object.keys(v).length)) add(n, kind); };
     keysOf(m.duty_days, "duty_days"); keysOf(m.regular_duties, "regular_duties"); keysOf(m.unavailable_night, "unavailable"); keysOf((m.wishes || {}).night_on, "wishes");
     for (const key of ["count_min", "count_max"]) for (const [n, v] of Object.entries(m[key] || {})) if (v !== null && v !== undefined && v !== "" && Number.isFinite(+v)) add(n, "count_limits"); // 当月の下限・上限（0 回も有効な値）
