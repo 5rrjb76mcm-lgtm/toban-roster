@@ -245,8 +245,8 @@
   function pendingInputDraft() {
     // The JSON editor is an unapplied draft, including while its pane is hidden.
     // Never read/parse it as a side effect of saving or automatic peer adoption.
-    const editor = $("#rulesJson"), jsonDraft = editor?.dataset?.pluginDraft === "1" && editor.value !== JSON.stringify(state.rules, null, 1);
-    if (!jsonDraft && !A.hasPendingInputDrafts?.()) return false;
+    const jsonDraft = A.hasPendingRulesJsonDraft?.();
+    if (!jsonDraft && !A.hasPendingInputDrafts?.() && !A.hasPendingSettingsDrafts?.()) return false;
     A.toast(T.t("保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください")); return true;
   }
   function saveGuard() {
@@ -599,6 +599,9 @@
   async function saveBeforeSwitch() {
     await A.awaitSaves(); // 進行中の保存（帳票の生成・書込み）が終わってから判定する（呼ぶ側が窓口を通していても、ここで待つのは安全側。未保存でなくても書込み中に月を替えると保存の基準が混ざる）
     A.readAll();
+    // An unapplied JSON draft is not part of the model signature. Do not silently
+    // replace it when the saved model itself is clean. Apply or restore it first.
+    if (A.hasPendingRulesJsonDraft?.()) { A.toast(T.t("切り替えを中止しました。設定のJSONを反映するか、JSONの編集を破棄してから、もう一度操作してください。")); return false; }
     if (!A.isDirty()) return true;
     if (!A.dirHandle) {
       const ymT = T.t("{y}年{m}月", { y: state.month.year, m: state.month.month });

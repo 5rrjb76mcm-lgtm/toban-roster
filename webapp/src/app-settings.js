@@ -11,6 +11,15 @@
     if (committed) input.dataset.textCommitted = "1";
   });
 
+  // Protect settings text/number drafts from automatic merge/adoption redraws.
+  // Record rendered DOM projections, not raw model values or sticky edit flags.
+  const settingsDraftValues = new WeakMap();
+  const settingsDraftControls = () => [...document.querySelectorAll("#doctorTable input, #doctorTable textarea, #doctorTable select, #weightsTable input, #hardRules input, #hardRules textarea, #hardRules select, #profileBuilder input, #profileBuilder textarea, #profileBuilder select")]
+    .filter(el => !["button", "submit", "file", "hidden"].includes(el.type) && !el.disabled && !el.readOnly && !["setProfile", "setExportRoster"].includes(el.id));
+  const settingsDraftProjection = el => ["checkbox", "radio"].includes(el.type) ? el.checked : el.value;
+  function rememberSettingsInputs(scope) { for (const el of settingsDraftControls()) if (!scope || scope.contains(el)) settingsDraftValues.set(el, settingsDraftProjection(el)); }
+  function hasPendingSettingsDrafts() { return settingsDraftControls().some(el => settingsDraftValues.has(el) && settingsDraftValues.get(el) !== settingsDraftProjection(el)); }
+
   // 調整目標の重みの表示名（設定タブ）。キーは rules.yaml の weights と一致させる
   const WEIGHT_LABELS = {
     target_deviation: "当月目標からの乖離（1回あたり）",
@@ -74,7 +83,12 @@
       at("duty").map(c => cell(c, d)).join("") +
       `<td><button data-act="up">↑</button><button data-act="down">↓</button><button data-act="del">削除</button></td></tr>`).join("");
     $("#doctorTable").innerHTML = `<table class="grid"><tr>${head.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${rows}</table><p><button data-act="add">${esc(tx("{person}を追加"))}</button>　<span class="note">${esc(tx("表の順序が勤務表の枠外「週休日数」の氏名順になります。氏名を変えると、その月のカレンダー・不可日は新しい氏名に引き継がれます。名簿は月ごとの保存データに同梱されるので、過去の月は当時の名簿で開けます。欄が少ないと感じたら、対応する規則が「なし」になっていないか下の規則の表を確認してください。"))}</span></p>`;
+    rememberSettingsInputs($("#doctorTable"));
     snapshotRuleText(false, $("#doctorTable")); // Capture the sanitized projection, including roster-only re-renders.
+  }
+  function hasPendingRulesJsonDraft() {
+    const ed = $("#rulesJson");
+    return !!(ed?.dataset?.pluginDraft === "1" && ed.value !== JSON.stringify(state.rules, null, 1));
   }
   function renderSettings() {
     const R = state.rules, L = s => T.term(s, R);
@@ -90,7 +104,8 @@
         if (pl.length) lines.push(T.t("組み立て時に取り込んだ施設のプラグイン: {list}", { list: pl.map(p => `${p.dir}（${Object.entries(p.files).map(([k, v]) => `${k} ${v.length}`).join(", ")}）`).join(T.listSep()) }));
         if (fl.length) lines.push(T.t("保存フォルダから読み込んだプラグイン: {list}", { list: fl.map(x => x.ok ? `${x.name}（${x.ids.join("・") || "—"}）` : T.t("{name}（読めません: {err}）", { name: x.name, err: x.error })).join(T.listSep()) }));
         el.hidden = !lines.length; el.textContent = lines.join("\n"); } }
-    { const ed = $("#rulesJson"); ed.value = JSON.stringify(R, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; } // dataset が無い試験用の最小要素でも描画を止めない
+    rememberSettingsInputs();
+    { const ed = $("#rulesJson"); if (!hasPendingRulesJsonDraft()) { ed.value = JSON.stringify(R, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; } } // dataset が無い試験用の最小要素でも描画を止めない
   }
 
   // ---------- 施設の構成（役割・勤務帯・人数）と規則 ----------
@@ -646,6 +661,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     const closureInput = $("#setCalClosure");
     if (closureInput) { closureInput.setAttribute("value", closureInput.value); delete closureInput.dataset.closureEdited; }
     document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(input => { input.setAttribute("value", input.value); delete input.dataset.idealEdited; });
+    rememberSettingsInputs();
   }
   // 役割の識別子を変える: 名簿・オンコール構成の表・固定「OCなし」の記録をまとめて置き換える
   function renameRoles(renames) {
@@ -1048,7 +1064,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
           shown = row[field] ?? "";
         }
         const value = T.numberInputText(shown);
-        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
+        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited; settingsDraftValues.set(input, settingsDraftProjection(input));
         committedCustomValues.set(input, input.value);
       }
     };
@@ -1080,7 +1096,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
           ["setDoMaxExtra", T.numberInputText(rest.max_extra ?? 1)], ["setPairMin", T.numberInputText(rest.pair_min ?? 1)]]) {
           const el = $("#" + id); if (!el) continue;
           const value = ["setRunMax", "setRunMin"].includes(id) ? String(shown).replace(/[\r\n]/g, "") : String(shown);
-          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, el.value);
+          el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, el.value); settingsDraftValues.set(el, settingsDraftProjection(el));
         }
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor();
@@ -1107,7 +1123,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (ev.target.dataset?.prm !== undefined && ev.target.dataset.numericEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("規則・重みの変更") === false) return;
         const input = ev.target, value = T.numberInputText(state.rules[input.dataset.prm] ?? "");
-        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
+        input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited; settingsDraftValues.set(input, settingsDraftProjection(input));
         $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
@@ -1117,7 +1133,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (!["quota", "share", "years", "shift_max_day", "shift_max_night"].includes(input.dataset?.f) || input.dataset.numericEdited !== "1" || !settings.contains(input)) return;
       if (readSettings("名簿の変更") === false) return;
       const value = T.numberInputText(state.rules.doctors[+input.closest("tr[data-i]").dataset.i][input.dataset.f] ?? (input.dataset.f === "share" ? 1 : input.dataset.f === "quota" ? 0 : ""));
-      input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited;
+      input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited; settingsDraftValues.set(input, settingsDraftProjection(input));
       $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
       A.renderSettingsMonth(); A.renderDoctor();
     });
@@ -1140,7 +1156,11 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (ev.target.id === "fileLoadProfile") { const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (f) importProfile(f); return; }
       if (ev.target.id === "setProfile" || ev.target.id === "setExportRoster") return; // 読み込む・書き出すボタンを押すまで設定は変えない
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { if (readSettings(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return; renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
-    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
+    $("#btnDiscardRulesJson")?.addEventListener("click", () => {
+      if (!hasPendingRulesJsonDraft() || !confirm(T.t("未反映のJSONの編集を破棄しますか。適用済みの設定は変わりません。"))) return;
+      const ed = $("#rulesJson"); ed.value = JSON.stringify(state.rules, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft;
+    });
+    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); { const ed = $("#rulesJson"); if (ed.dataset) delete ed.dataset.pluginDraft; } state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
     // 既定に戻すのは重みだけ（医師の表・版の表記・その他の設定はそのまま）
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnLoadProfile") loadProfileById($("#setProfile").value); });    $("#btnResetRules").addEventListener("click", () => { if (confirm(T.t("調整目標の重みを既定（配布時の値）に戻します。{person}の表や他の設定は変わりません"))) { pushUndo("重みを既定に戻す"); state.rules.weights = JSON.parse(JSON.stringify(T.DEFAULT_RULES.weights || {})); A.save(); renderSettings(); A.toast(T.t("重みを既定に戻しました")); } });
   }
@@ -1160,5 +1180,5 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
+  Object.assign(A, { hasPendingRulesJsonDraft, hasPendingSettingsDrafts, renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});

@@ -6,7 +6,14 @@ T.rules.register({
   label: "同じ曜日の勤務の上限", states: ["hard", "soft", "off"], def: "soft",
   weight: "same_weekday_excess", w0: 15,
   params: [{ key: "max_same_weekday_shifts", type: "int", min: 1, label: "同じ曜日の勤務は月 {v} 回まで", blank: "上限なし" }],
-  read(P, rules) { return { max: +rules.max_same_weekday_shifts || 0 }; }, // 0 = 上限なし
+  read(P, rules) {
+    const raw = rules.max_same_weekday_shifts;
+    const blank = raw == null || typeof raw === "string" && raw.trim() === "";
+    const value = blank ? 0 : typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+    const valid = Number.isSafeInteger(value) && value >= 0;
+    if (P.state("same_weekday_cap") !== "off" && !valid) throw new Error(P.msg("SAME_WEEKDAY_BAD_MAX"));
+    return { max: valid ? value : 0 }; // 0 / 空欄 = 上限なし。無効な休止中の保存値は変更しない。
+  },
 
   // 解く側: 曜日ごとの勤務の枠数の式 ≤ max
   solve(ctx, prm) {
@@ -41,7 +48,8 @@ T.rules.register({
   },
 
   summary(P, prm, tv) { return prm.max ? tv("月 {n} 回まで", { n: prm.max }) : tv("上限なし"); },
-  messages: { SAME_WEEKDAY_OVER: { en: "{who}: {count} shifts on {dow}, above the cap of {max}", ja: "{who}: {dow}曜の勤務{count}回が上限{max}回を超える" } },
+  messages: { SAME_WEEKDAY_BAD_MAX: { en: "max_same_weekday_shifts must be a nonnegative safe integer (0 or blank means no cap)", ja: "設定の max_same_weekday_shifts は0以上の安全な整数にしてください（0・空欄は上限なし）" },
+    SAME_WEEKDAY_OVER: { en: "{who}: {count} shifts on {dow}, above the cap of {max}", ja: "{who}: {dow}曜の勤務{count}回が上限{max}回を超える" } },
   fixtures: [
     { label: "同じ曜日の上限を必須", base: "cardiology", states: { same_weekday_cap: "hard" } },
     { label: "同じ曜日の上限を減点、重み 1", base: "cardiology", states: { same_weekday_cap: "soft" }, unitWeights: true },
