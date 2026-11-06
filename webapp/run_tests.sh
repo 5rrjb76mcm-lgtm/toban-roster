@@ -28,6 +28,10 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post56: candidate regressions; see review package for execution scope
+run test_rules_json_navigation_dom_node.js
+run test_save_settings_draft_dom_node.js
+run test_same_weekday_cap_validation_node.js "$HP"
 # post55: static-authored candidates; local runtime validation required
 run test_save_rules_json_draft_dom_node.js
 run test_oc_shift_order_node.js "$HP"
@@ -209,6 +213,7 @@ if [ -x "$PY" ]; then
   run test_python_unsupported_rules_node.js "$PY"
   echo "== Python Friday minimum state contract"
   "$PY" ../tools/test_friday_night_off.py || fail=1
+  "$PY" ../tools/test_arrhythmia_night_state.py || fail=1
 else echo "--  Python Friday minimum checks skipped (../tools/.venv is unavailable)"; fi
 run test_fixed_only_pairs_node.js "$HP"
 run test_fixed_only_windows_node.js "$HP"

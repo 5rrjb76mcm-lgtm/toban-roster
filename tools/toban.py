@@ -228,6 +228,9 @@ class Problem:
         self.weekend_balance_on = self.period_charge_on and st("weekend_balance", "hard") != "off"  # JS の needs: ["period_charge"]
         self.friday_night_on = st("friday_night_min", "hard") != "off"
         self.same_weekday_state = st("same_weekday_cap", "soft")
+        # 旧設定より rule_states が優先。解く側・検算・報告で同じ有効状態を使う。
+        self.arrhythmia_night_state = st("arrhythmia_pre_workday_night",
+            {"forbid": "hard", "allow": "off"}.get(self.rules.get("arrhythmia_pre_workday_night", "avoid"), "soft"))
 
         w = month.get("wishes") or {}
         self.wish_weekend_day = list(w.get("weekend_dayshift") or [])
@@ -1043,8 +1046,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
         M.Add(has <= sum(work[(d, "day"), n] for d in wk_days))
         obj.append(W["wish_weekend_dayshift"] * (1 - has))
     # 副担当責任医師: 翌日が休日でない平日の夜勤に原則配置しない
-    mode = {"hard": "forbid", "soft": "avoid", "off": "allow"}[(P.rules.get("rule_states") or {}).get(
-        "arrhythmia_pre_workday_night", {"forbid": "hard", "allow": "off"}.get(P.rules.get("arrhythmia_pre_workday_night", "avoid"), "soft"))]
+    mode = {"hard": "forbid", "soft": "avoid", "off": "allow"}[P.arrhythmia_night_state]
     for n in P.rules.get("arrhythmia_responsible_night") or []:
         if n not in names:
             continue
@@ -1395,7 +1397,7 @@ def check(P: Problem, asg: dict):
         if c < int(k):
             V.append(f"{n}: 金曜夜勤{c}回（月{k}回以上の指定）")
     # 7b 副担当責任医師の平日夜勤（forbid のときだけ必須条件）
-    if P.rules.get("arrhythmia_pre_workday_night", "avoid") == "forbid":
+    if P.arrhythmia_night_state == "hard":
         for n in P.rules.get("arrhythmia_responsible_night") or []:
             for d in P.pre_workday_nights():
                 if A.worked(n, (d, "night")):
@@ -1722,9 +1724,11 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         ds = [f"{P.month}/{d}" for d in range(1, P.N + 1) if P.is_weekend(d) and A.worked(n, (d, "day"))]
         soft.append(f"- {n} の土日日勤: {'反映（'+'、'.join(ds)+'）' if ds else '未反映'}")
     pw = set(P.pre_workday_nights())
-    for n in P.rules.get("arrhythmia_responsible_night") or []:
-        ds = [f"{P.label(d)}" for d in range(1, P.N + 1) if d in pw and A.worked(n, (d, "night"))]
-        soft.append(f"- {n} の翌日が休日でない平日夜勤（原則配置しない）: {'、'.join(ds) if ds else 'なし'}")
+    if P.arrhythmia_night_state != "off":
+        mode_label = "禁止設定" if P.arrhythmia_night_state == "hard" else "原則配置しない"
+        for n in P.rules.get("arrhythmia_responsible_night") or []:
+            ds = [f"{P.label(d)}" for d in range(1, P.N + 1) if d in pw and A.worked(n, (d, "night"))]
+            soft.append(f"- {n} の翌日が休日でない平日夜勤（{mode_label}）: {'、'.join(ds) if ds else 'なし'}")
     lines = []
     lo = min([s[0] for s in P.prev_slots], default=1)
     for n in P.duty_names:
