@@ -154,7 +154,47 @@ for (const accept of [false, true]) add('explicit discard: ' + (accept ? 'accept
   else { assert.equal(el.value, JSON.stringify(a.A.state.rules, null, 1)); assert.equal(hasDraft(a), false); assert.equal(await a.A.saveBeforeSwitch(), true); }
 });
 
-const EXPECTED_CASES = 24; assert.equal(cases.length, EXPECTED_CASES);
+// JSON drafts must survive ordinary settings commits, not just navigation/redraw.
+for (const [kind, valueFor] of [['invalid', () => '{ "synthetic incomplete": '], ['valid', validDraft]]) {
+  for (const [name, selector, value] of [['rule number', '#setRunMax', '7'], ['weight', '#weightsTable [data-w]', '37']]) {
+    add(kind + ': commit ' + name, async a => {
+      enter(a); if (name === 'rule number') { a.A.state.rules.rule_states.run_length_max = 'hard'; a.A.renderSettings(); }
+      const valueJson = valueFor(a), json = draft(a, valueJson);
+      const beforeRules = JSON.stringify(a.A.state.rules);
+      const setting = a.input(selector, value); a.event(setting, 'focusout');
+      assert.notEqual(JSON.stringify(a.A.state.rules), beforeRules, 'settings commit changed the model');
+      assert.equal(json.value, valueJson, 'settings commit must not replace the JSON draft');
+      assert.equal(a.A.hasPendingRulesJsonDraft(), true);
+      assert.equal(a.A.state.rules.local_synthetic_json_draft, undefined, 'JSON is not auto-applied');
+    });
+  }
+}
+add('edit and revert JSON before settings commit is not a draft', async a => {
+  enter(a); const json = a.q('#rulesJson'), original = json.value;
+  a.input('#rulesJson', original + ' '); a.input('#rulesJson', original);
+  const mode = a.q('#setQuotaMode'), before = JSON.stringify(a.A.state.rules);
+  a.change('#setQuotaMode', mode.value === 'share' ? 'absolute' : 'share');
+  assert.notEqual(JSON.stringify(a.A.state.rules), before, 'settings change updated model');
+  assert.equal(json.value, JSON.stringify(a.A.state.rules, null, 1));
+  assert.equal(a.A.hasPendingRulesJsonDraft(), false);
+});
+
+add('repeated JSON edits follow model and preserve later draft', async a => {
+  enter(a); const json = a.q('#rulesJson'), original = json.value;
+  a.input('#rulesJson', original + ' '); a.input('#rulesJson', original);
+  assert.equal(json.dataset.pluginDraft, '1'); assert.equal(a.A.hasPendingRulesJsonDraft(), false);
+  const mode = a.q('#setQuotaMode'); a.change('#setQuotaMode', mode.value === 'share' ? 'absolute' : 'share');
+  assert.equal(json.value, JSON.stringify(a.A.state.rules, null, 1));
+  const value = validDraft(a); a.input('#rulesJson', value); assert.equal(a.A.hasPendingRulesJsonDraft(), true);
+  a.A.renderAll(); assert.equal(json.value, value); assert.equal(a.A.hasPendingRulesJsonDraft(), true);
+});
+add('typed-back JSON tracks model after redraw', async a => {
+  enter(a); const json = a.q('#rulesJson'), original = json.value;
+  a.input('#rulesJson', original + ' '); a.input('#rulesJson', original);
+  a.A.state.rules.synthetic_redraw = 'changed'; a.A.renderAll();
+  assert.equal(json.value, JSON.stringify(a.A.state.rules, null, 1)); assert.equal(a.A.hasPendingRulesJsonDraft(), false);
+});
+const EXPECTED_CASES = 31; assert.equal(cases.length, EXPECTED_CASES);
 let passed = 0, completed = 0, finished = false;
 for (const c of cases) console.log('REGISTER ' + c.name);
 const watchdog = setTimeout(() => { console.error('Rules JSON draft regression timed out'); process.exit(1); }, 120000);

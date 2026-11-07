@@ -87,7 +87,7 @@
       <p><button id="btnSaveJson">現在の月をJSONとしてダウンロード</button> <label class="filebtn">JSONを読込<input type="file" id="fileLoadJson" accept=".json"></label> <label class="filebtn">前月のJSONから翌月を作成<input type="file" id="fileFromPrev" accept=".json"></label> <button id="btnNewMonth">新しい月（空）を作る</button> <button id="btnSample">サンプル（2026年11月）を読み込む</button></p>
     </details>
     <details class="box"><summary>詳細（JSONで直接編集）</summary>
-      <p class="note">設定タブの表に出ていない項目は、ここで直接編集します。書き換えたら「JSONを反映」を押してください。</p>
+      <p class="note">設定タブの表に出ていない項目は、ここで直接編集します。書き換えたら「JSONを反映」を押してください。編集を始めたあとに表の欄を確定したり、自動保存が別の版を取り込んだりして設定が変わると、「JSONを反映」は止まります（同じ値を確定し直しただけでも、設定の記録が整えられて変わることがあります）。そのときは編集中のJSONを控えて「JSONの編集を破棄」を押し、最新の設定を元に編集し直してください。</p>
       <textarea id="rulesJson" rows="30" style="width:100%;font-family:monospace;font-size:12px"></textarea>
       <p><button id="btnApplyRules">JSONを反映</button> <button id="btnDiscardRulesJson">JSONの編集を破棄</button></p>
     </details>
