@@ -488,7 +488,8 @@
     const settings = $("#settings"), editor = $("#rulesJson");
     const settingsVisible = settings && !settings.hidden && !(typeof settings.closest === "function" && settings.closest("[hidden]"));
     // JSON エディタは「反映」するまでは入力案。勝手に適用せず、編集中の本文を描画の後で戻す。
-    const jsonDraft = editor && editor.dataset && editor.dataset.pluginDraft === "1" && editor.value !== JSON.stringify(state.rules, null, 1) ? { value: editor.value, focused: document.activeElement === editor, start: editor.selectionStart, end: editor.selectionEnd } : null;
+    const jsonDraftPending = A.hasPendingRulesJsonDraft ? A.hasPendingRulesJsonDraft() : !!(editor?.dataset?.pluginDraft === "1" && editor.value !== JSON.stringify(state.rules, null, 1));
+    const jsonDraft = editor && jsonDraftPending ? { value: editor.value, focused: document.activeElement === editor, start: editor.selectionStart, end: editor.selectionEnd } : null;
     const flushFailed = error => {
       if (!current()) return;
       // 旧定義は入力の修正に残すが、別フォルダの規則で計算・帳票を作らせない。

@@ -28,6 +28,13 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post57: person-key merge preservation and autosave
+run test_merge_person_keys_node.js
+run test_merge_person_keys_folder_node.js
+run test_rules_json_commit_guard_node.js
+# post57b: applying a retained JSON draft must not revert settings committed after the draft started
+run test_rules_json_apply_guard_node.js
+run test_rules_json_apply_guard_dom_node.js
 # post56: candidate regressions; see review package for execution scope
 run test_rules_json_navigation_dom_node.js
 run test_save_settings_draft_dom_node.js
@@ -35,6 +42,7 @@ run test_same_weekday_cap_validation_node.js "$HP"
 # post55: static-authored candidates; local runtime validation required
 run test_save_rules_json_draft_dom_node.js
 run test_oc_shift_order_node.js "$HP"
+run test_previous_oc_without_worker_node.js "$HP"
 run test_month_name_refs_own_keys_dom_node.js
 run test_report_period_state_node.js
 # post54: static-authored candidates; local runtime validation required
@@ -191,6 +199,7 @@ run test_next_fixed_work_slots_node.js "$HP"
 run test_fixed_oc_capacity_node.js "$HP"
 run test_charge_day_split_node.js "$HP"
 if [ -x "$PY" ]; then echo "== Python charge boundary regression"; "$PY" ../tools/test_charge_boundary.py || fail=1; else echo "-- Python charge boundary regression skipped (venv unavailable)"; fi
+if [ -x "$PY" ]; then echo "== Python fixed charge candidate regression"; "$PY" ../tools/test_charge_fixed_candidate.py || fail=1; else echo "-- Python fixed charge candidate regression skipped (venv unavailable)"; fi
 run test_lint_node.js "$HP"
 run test_shift_eligible_node.js "$HP"
 run test_composition_inactive_flag_dom_node.js "$HP"
@@ -230,6 +239,7 @@ if [ -x "$PY" ]; then
   echo "== Python supported fixed-only contract"
   "$PY" ../tools/test_fixed_only_contract.py || fail=1
 else echo "--  Python fixed-only contract checks skipped (../tools/.venv is unavailable)"; fi
+if [ -x "$PY" ]; then echo "== Python previous OC without worker regression"; "$PY" ../tools/test_previous_oc_without_worker.py || fail=1; else echo "-- Python previous OC without worker regression skipped (venv unavailable)"; fi
 run test_fixed_input_preservation_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_oncall_off_node.js "$HP" "$PY"

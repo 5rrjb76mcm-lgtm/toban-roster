@@ -365,9 +365,21 @@ class Problem:
         prev_N = (dt.date(self.year, self.month, 1) - dt.timedelta(days=1)).day
         for e in self.prev_last_days:
             off = int(e["date"]) - prev_N  # 前月末日=0
-            if e.get("day"):
+            # Match the JS slot-presence test: an array containing only empty
+            # entries is empty, but an actual worker or OC keeps the slot.
+            # JS objects/arrays are truthy even if empty; preserve that for
+            # nonstandard saved JSON while handling standard names as strings.
+            def js_truthy(v):
+                if v is None or v is False or (isinstance(v, str) and v == ""):
+                    return False
+                if isinstance(v, (int, float)) and (v == 0 or (isinstance(v, float) and math.isnan(v))):
+                    return False
+                return True
+            def present(v):
+                return any(js_truthy(x) for x in v) if isinstance(v, list) else js_truthy(v)
+            if present(e.get("day")) or present(e.get("day_oc")):
                 self.prev_fixed[(off, "day")] = {"work": e.get("day"), "oc": list(e.get("day_oc") or [])}
-            if e.get("night"):
+            if present(e.get("night")) or present(e.get("night_oc")):
                 self.prev_fixed[(off, "night")] = {"work": e.get("night"), "oc": list(e.get("night_oc") or [])}
         self.prev_slots = sorted(self.prev_fixed.keys(), key=lambda s: (s[0], 0 if s[1] == "day" else 1))
         self.all_slots = self.prev_slots + self.slots
@@ -831,7 +843,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
                     M.Add(chargedP[p["id"], n] >= cday[d, n])
                 M.Add(chargedP[p["id"], n] <= sum(cday[d, n] for d in p["days"]))
             for d, n in P.fixed_charge.items():
-                if d in p["days"] and "fixed" not in relax:  # 診断で固定指定を外すときは主担当担当の固定も外す（JS と同じ）
+                if d in p["days"] and (d, n) in cday and "fixed" not in relax:  # 候補外の固定は張らず検算で不一致とする（JS と同じ）
                     M.Add(cday[d, n] == 1)
         # 月またぎの土日: 前月末（土曜）の主担当担当者が翌月1日（日曜）も担当する
         if "prev_connection" not in relax:

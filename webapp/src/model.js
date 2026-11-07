@@ -515,8 +515,10 @@
       for (const e of this.prevLastDays) {
         const off = +e.date - prevN;
         const ok = v => Array.isArray(v) ? v.filter(Boolean).length > 0 : !!v;
-        if (ok(e.day)) this.prevFixed[`${off}:day`] = { work: e.day, oc: [...(e.day_oc || [])] };
-        if (ok(e.night)) this.prevFixed[`${off}:night`] = { work: e.night, oc: [...(e.night_oc || [])] };
+        // Historical cleanup can remove the worker while preserving a known OC.
+        // Keep that partial slot in the timeline so adjacent-slot rules still see it.
+        if (ok(e.day) || ok(e.day_oc)) this.prevFixed[`${off}:day`] = { work: e.day, oc: [...(e.day_oc || [])] };
+        if (ok(e.night) || ok(e.night_oc)) this.prevFixed[`${off}:night`] = { work: e.night, oc: [...(e.night_oc || [])] };
       }
       if (this.offBasis === "holidays") { let c = 0; for (let d = 1; d <= this.N; d++) if (this.isHoliday(d)) c++; this.minDaysOff = c; } // その月の土日祝の数
       this.prevSlots = Object.keys(this.prevFixed).map(k => { const [d, kind] = k.split(":"); return [+d, kind]; })

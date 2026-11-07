@@ -6,6 +6,11 @@
     if (!Object.prototype.hasOwnProperty.call(parent, key) || !parent[key]) Object.defineProperty(parent, key, { value: {}, enumerable: true, writable: true, configurable: true });
     return parent[key];
   };
+  const setOwn = (parent, key, value) => Object.defineProperty(parent, key, { value, enumerable: true, writable: true, configurable: true });
+  const ownContainer = (parent, key, make) => {
+    if (!Object.prototype.hasOwnProperty.call(parent, key)) setOwn(parent, key, make());
+    return parent[key];
+  };
   // flatten が個別に扱う月データの項目（と、版の履歴・旧形式の項目）。ここに無いトップレベルの項目（プラグインの規則の ui.month が書く m.local_<施設> など）は、値全体を 1 項目（x:<名前>）として 3 者比較する
   const KNOWN = new Set(["year", "month", "duties_on_holidays", "next_month_first_day_is_holiday", "next_first_day_in_calendar", "allow_chief_duty", "doc_label", "notes", "profile_id", "exceptions", "holidays", "plugins_used", "closure_days",
     "cath_off_days_A", "cath_off_days_I", "cath_off_days", "targets", "count_min", "count_max", "duty_days", "unavailable_night", "unavailable_other", "avoid", "wishes", "fixed", "fixed_tags", "day_flags", "day_notes", "person_days", "confirmed_pm_external_night", "history", "prev_month", "regular_duties",
@@ -99,13 +104,13 @@
       else if (p[0] === "closure") m.closure_days.push(+p[1]);
       else if (p[0] === "cathoffA") m.cath_off_days_A.push(+p[1]);
       else if (p[0] === "cathoffI") m.cath_off_days_I.push(+p[1]);
-      else if (p[0] === "target") m.targets[p.slice(1).join(":")] = v; else if (p[0] === "cmin") m.count_min[p.slice(1).join(":")] = v; else if (p[0] === "cmax") m.count_max[p.slice(1).join(":")] = v;
-      else if (p[0] === "duty") ((m.duty_days[p[1]] ||= {})[+p[2]] ||= {})[p[3]] = v;
+      else if (p[0] === "target") setOwn(m.targets, p.slice(1).join(":"), v); else if (p[0] === "cmin") setOwn(m.count_min, p.slice(1).join(":"), v); else if (p[0] === "cmax") setOwn(m.count_max, p.slice(1).join(":"), v);
+      else if (p[0] === "duty") ownContainer(ownContainer(m.duty_days, p[1], () => ({})), +p[2], () => ({}))[p[3]] = v;
       else if (p[0] === "cal") for (const one of String(v).split("+")) { const paid = /_paid$/.test(one), pv = one.replace(/_paid$/, ""); // 並べた値は 1 つずつ戻す
-        if (pv === "night" && !paid) (m.unavailable_night[p[1]] ||= []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
+        if (pv === "night" && !paid) ownContainer(m.unavailable_night, p[1], () => []).push(+p[2]); else if (pv.startsWith("avoid_")) m.avoid.push({ name: p[1], day: +p[2], part: pv.slice(6) }); else m.unavailable_other.push(Object.assign({ name: p[1], day: +p[2], part: pv }, paid ? { paid: true } : {})); }
       else if (p[0] === "wkwish") m.wishes.weekend_dayshift.push(p[1]);
-      else if (p[0] === "wish") (m.wishes.night_on[p[1]] ||= []).push(+p[2]);
-      else if (p[0] === "wishd") ((m.wishes.day_on ||= {})[p[1]] ||= []).push(+p[2]);
+      else if (p[0] === "wish") ownContainer(m.wishes.night_on, p[1], () => []).push(+p[2]);
+      else if (p[0] === "wishd") ownContainer(m.wishes.day_on, p[1], () => []).push(+p[2]);
       else if (p[0] === "fd" || p[0] === "fn") { const tbl = p[0] === "fd" ? m.fixed.day : m.fixed.night, cur = [].concat(tbl[+p[1]] || []); cur.push(p[2]); tbl[+p[1]] = cur.length === 1 ? cur[0] : cur; } // 1 名なら文字列、複数なら配列（保存形）
       else if (p[0] === "fc") m.fixed.weekend_charge[+p[1]] = v;
       else if (p[0] === "ftag") (m.fixed_tags ||= {})[`${+p[1]}:${p[2]}|${p[3]}`] = v;
@@ -119,8 +124,8 @@
       else if (k === "prev:last_days") m.prev_month.last_days = v;
       else if (k === "s:prev_month.last_weekend_charge") m.prev_month.last_weekend_charge = v;
       else if (k === "s:prev_month.prev_weekend_charge") m.prev_month.prev_weekend_charge = v;
-      else if (p[0] === "pat") m.regular_duties[p[1]] = v;
-      else if (p[0] === "x") m[p.slice(1).join(":")] = v; // 本体が知らない項目は値全体
+      else if (p[0] === "pat") setOwn(m.regular_duties, p[1], v);
+      else if (p[0] === "x") setOwn(m, p.slice(1).join(":"), v); // 本体が知らない項目は値全体
     }
     m.holidays.sort((a, b) => a - b); m.closure_days.sort((a, b) => a - b); m.cath_off_days_A.sort((a, b) => a - b); m.cath_off_days_I.sort((a, b) => a - b);
     for (const n of Object.keys(m.unavailable_night)) m.unavailable_night[n].sort((a, b) => a - b);

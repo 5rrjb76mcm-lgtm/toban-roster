@@ -86,9 +86,27 @@
     rememberSettingsInputs($("#doctorTable"));
     snapshotRuleText(false, $("#doctorTable")); // Capture the sanitized projection, including roster-only re-renders.
   }
+  let rulesJsonInputBaseline = null;
+  // JSON 草稿の元になった設定（草稿を始めた時点の state.rules の JSON 文字列）。反映の直前に現在の設定と比べ、違えば反映を止める（別の欄の確定・保存時の取り込みなどで変わった設定を、古い草稿で巻き戻さない）。
+  // 草稿の印（dataset.pluginDraft）と一緒に付け、印が消えるとき（同期・破棄・反映）に消す。推測で統合はしない: 設定全体の文字列が一致するときだけ反映する。
+  let rulesJsonDraftBaseText = null;
+  function rulesJsonDraftBase() { return rulesJsonDraftBaseText; } // 試験・実ブラウザの確認用（読むだけ）
+  const rulesJsonText = () => JSON.stringify(state.rules, null, 1);
+  // 反映を止める理由（止めないときは null）。印が無い（従来どおりの読込・試験の最小 DOM）か、編集内容が現在の設定と同じなら止めない。
+  function rulesJsonApplyStop() {
+    const ed = $("#rulesJson");
+    if (!(ed?.dataset?.pluginDraft === "1") || ed.value === rulesJsonText()) return null;
+    if (rulesJsonDraftBaseText === null) return T.t("設定のJSONを反映しませんでした。この編集の元になった設定を確認できないため、安全のため反映を止めています。編集中のJSONは控えを取ってから「JSONの編集を破棄」を押し、最新の設定を元に編集し直してください。現在の設定と編集中のJSONは、どちらもそのまま残っています。");
+    if (rulesJsonDraftBaseText !== rulesJsonText()) return T.t("設定のJSONを反映しませんでした。このJSONの編集を始めたあとに設定が変わっています（表の欄の確定や、保存時の取り込みなど。同じ値を確定し直しただけでも、設定の記録が整えられて変わることがあります）。編集中のJSONは控えを取ってから「JSONの編集を破棄」を押し、最新の設定を元に編集し直してください。現在の設定と編集中のJSONは、どちらもそのまま残っています。");
+    return null;
+  }
   function hasPendingRulesJsonDraft() {
     const ed = $("#rulesJson");
-    return !!(ed?.dataset?.pluginDraft === "1" && ed.value !== JSON.stringify(state.rules, null, 1));
+    return !!(ed?.dataset?.pluginDraft === "1" && ed.value !== JSON.stringify(state.rules, null, 1) && (rulesJsonInputBaseline === null || ed.value !== rulesJsonInputBaseline));
+  }
+  function syncRulesJson() {
+    const ed = $("#rulesJson");
+    if (!hasPendingRulesJsonDraft()) { ed.value = JSON.stringify(state.rules, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; rulesJsonInputBaseline = null; rulesJsonDraftBaseText = null; }
   }
   function renderSettings() {
     const R = state.rules, L = s => T.term(s, R);
@@ -105,7 +123,7 @@
         if (fl.length) lines.push(T.t("保存フォルダから読み込んだプラグイン: {list}", { list: fl.map(x => x.ok ? `${x.name}（${x.ids.join("・") || "—"}）` : T.t("{name}（読めません: {err}）", { name: x.name, err: x.error })).join(T.listSep()) }));
         el.hidden = !lines.length; el.textContent = lines.join("\n"); } }
     rememberSettingsInputs();
-    { const ed = $("#rulesJson"); if (!hasPendingRulesJsonDraft()) { ed.value = JSON.stringify(R, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; } } // dataset が無い試験用の最小要素でも描画を止めない
+    syncRulesJson();
   }
 
   // ---------- 施設の構成（役割・勤務帯・人数）と規則 ----------
@@ -979,7 +997,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     { let m = "daily"; try { m = localStorage.getItem(MODE_KEY) || "daily"; } catch (e) { } setMode(m === "build" ? "build" : "daily"); }
     $("#settings").addEventListener("click", ev => { const b = ev.target.closest("[data-setmode]"); if (b) setMode(b.dataset.setmode); });
     $("#btnUndo").addEventListener("click", undo);
-    $("#rulesJson").addEventListener("input", ev => { if (ev.target && ev.target.dataset) ev.target.dataset.pluginDraft = "1"; });
+    $("#rulesJson").addEventListener("input", ev => { if (ev.target && ev.target.dataset) { if (ev.target.dataset.pluginDraft !== "1") rulesJsonDraftBaseText = rulesJsonText(); rulesJsonInputBaseline = JSON.stringify(state.rules, null, 1); ev.target.dataset.pluginDraft = "1"; } });
     const cleanupPanel = $("#historyCleanup");
     if (cleanupPanel) {
       cleanupPanel.addEventListener("toggle", renderHistoryCleanup);
@@ -1078,7 +1096,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
         // Keep the focused row and refresh snapshots after committing all visible settings.
         if (input.dataset.scr !== undefined && rosterColumns !== T.rules.columns(state.rules).map(c => c.key).join("\0")) renderSettingsRoster();
         refreshCustomNumbers();
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingCustomNumber = false; }
     };
@@ -1098,7 +1116,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
           const value = ["setRunMax", "setRunMin"].includes(id) ? String(shown).replace(/[\r\n]/g, "") : String(shown);
           el.value = value; el.setAttribute("value", value); delete el.dataset.numericEdited; committedRuleValues.set(el, el.value); settingsDraftValues.set(el, settingsDraftProjection(el));
         }
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor();
       } finally { committingRuleNumber = false; }
     };
@@ -1107,24 +1125,24 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     settings.addEventListener("focusout", ev => {
       if (ev.target.dataset?.countideal !== undefined && ev.target.dataset.idealEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("施設の構成の変更") === false) return;
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
       if (ev.target.matches?.(ruleTextSelector) && ev.target.dataset.textEdited === "1" && settings.contains(ev.target)) {
         if (readSettings(ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return;
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
       if (ev.target.id === "setCalClosure" && ev.target.dataset.closureEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("施設の構成の変更") === false) return;
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
       if (ev.target.dataset?.prm !== undefined && ev.target.dataset.numericEdited === "1" && settings.contains(ev.target)) {
         if (readSettings("規則・重みの変更") === false) return;
         const input = ev.target, value = T.numberInputText(state.rules[input.dataset.prm] ?? "");
         input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited; settingsDraftValues.set(input, settingsDraftProjection(input));
-        $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+        syncRulesJson();
         A.renderSettingsMonth(); A.renderDoctor(); return;
       }
       if (isCustomNumber(ev.target)) { commitCustomNumber(ev.target); return; }
@@ -1134,7 +1152,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (readSettings("名簿の変更") === false) return;
       const value = T.numberInputText(state.rules.doctors[+input.closest("tr[data-i]").dataset.i][input.dataset.f] ?? (input.dataset.f === "share" ? 1 : input.dataset.f === "quota" ? 0 : ""));
       input.value = value; input.setAttribute("value", value); delete input.dataset.numericEdited; settingsDraftValues.set(input, settingsDraftProjection(input));
-      $("#rulesJson").value = JSON.stringify(state.rules, null, 1);
+      syncRulesJson();
       A.renderSettingsMonth(); A.renderDoctor();
     });
     $("#settings").addEventListener("change", ev => {
@@ -1158,9 +1176,10 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
       if (ev.target.closest("#doctorTable, #weightsTable, #hardRules, #profileBuilder")) { if (readSettings(ev.target.closest("#profileBuilder") ? "施設の構成の変更" : ev.target.closest("#doctorTable") ? "名簿の変更" : "規則・重みの変更") === false) return; renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); } });
     $("#btnDiscardRulesJson")?.addEventListener("click", () => {
       if (!hasPendingRulesJsonDraft() || !confirm(T.t("未反映のJSONの編集を破棄しますか。適用済みの設定は変わりません。"))) return;
-      const ed = $("#rulesJson"); ed.value = JSON.stringify(state.rules, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft;
+      const ed = $("#rulesJson"); ed.value = JSON.stringify(state.rules, null, 1); if (ed.dataset) delete ed.dataset.pluginDraft; rulesJsonInputBaseline = null; rulesJsonDraftBaseText = null;
     });
-    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); { const ed = $("#rulesJson"); if (ed.dataset) delete ed.dataset.pluginDraft; } state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
+    // 反映の確認は窓口（A.transition: 進行中の保存を待つ）の中、置き換える直前に行う。止めたときは設定・草稿・Undo・保存状態のどれにも触れない。
+    $("#btnApplyRules").addEventListener("click", () => A.transition("data", () => { const stop = rulesJsonApplyStop(); if (stop) { alert(stop); return false; } try { const prepared = prepareRulesImport(JSON.parse($("#rulesJson").value)); pushUndo("JSON の反映"); { const ed = $("#rulesJson"); if (ed.dataset) delete ed.dataset.pluginDraft; rulesJsonInputBaseline = null; rulesJsonDraftBaseText = null; } state.rules = prepared.rules; state.month = prepared.month; A.save(); renderSettings(); A.renderSettingsMonth(); A.renderDoctor(); A.toast(T.t("JSONを反映しました")); } catch (e) { alert(T.t("JSONの形式が不正です: {err}", { err: e })); } }));
     // 既定に戻すのは重みだけ（医師の表・版の表記・その他の設定はそのまま）
     $("#settings").addEventListener("click", ev => { if (ev.target.id === "btnLoadProfile") loadProfileById($("#setProfile").value); });    $("#btnResetRules").addEventListener("click", () => { if (confirm(T.t("調整目標の重みを既定（配布時の値）に戻します。{person}の表や他の設定は変わりません"))) { pushUndo("重みを既定に戻す"); state.rules.weights = JSON.parse(JSON.stringify(T.DEFAULT_RULES.weights || {})); A.save(); renderSettings(); A.toast(T.t("重みを既定に戻しました")); } });
   }
@@ -1180,5 +1199,5 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
     A.save(); A.renderAll();
     A.toast(T.t("施設プロファイルを「{name}」にしました。名簿と規則を確認し、この施設の月を新しく作ってください", { name }));
   }
-  Object.assign(A, { hasPendingRulesJsonDraft, hasPendingSettingsDrafts, renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
+  Object.assign(A, { hasPendingRulesJsonDraft, rulesJsonDraftBase, rulesJsonApplyStop, hasPendingSettingsDrafts, renderSettings, bindSettings, loadProfileById, profileForExport, renameDoctor, removeDoctor, readSettings, clearUndo, pushUndo, undo }); // 他のファイルから使う関数
 })(globalThis.T = globalThis.T || {}, globalThis.T.app = globalThis.T.app || {});
