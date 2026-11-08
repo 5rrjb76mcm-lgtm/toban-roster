@@ -17,7 +17,8 @@ for (const f of ['i18n.js', 'rules-core.js', 'model.js', 'app-core.js', 'app-fol
 T.registerLang({ code: 'ja' }); T.registerLang(JSON.parse(fs.readFileSync(path.join(__dirname, 'lang/en.json'), 'utf8'))); T.setLang('ja');
 const A = T.app;
 A.readAll = A.renderAll = () => {};
-A.choose = async () => { throw new Error('unexpected conflict choice'); };
+let expectedConflictChoices = 0;
+A.choose = async (_msg, opts) => { assert(expectedConflictChoices > 0, 'unexpected conflict choice'); assert(opts.some(o => o.value === 'overwrite')); expectedConflictChoices--; return 'overwrite'; };
 T.Problem = function(rules, month) { this.rules = rules; this.m = month; };
 let violations = 0, lint = [];
 T.check = () => ({ V: Array.from({ length: violations }, () => ({})) }); T.lintPlugins = () => lint;
@@ -58,7 +59,9 @@ function open(dir, monthNo = 11, { keepRecords = false } = {}) {
   if (!dir.files.has(A.FILES.data(tag))) dir.files.set(A.FILES.data(tag), JSON.stringify({ rules, month, result, saved_at: at0 }));
   Object.assign(A.state, { rules, month, result, ui: {}, meta: null, base: null, baseRules: null, renames: [] });
   A.dirHandle = dir; A.monthDirs = [tag]; A.dirGen++;
-  A.markSaved(undefined, JSON.parse(dir.files.get(A.FILES.data(tag))).saved_at);
+  const disk = JSON.parse(dir.files.get(A.FILES.data(tag)));
+  if (JSON.stringify([month, rules, result]) !== JSON.stringify([disk.month, disk.rules, disk.result])) expectedConflictChoices++;
+  A.markSaved(undefined, disk.saved_at);
   violations = 0; lint = []; toasts.length = 0;
   if (!keepRecords) acknowledge();
   return tag;
@@ -79,7 +82,8 @@ const lastToast = () => toasts[toasts.length - 1] || '';
 // ページを開き直した状態にする: 画面の記録は無く、状態は保存先の月データから読んだもの
 function reload(dir, tag) { acknowledge(); const o = JSON.parse(dir.files.get(A.FILES.data(tag))); Object.assign(A.state, { rules: o.rules, month: o.month, result: o.result, ui: {}, meta: null, base: null, baseRules: null, renames: [] }); A.dirHandle = dir; A.dirGen++; A.markSaved(undefined, o.saved_at); toasts.length = 0; }
 // いまの状態のまま、別の保存先につなぐ（保存先にはこの月の月データがあり、同期の基準は合っている。版の記録は手元のものを持ち込む）
-function connect(dir, tag) { dir.files.set(A.FILES.data(tag), JSON.stringify({ rules: A.state.rules, month: Object.assign({}, A.state.month, { doc_versions: undefined }), result: A.state.result, saved_at: A.state.meta.savedAt })); A.dirHandle = dir; A.dirGen++; A.monthDirs = [tag]; A.markSaved(undefined, A.state.meta.savedAt); toasts.length = 0; }
+function connect(dir, tag) { expectedConflictChoices++; // This synthetic destination intentionally has different same-time month data.
+ dir.files.set(A.FILES.data(tag), JSON.stringify({ rules: A.state.rules, month: Object.assign({}, A.state.month, { doc_versions: undefined }), result: A.state.result, saved_at: A.state.meta.savedAt })); A.dirHandle = dir; A.dirGen++; A.monthDirs = [tag]; A.markSaved(undefined, A.state.meta.savedAt); toasts.length = 0; }
 // 版 1 を出力し終えた状態（勤務表と説明資料があり、版の記録に完了情報が入っている）
 async function withV1(name = 'synthetic-folder') { const dir = folder(name), tag = open(dir); edit('synthetic content one'); assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(versions(), [1]); assert.deepStrictEqual(docFiles(dir), V1(tag).slice().sort()); assert.deepStrictEqual(records(), []);
   const rec = A.state.month.doc_versions[0]; assert.ok(Array.isArray(rec.fp) && rec.fp.length === 2 && rec.fp.every(x => typeof x === 'string' && x), 'completion info is recorded with the version'); assert.deepStrictEqual(JSON.parse(dir.files.get(A.FILES.data(tag))).month.doc_versions[0].fp, rec.fp, 'and saved in the month data'); toasts.length = 0; return { dir, tag }; }
@@ -216,7 +220,8 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
   // ---- 新しい版として書く経路: 手元に版の記録が無く、保存先の月データには同じ内容の版 1 の記録がある
   // （前の世代の月データを読み込んで「このブラウザの状態で上書きする」を選んだ・ほかのウィンドウが先に同じ内容を出した、など）。
   // 保存先の記録で「この番号＝この内容」でも、いまある帳票の中身がその記録の完了情報と同じときだけ同じ番号で書く。確かめられなければ上書きしない
-  const forgetVersions = (dir, tag) => { delete A.state.month.doc_versions; A.markSaved(undefined, JSON.parse(dir.files.get(A.FILES.data(tag))).saved_at); toasts.length = 0; };
+  const forgetVersions = (dir, tag) => { expectedConflictChoices++; // The synthetic browser and folder snapshots deliberately differ.
+    delete A.state.month.doc_versions; A.markSaved(undefined, JSON.parse(dir.files.get(A.FILES.data(tag))).saved_at); toasts.length = 0; };
   await scenario('新しい版として書く経路: 保存先の記録と帳票の中身が合っていれば同じ番号で書き、帳票が無ければその番号で書く', async () => {
     { const { dir, tag } = await withV1(), pair = V1(tag); forgetVersions(dir, tag); assert.strictEqual(prepKind(await A.prepareSave()), 'new', 'the save is on the new-version path');
       const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w).sort(), pair.slice().sort(), 'the confirmed own documents are written again under the same number'); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /勤務表 v1 を追加）/); assert.deepStrictEqual(records(), []); }
@@ -288,6 +293,7 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     try { assert.strictEqual(await manual(), 'saved'); } finally { T.makeDocx = make; }
     const fresh = JSON.parse(dir.files.get(A.FILES.data(tag))); assert.notDeepStrictEqual(fresh.month.doc_versions[0].fp, stale[0].fp, 'the folder now records the rewritten roster');
     // ウィンドウ 2: 古い完了情報のまま（統合では同じ版は手元の記録が残る）。保存先とは同期している
+    expectedConflictChoices++; // This fixture intentionally presents different content with the same timestamp.
     A.state.month.doc_versions = stale; A.markSaved(undefined, fresh.saved_at); A.state.result.seconds = 9; toasts.length = 0;
     const w = dir.writes.length; assert.strictEqual(await manual(), 'saved'); assert.deepStrictEqual(docWritesSince(dir, w), [], 'no duplicate version is written'); assert.deepStrictEqual(versions(), [1]); assert.match(lastToast(), /v1 のまま/);
     assert.deepStrictEqual(A.state.month.doc_versions[0].fp, fresh.month.doc_versions[0].fp, 'this window adopts the completion info that describes the files'); assert.strictEqual(A.isDirty(), false);
@@ -319,5 +325,6 @@ const scenario = async (name, fn) => { await fn(); cases++; console.log('PASS ' 
     T.setLang('ja'); A.renderHeader(); assert.strictEqual(records().length, 2); acknowledge(); assert.strictEqual(A.isDirty(), true, 'acknowledging does not mark the unsaved edit saved');
     dir.refuse = () => null; assert.strictEqual(await auto(), 'saved'); assert.deepStrictEqual(records(), []);
   });
+  assert.strictEqual(expectedConflictChoices, 0, 'each intentionally different snapshot requires confirmation');
   console.log(cases + '/' + total + ' document output record cases passed');
 })().catch(e => { console.error(e.stack); process.exitCode = 1; });

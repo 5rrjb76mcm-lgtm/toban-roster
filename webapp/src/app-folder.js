@@ -115,6 +115,20 @@
     if (ambiguousNames) { f.mergeBlockedReason = T.t("以前の版の名簿の削除・取り消しの記録では、同じ氏名を使った別の人を区別できません。入力を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
     let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
+    // Equal save timestamps can describe distinct revisions. Result timestamps may
+    // also tie, so use the shared result baseline rather than guessing the winner.
+    let sameTimeResultPick = null;
+    if (state.meta.savedAt && state.meta.savedAt === f.data.saved_at) {
+      const resultKey = x => JSON.stringify(x || null);
+      const mineResultKey = resultKey(state.result), peerResultKey = resultKey(f.data.result);
+      if (mineResultKey !== peerResultKey) {
+        if (!Object.prototype.hasOwnProperty.call(state, "baseResult")) return null;
+        const baseResultKey = resultKey(state.baseResult);
+        if (mineResultKey === baseResultKey) sameTimeResultPick = "theirs";
+        else if (peerResultKey === baseResultKey) sameTimeResultPick = "mine";
+        else return null; // Both changed: ask for a whole version rather than guessing.
+      }
+    }
     // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。
     // 同じ年月でも古い入力の写しで統合しない（確認をやり直せるよう、状態には触れず止める）。
     const month0 = state.month, rules0 = state.rules, input0 = A.inputSig();
@@ -228,10 +242,10 @@
     const theirFit = fit(theirResult, theirRoster, rulesPick === "mine" ? fwd : new Map()), mineFit = fit(mineResult, myRoster, rulesPick === "theirs" ? back : new Map()), theirsNewer = theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""));
     const lostResult = !!(theirResult || mineResult) && !theirFit && !mineFit;
     state.month = r.merged; state.ui.doctor = 0;
-    state.result = theirsNewer ? (theirFit || mineFit) : (mineFit || theirFit);
+    state.result = (sameTimeResultPick === "theirs" || (sameTimeResultPick !== "mine" && theirsNewer)) ? (theirFit || mineFit) : (mineFit || theirFit);
     if (rulesPick === "theirs") { state.rules = f.data.rules; state.renames = []; } // 相手の名簿を採る: 改名の記録は消す
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
-    A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）
+    A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; state.baseResult = clone(theirResult || null); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）
     if (A.clearUndo) A.clearUndo(); // 統合の前の写しへ「元に戻す」と、相手の変更を手元から落としたまま保存してしまう（共通の元は相手の版に進んでいる）
     A.ensureMonth(state.month); A.persist(); A.renderAll();
     A.toast(T.t("別のPCの変更と自動で統合しました（自分 {mine} 件、相手 {theirs} 件、衝突 {n} 件）。入力が変わったので必要なら再計算してください", { mine: r.mineChanges, theirs: r.theirChanges, n: r.conflicts.length })
@@ -260,6 +274,23 @@
     const f = await findMonthData(savedTag, guard.root, guard.monthDirs);
     if (f.corrupt || saveFileStamp(f) !== guard.fileStamp) throw saveChangedError();
   }
+  // A timestamp is not a unique revision ID: two saves may share a millisecond.
+  // Compare all persisted content to the last observed snapshot before skipping
+  // conflict handling. Old browser states without a result baseline are unknown.
+  // The persisted content and the recorded baseline are compared in the normalized form the app keeps (the same reading as
+  // applyLoaded / tryAutoMerge use): a file an older writer wrote without the empty defaults, or in another key order, is still the
+  // saved version, so it does not go through a 0-change merge (which would clear Undo and announce a merge); a peer's real change
+  // still differs after normalization. Content that cannot be normalized is not the saved version.
+  function savedSnapshotKey(month, rules0, result) {
+    try { const rules = JSON.parse(JSON.stringify(rules0)); T.fillDefaultRules(rules); T.normalizeShiftsOf(rules); const m = T.normalizeMonth(JSON.parse(JSON.stringify(month)), rules) || month;
+      return JSON.stringify([A.canon(m), A.canon(rules)]) + "|" + JSON.stringify(result === undefined ? null : result); } catch (e) { return null; }
+  }
+  function matchesSavedSnapshot(data) {
+    if (!state.base || !state.baseRules || !Object.prototype.hasOwnProperty.call(state, "baseResult")) return false;
+    if (JSON.stringify([state.base, state.baseRules, state.baseResult]) === JSON.stringify([data.month, data.rules, data.result || null])) return true; // the bytes the app wrote
+    const mine = savedSnapshotKey(state.base, state.baseRules, state.baseResult), theirs = savedSnapshotKey(data.month, data.rules || state.baseRules, data.result || null);
+    return mine !== null && mine === theirs;
+  }
   async function checkConflict(guard) {
     const f = await findMonthData(A.tag());
     if (guard.stale()) return false;
@@ -269,7 +300,7 @@
     noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedTag === A.tag() && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 施設の一致は保存時刻の一致より先に見る（別施設のファイルを複製した場合など、時刻が同じでも別のデータ）
-    if (!f.roleConsent && !other && fileAt && fileAt === mineAt) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
+    if (!f.roleConsent && !other && fileAt && fileAt === mineAt && matchesSavedSnapshot(f.data)) return true; // 自分が最後に同期した版そのもの（時刻の大小は使わない: 別PCの時計がずれていても同じ版でなければ統合か確認に回す）
     const m = other || f.roleConsent ? null : await tryAutoMerge(f, T.t("保存しようとしたところ、"), guard.stale);
     if (m === true) { guard.saveGen++; return !guard.stale(); } // この統合自身が進めた同期基準だけを採用する
     if (m === false || guard.stale()) return false;
@@ -412,9 +443,9 @@
     noteRoleLoadConsent(f);
     const fileAt = f.data.saved_at || "", mineAt = (state.meta && state.meta.savedAt) || "";
     const other = A.otherFacility(f); // 別の施設のフォルダ: 保存時刻が同じでも「同じ版」とはみなさない。未保存の変更が無ければそのフォルダのデータに切り替え、あれば確認する
-    const sameSaved = !other && state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt;
+    const sameSaved = !other && state.meta && state.meta.savedWhere && state.meta.savedWhere.startsWith("フォルダ") && state.meta.savedTag === A.tag() && fileAt && fileAt === mineAt && matchesSavedSnapshot(f.data);
     if (sameSaved && !f.roleConsent) return; // 自分が最後に保存したファイルそのもの
-    if (f.roleConsent || other || !mineAt || fileAt !== mineAt) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
+    if (f.roleConsent || !sameSaved) { // 自分が最後に同期した版と違う（時刻の大小は使わない）
       if (pendingInputDraft()) return; // Even a clean model may have an unapplied DOM draft.
       let roleConsent;
       if (A.isDirty()) {

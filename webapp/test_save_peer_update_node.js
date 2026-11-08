@@ -123,11 +123,13 @@ async function test(label, fn) { try { await fn(); passed++; console.log('ok ' +
         ver = 2;
       }
     }
-    const before = JSON.stringify(A.state), peer = JSON.parse(f.files.get(dataName));
+    let before; const peer = JSON.parse(f.files.get(dataName));
     peer.month.holidays = [3]; peer.saved_at = '2026-10-02T00:00:00.000Z';
     const roster = A.FILES.roster('202611', ver, '確認版'), report = A.FILES.report('202611', ver, '確認版');
     peer.month.doc_versions = [{ ver, sig: 'synthetic-peer-document', docx: roster, html: report }];
     const text = JSON.stringify(peer), status = await delayedSave(f, 'manual', () => {
+      // An earlier same-time file change may already have been reconciled by the time generation starts.
+      before = JSON.stringify(A.state);
       f.files.set(dataName, text); f.files.set(roster, 'synthetic peer roster'); f.files.set(report, 'synthetic peer report');
     }, generation);
     assert.notStrictEqual(status, 'saved'); assert.strictEqual(f.files.get(dataName), text);
