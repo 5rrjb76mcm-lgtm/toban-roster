@@ -87,7 +87,7 @@
     if ((s.tag && s.tag !== tag()) || (s.dirGen !== undefined && s.dirGen !== A.dirGen)) { persist(); return; } // 保存した写しと現在の月・接続先が違う（保存中に切り替わった）: 現在の保存基準には触れない
     A.saveGen++;
     state.meta = { savedSig: s.sig, savedTag: tag(), savedAt: at || s.at || new Date().toISOString(), savedWhere: where || s.where || (A.dirHandle ? "フォルダ " + A.dirHandle.name : "ダウンロード") };
-    state.base = s.base; state.baseRules = s.rules; state.renames = (state.renames || []).slice(s.renamesLen === undefined ? Infinity : s.renamesLen); // 保存した写しまでの改名は、共通の元に入った（写しより後の改名は残す）
+    state.base = s.base; state.baseRules = s.rules; state.baseResult = s.result; state.renames = (state.renames || []).slice(s.renamesLen === undefined ? Infinity : s.renamesLen); // 保存した写しまでの改名は、共通の元に入った（写しより後の改名は残す）
     persist(); A.renderHeader();
   }
   const inputSig = () => { const m = Object.assign({}, state.month); delete m.doc_versions; return sigOf(JSON.stringify([canon(m), canon(state.rules)])); }; // 計算の入力（月＋設定）の署名。計算中に変わったら結果を採用しない。版の履歴（保存で増える）は入力ではないので除く

@@ -499,10 +499,16 @@ class Problem:
         table = self.fixed_day_oc if s[1] == "day" else self.fixed_night_oc
         return n in table.get(s[0], [])
 
+    def prev_worked(self, s, n):
+        # 過去の勤務枠は文字列または複数人施設から引き継いだ配列。
+        # 当月は既定の1人配置のまま、履歴内の全員を既知の勤務として扱う。
+        value = self.prev_fixed.get(tuple(s), {}).get("work")
+        return n in value if isinstance(value, list) else value == n
+
     def fixed_work_day(self, d, n):
         """実在する実勤務の固定だけ。前月の勤務は定数で、OC・主担当の固定は含めない。"""
         if d < 1:
-            return any(self.prev_fixed.get((d, k), {}).get("work") == n for k in ("day", "night"))
+            return any(self.prev_worked((d, k), n) for k in ("day", "night"))
         return any(self.is_fixed_work((d, k), n) for k in ("day", "night"))
 
     def count_lo(self, n):
@@ -608,7 +614,7 @@ def build_and_solve(P: Problem, base=None, time_limit=60, log=False, relax=froze
 
     def Wv(s, n):  # 前月分は定数
         if s[0] < 1:
-            return 1 if P.prev_fixed.get(s, {}).get("work") == n else 0
+            return 1 if P.prev_worked(s, n) else 0
         return work.get((s, n), 0)
 
     def Ov(s, n):
@@ -1227,10 +1233,13 @@ class Asg:
         v = self.a.get(s)
         if not v:
             return set()
-        return set([v["work"]] + v["oc"]) - {None}
+        w = v["work"]
+        workers = w if isinstance(w, list) else [w]
+        return set(workers + v["oc"]) - {None, ""}
 
     def worked(self, n, s):
-        return self.work(s) == n
+        w = self.work(s)
+        return n in w if isinstance(w, list) else w == n
 
     def eng(self, n, s):
         return n in self.engaged(s)
@@ -1468,7 +1477,6 @@ def cath_table(P: Problem, A: Asg):
             continue
         r = req[DOW[P.dow(d)]]
         off_A, off_I = d in P.cath_off_A, d in P.cath_off_I
-        post = A.work((d - 1, "night"))
         nightoc = A.oc((d - 1, "night"))
         for half in ("am", "pm"):
             def av(group):
@@ -1479,7 +1487,7 @@ def cath_table(P: Problem, A: Asg):
                         ex.append(f"{n}({'/'.join(kind_ja(i['kind']) for i in its)})")
                     elif P.leave(n, d, half):
                         ex.append(f"{n}(不可)")
-                    elif excl_post and post == n:
+                    elif excl_post and A.worked(n, (d - 1, "night")):
                         if half == "am":
                             ok.append(f"{n}(夜勤明け)")  # 午前は候補に数えてよい（数えて初めて足りる場合は減点対象）
                         else:
@@ -1756,6 +1764,20 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
             for d in range(lo, P.N):
                 if (d + 1, "day") in A.a and A.eng(n, (d, "night")) and A.eng(n, (d + 1, "night")) and not (A.worked(n, (d, "night")) and A.worked(n, (d + 1, "night"))):
                     cc.append(f"{P.label(d)}夜間→{P.label(d + 1)}夜間")
+        # 月末→翌月の固定も目的関数の対象。実勤務同士と同じ週末の主担当は除く。
+        if P.next_fixed_any() and A.eng(n, (P.N, "night")):
+            first_k, cross = P.next_first_slot_kind(), P.last_crossing_period()
+            def append_next(k):
+                if not P.next_fixed_engaged(n, k):
+                    return
+                next_work = P.next_fixed["charge"] != n and P.next_fixed[k] == n and n not in P.next_fixed[k + "_oc"]
+                if next_work and A.worked(n, (P.N, "night")):
+                    return
+                cc.append(f"{P.label(P.N)}夜間→{P.label(P.N + 1)}{'日勤帯' if k == 'day' else '夜間'}")
+            if not (T[n] == "I" and cross and first_k == "day"):
+                append_next(first_k)
+            if T[n] != "I" and first_k == "day":
+                append_next("night")
         if cc:
             lines.append(f"{n}: {'、'.join(cc)}")
     soft.append(f"- OC を含む隣接枠の連続（減点 oc_consecutive。同日の日勤帯→夜間は除く）: {'／'.join(lines) if lines else 'なし'}")

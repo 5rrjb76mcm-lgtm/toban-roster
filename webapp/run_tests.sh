@@ -28,6 +28,9 @@ run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
+# post58: regression candidates
+run test_save_same_timestamp_node.js
+run test_result_calendar_language_node.js
 # post57: person-key merge preservation and autosave
 run test_merge_person_keys_node.js
 run test_merge_person_keys_folder_node.js
@@ -230,6 +233,9 @@ run test_fixed_only_caps_node.js "$HP"
 run test_fixed_only_engagement_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_fixed_only_contract_node.js "$HP" "$PY"
+  run test_python_previous_work_array_node.js "$HP" "$PY"
+  echo "== Python previous-month worker array contract"
+  "$PY" ../tools/test_previous_work_array.py || fail=1
   run test_python_same_weekday_cap_node.js "$HP" "$PY"
   run test_python_period_charge_off_node.js "$HP" "$PY"
   echo "== Python disabled period charge contract"
@@ -239,6 +245,7 @@ if [ -x "$PY" ]; then
   echo "== Python supported fixed-only contract"
   "$PY" ../tools/test_fixed_only_contract.py || fail=1
 else echo "--  Python fixed-only contract checks skipped (../tools/.venv is unavailable)"; fi
+if [ -x "$PY" ]; then echo "== Python next OC boundary report"; "$PY" ../tools/test_report_next_oc_boundary.py || fail=1; else echo "-- Python next OC boundary report skipped (venv unavailable)"; fi
 if [ -x "$PY" ]; then echo "== Python previous OC without worker regression"; "$PY" ../tools/test_previous_oc_without_worker.py || fail=1; else echo "-- Python previous OC without worker regression skipped (venv unavailable)"; fi
 run test_fixed_input_preservation_node.js "$HP"
 if [ -x "$PY" ]; then

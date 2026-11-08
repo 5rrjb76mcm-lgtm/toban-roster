@@ -297,7 +297,7 @@
     if (calDoc !== "__all__" && !docs.includes(calDoc)) calDoc = "__all__"; // 最初は全員を並べた一覧
     const DK = ["outpatient", "ward", "external", "absent"];
     const dutyKind = (n, d, pt) => { const it = P.dutyItems(n, d, pt, DK)[0]; return it ? it.kind : ""; };
-    const dtag = (kind, pre) => `<div class="dc-duty dc-${kind}">${pre}${esc(T.kindLabel(kind))}</div>`;
+    const dtag = (kind, part) => `<div class="dc-duty dc-${kind}">${esc(T.t(part))} ${esc(T.kindLabel(kind))}</div>`;
     const one = n => {
       const first = (P.dow(1) + 1) % 7; let cnt = { day: 0, night: 0, oc: 0, ake: 0, off: 0 }, cells = [];
       const nightOf = d => d < 1 ? P.prevWorked([d, "night"], n) : [].concat((asg[`${d}:night`] || {}).work || []).includes(n); // 前日の夜勤（明け）
@@ -311,7 +311,7 @@
           if (ake) { cnt.ake++; dayTag = `<div class="dc-ake">${esc(T.t("明"))}</div>`; } else if (paid) dayTag = `<div class="dc-paid">${esc(T.t("有給"))}</div>`;
         }
         const sym = symOf(n, d); // 施設の記号があれば、日勤・夜勤の帯の代わりにそれを出す（数え方はそのまま）
-        const upper = sym ? `<div class="dc-r dc-r2"><div class="dc-sym">${sym}</div></div>` : dayTag && !am && !pm ? `<div class="dc-r dc-r2">${dayTag}</div>` : `<div class="dc-r">${dayTag}${am ? dtag(am, "午前 ") : ""}</div><div class="dc-r">${dayTag}${pm ? dtag(pm, "午後 ") : ""}</div>`;
+        const upper = sym ? `<div class="dc-r dc-r2"><div class="dc-sym">${sym}</div></div>` : dayTag && !am && !pm ? `<div class="dc-r dc-r2">${dayTag}</div>` : `<div class="dc-r">${dayTag}${am ? dtag(am, "午前") : ""}</div><div class="dc-r">${dayTag}${pm ? dtag(pm, "午後") : ""}</div>`;
         const wd = (first + d - 1) % 7, cls = [wd === 0 || P.holidaysExtra.has(d) ? "sun" : wd === 6 ? "sat" : "", dayTag || nightTag ? "on" : ""].join(" ");
         const head = ext.dayHead ? [...(P.dayFlags[d] || []).filter(id => T.dayFlags.activeFor(P.rules).some(f => f.id === id)).map(id => `<span class="calflag on">${esc(T.dayFlags.labelOf(P.rules, id))}</span>`), P.dayNote(d) ? `<span class="calnote">${esc(P.dayNote(d))}</span>` : ""].join("") : "";
         cells.push(`<td class="${cls}"><div class="dnum">${d}${P.holidaysExtra.has(d) ? `<small>${esc(T.t("祝"))}</small>` : ""}</div>${head ? `<div class="calhead">${head}</div>` : ""}<div class="dc-slots">${upper}<div class="dc-r">${sym ? "" : nightTag}</div></div></td>`);

@@ -172,6 +172,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `test_save_doc_failure_record_node.js` `test_save_failure_record_dom_node.js` `test_save_catalog_node.js` `test_save_catalog_dom_node.js` `test_header_layout_contract_dom_node.js` `test_start_note_dom_node.js` — 保存できなかった記録（種類・解除の条件・帳票の完了判定）、月の一覧、通知欄の配置の約束、開始画面が出ている間の知らせ。`*_dom_*` は jsdom（`TOBAN_DOM_MODULE` で場所を指定）が要る。どれも、途中で止まったり場面の数が合わなかったりすると 0 以外で終わる
 - `test_profile_export_node.js` `test_save_node.js` `test_solve_guard_node.js` — 画面の層の検査（共有用プロファイルの匿名化、フォルダ保存の版と署名・保存中の切替、計算の入口の守り）。DOM・フォルダ・帳票の生成は代替
 - `../plugin-example/test_local_data_node.js` — プラグインの独自データの約束（`plugin-example/README.md` 6）のひな形の試験。施設の `plugins/` に複製して使う。一式では見本のプラグインに対して走らせる
+- `test_result_calendar_language_node.js` — 結果の職員別カレンダーで午前・午後の表示を言語ごとに切り替え、訳文の HTML をエスケープすることを確認する（本番 i18n と model の翻訳・エスケープ、模擬 DOM と問題オブジェクト。実ブラウザ試験ではない）。
 - `test_browser_e2e.js` — 実ブラウザの通し試験（Playwright ＋ インストール済みの Google Chrome、ヘッドレス）。編集→保存→閉じる→再読込、同名の別フォルダへ切替、プラグイン欠落時の計算・出力・直接ダウンロードの停止、共有用書き出し、外部 JSON の読込と再開、JSON のダウンロード後の自動保存、医師別カレンダーの読み戻し 2 本（規則を「なし」にした有給の値の保持、日勤と期間責任者の両方の固定の保持）、名簿から外した人の条件が共有用の書き出しに残らないこと、固定配置を開いた後の改名で固定が旧名へ戻らないこと、月の読取り中の保存フォルダの変更と起動時の自動の再接続（読取りを保留して操作）、同じ日の不可と「避」の保持、プラグインの日ごとの欄の旧値の保持、実行時に足した表示言語、照合中の自動保存、施設の設定の言語、日の種別ごとの人数の保持、役割の識別子の変更、改名の後の統合で相手の設定を使う場合、改名の後の統合で相手の新しい計算結果を採る場合、固定配置の画面の 2 人目の固定 OC、配置禁止にした人の目標と累計、結果の職員別カレンダーの休みの日数の 24 本を、画面の操作から保存されたファイルまで確かめる（約 2 分）。偽のフォルダは IndexedDB に場所だけを覚え、同じ context で開き直すと権限が残っているときの自動の再接続を通る。フォルダは Node 側に置いた偽の FileSystemDirectoryHandle。`cd ~/.toban-test && npm i playwright` で入れると `run_tests.sh` が走らせる（無ければ省略）
 - `lint_same_node.js` — 入力チェックを部品に移すときの確認。git の版と いまの src で、見本の施設とわざと矛盾を入れた月の指摘の集合が同じかを比べる（`node lint_same_node.js HEAD`）
 - `lp_same_node.js` — 規則を部品に移すときの確認。git の版と いまの src で、解く側に渡す LP の文字列が同じかを 8 設定で比べる（`node lp_same_node.js HEAD`）
@@ -216,6 +217,7 @@ Python 参照実装でも `rule_states.period_charge: off` は対応済みです
 - `test_report_work_gap_scope_node.js` / `../tools/test_report_work_gap_scope.py` — 勤務間隔の説明で予備職員と前月内だけの組を除き、実際に採点する当月・月境界の組を保持することを確認する。
 - `test_report_holiday_assignments_node.js` — 第5節が施設固有ルールを推測せず、休日の全勤務者・役割・固定タグ・実際の日夜OCを日本語・英語で表示することを確認する。
 - `test_previous_oc_without_worker_node.js` — 前月末の勤務者名が削除され OC だけ残る履歴を、月境界の隣接枠採点・解く側・説明に反映することを確認する。空の履歴、勤務者のみ、勤務者と OC がある履歴も対照する。Python 版のモデル・説明・固定解も `tools/test_previous_oc_without_worker.py` で確認する（OR-Tools が必要）。
+- `../tools/test_report_next_oc_boundary.py` — Python の翌月固定との OC 連続減点について、CP-SAT の目的値と説明資料を架空データで照合する。
 - `test_rules_json_apply_guard_node.js` — 設定 JSON の草稿を残したまま一般設定を確定したあとに「JSONを反映」を押しても、確定した設定が草稿の古い値に戻らないことを最小要素で確認する。草稿を始めた時点の設定と反映直前の設定を比べ、違えば止めて設定・草稿・保存状態を残す。基準が分からないときも止める。保存を待ったあとの再確認、印の無い読込（従来どおり）、dataset の無い最小要素も対照する。
 - `test_rules_json_apply_guard_dom_node.js` — 同じ保護を jsdom の本番 index.html で確認する（重み・経験年数・規則の数値の確定、追加入力、無効な JSON、破棄の承諾と取消、設定の Undo、本文の戻し、繰り返し、表示言語の切替、プラグインの読み直し、表に出ない項目の取り込み、保存中の変更、印の無い読込）。
 - `test_oc_shift_order_node.js` — 正順・逆順・夜勤だけを記載した設定で、OC 隣接の意味が同じことを確かめる静的作成の回帰候補（128ケース、準備時は未実行）。実 HiGHS の固定解、独立採点、検算、日英説明を照合し、月内・前月・翌月、勤務／OC、同日除外、非隣接除外、期間責任者の免除、連日必須の固定例外、規則なし、保存順の保持を含む。同期 solve 中は試験内の 300 秒タイマーが割り込めないため、単独・全件とも外側のプロセスタイムアウトを必須とし、時間超過は未完了として扱う。
