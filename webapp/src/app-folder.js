@@ -115,24 +115,28 @@
     if (ambiguousNames) { f.mergeBlockedReason = T.t("以前の版の名簿の削除・取り消しの記録では、同じ氏名を使った別の人を区別できません。入力を別の人へ移さないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。"); return null; }
     let base = state.base && state.meta && state.meta.savedTag === A.tag() ? state.base : null;
     if (!base) return null;
-    // Equal save timestamps can describe distinct revisions. Result timestamps may
-    // also tie, so use the shared result baseline rather than guessing the winner.
-    let sameTimeResultPick = null;
-    if (state.meta.savedAt && state.meta.savedAt === f.data.saved_at) {
-      const resultKey = x => JSON.stringify(x || null);
-      const mineResultKey = resultKey(state.result), peerResultKey = resultKey(f.data.result);
-      if (mineResultKey !== peerResultKey) {
-        if (!Object.prototype.hasOwnProperty.call(state, "baseResult")) return null;
+    // A single changed calculation wins over the unchanged common baseline even
+    // when the calculating PC clock is behind. Distinct file timestamps do not
+    // make result.at a reliable revision order. Keep the existing newest-result
+    // policy when both changed; equal save times still require a whole-version choice.
+    let baselineResultPick = null;
+    const sameSaveTime = state.meta.savedAt && state.meta.savedAt === f.data.saved_at;
+    const resultKey = x => JSON.stringify(x || null);
+    const mineResultKey = resultKey(state.result), peerResultKey = resultKey(f.data.result);
+    if (mineResultKey !== peerResultKey) {
+      if (Object.prototype.hasOwnProperty.call(state, "baseResult")) {
         const baseResultKey = resultKey(state.baseResult);
-        if (mineResultKey === baseResultKey) sameTimeResultPick = "theirs";
-        else if (peerResultKey === baseResultKey) sameTimeResultPick = "mine";
-        else return null; // Both changed: ask for a whole version rather than guessing.
-      }
+        if (mineResultKey === baseResultKey) baselineResultPick = "theirs";
+        else if (peerResultKey === baseResultKey) baselineResultPick = "mine";
+        else if (sameSaveTime) return null; // Both changed: ask rather than guessing.
+      } else if (sameSaveTime) return null; // Legacy browser state has no result baseline.
     }
     // 確認を待つ間も、先に始まった前月取込や入力の更新は完了し得る。
     // 同じ年月でも古い入力の写しで統合しない（確認をやり直せるよう、状態には触れず止める）。
     const month0 = state.month, rules0 = state.rules, input0 = A.inputSig();
-    const changed = () => pendingInputDraft() || (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0;
+    // A running calculation can finish while a conflict choice is open without
+    // changing inputSig. The result winner above applies only to the captured result.
+    const changed = () => pendingInputDraft() || (stale && stale()) || state.month !== month0 || state.rules !== rules0 || A.inputSig() !== input0 || resultKey(state.result) !== mineResultKey;
     if (A.otherFacility(f) || new Set(A.facilityIds(state.rules, state.month).concat(A.facilityIds(state.baseRules, base))).size > 1) return null; // 別の施設のデータ（共通の元が別の施設のときも）とは自動で統合しない。読み込むか持ち込むかを利用者が選ぶ
     // 相手の版は形を整えてから比べる（旧形式の項目を持ち込まない）
     let theirs; try {
@@ -242,7 +246,7 @@
     const theirFit = fit(theirResult, theirRoster, rulesPick === "mine" ? fwd : new Map()), mineFit = fit(mineResult, myRoster, rulesPick === "theirs" ? back : new Map()), theirsNewer = theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""));
     const lostResult = !!(theirResult || mineResult) && !theirFit && !mineFit;
     state.month = r.merged; state.ui.doctor = 0;
-    state.result = (sameTimeResultPick === "theirs" || (sameTimeResultPick !== "mine" && theirsNewer)) ? (theirFit || mineFit) : (mineFit || theirFit);
+    state.result = (baselineResultPick === "theirs" || (baselineResultPick !== "mine" && theirsNewer)) ? (theirFit || mineFit) : (mineFit || theirFit);
     if (rulesPick === "theirs") { state.rules = f.data.rules; state.renames = []; } // 相手の名簿を採る: 改名の記録は消す
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
     A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; state.baseResult = clone(theirResult || null); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）
@@ -256,12 +260,13 @@
   // 手元（設定と月）と相手（設定と月）に記録された施設 id が 1 つに揃っていなければ「別の施設」（設定と月の id が食い違っている状態も含む。自動統合・無確認の上書きの対象にしない）
   // 保存前の読取・確認は、始めた接続先・月・同期基準にだけ有効。
   // フォルダ選択中に予約済みの自動保存が始まることもあるため、切替窓口の待機だけに頼らない。
-  function pendingInputDraft() {
+  function pendingInputDraft(forSwitch) {
     // The JSON editor is an unapplied draft, including while its pane is hidden.
     // Never read/parse it as a side effect of saving or automatic peer adoption.
     const jsonDraft = A.hasPendingRulesJsonDraft?.();
     if (!jsonDraft && !A.hasPendingInputDrafts?.() && !A.hasPendingSettingsDrafts?.()) return false;
-    A.toast(T.t("保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください")); return true;
+    // A refused load or switch is not a refused save. Say which operation stopped.
+    A.toast(forSwitch ? T.t("読み込みまたは切り替えを中止しました（未確定の入力があります）。入力を確定してから、もう一度操作してください") : T.t("保存を中止しました（未確定の入力があります）。入力を確定してから、もう一度保存してください")); return true;
   }
   function saveGuard() {
     const g = A.switchMark(), guard = { root: A.dirHandle, tag: A.tag(), monthDirs: A.monthDirs.slice(), saveGen: A.saveGen };
@@ -634,6 +639,7 @@
     // An unapplied JSON draft is not part of the model signature. Do not silently
     // replace it when the saved model itself is clean. Apply or restore it first.
     if (A.hasPendingRulesJsonDraft?.()) { A.toast(T.t("切り替えを中止しました。設定のJSONを反映するか、JSONの編集を破棄してから、もう一度操作してください。")); return false; }
+    if (pendingInputDraft(true)) return false; // Settings drafts are outside readAll and the saved model signature.
     if (!A.isDirty()) return true;
     if (!A.dirHandle) {
       const ymT = T.t("{y}年{m}月", { y: state.month.year, m: state.month.month });
@@ -643,7 +649,7 @@
       A.readAll();
     }
     let r = "skipped";
-    for (let i = 0; i < 3; i++) { r = await saveToFolder(); if (!(r === "saved" || r === "downloaded")) break; A.readAll(); if (!A.isDirty()) return true; } // 書込み中に増えた入力があれば、もう一度保存する
+    for (let i = 0; i < 3; i++) { r = await saveToFolder(); if (!(r === "saved" || r === "downloaded")) break; A.readAll(); if (pendingInputDraft(true)) return false; if (!A.isDirty()) return true; } // 書込み中に増えた入力があれば、もう一度保存する
     if (r === "saved" && A.isDirty()) r = "dirty";
     const ymT2 = T.t("{y}年{m}月", { y: state.month.year, m: state.month.month });
     const v = await A.choose(T.t("{ym} を保存できませんでした（{why}）。切り替えると未保存の入力が失われます。", { ym: ymT2, why: r === "skipped" ? T.t("保存を見送ったか、統合の確認で中止") : r === "dirty" ? T.t("保存中にも入力が続き、未保存の入力が残っている") : T.t("書き込みに失敗") }),

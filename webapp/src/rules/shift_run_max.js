@@ -1,11 +1,22 @@
 // 規則のプラグイン: 勤務帯ごとの連続の上限（shift_run_max）。例: 日勤は連続 3 日まで（そのあとの夜勤は、全体の連勤の上限 run_length_max で見る）。docs/rule-modules.md
 // 設定は rules.shift_run_max = { day: 3 }（勤務帯ごと。書いていない勤務帯は制限なし）。前月末の勤務と翌月 1 日の固定も並びに含める。「固定したときだけ」の人には当てはめない。
+(function () {
+// Parse without coercing booleans/arrays or rounding fractional day limits. Keep
+// inactive invalid settings intact, and never use them to size the history table.
+const shiftRunValue = v => typeof v === "number" || typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+const validShiftRun = n => Number.isSafeInteger(n) && n >= 1 && n <= 31;
 T.rules.register({
   id: "shift_run_max", api: 1, order: 702, group: "combo",
   label: "勤務帯ごとの連続の上限（例: 日勤は連続 3 日まで）", states: ["hard", "soft", "off"], def: "off",
   weight: "shift_run_max", w0: 100,
-  lookback(R) { const c = R.shift_run_max || { day: 3 }; return Math.max(0, ...Object.values(c).map(v => +v || 0)) + 1; }, // 前月から取り込む日数（上限 K なら K+1 日）
-  read(P) { const c = P.rules.shift_run_max || { day: 3 }, out = {}; for (const [k, v] of Object.entries(c)) if (["day", "night"].includes(k) && +v >= 1) out[k] = Math.round(+v); return { max: out }; },
+  lookback(R) { const c = R.shift_run_max || { day: 3 }; return Math.max(0, ...["day", "night"].map(k => shiftRunValue(c[k])).filter(validShiftRun)) + 1; }, // 前月から取り込む日数（上限 K なら K+1 日）
+  read(P) { const c = P.rules.shift_run_max || { day: 3 }, out = {};
+    for (const k of ["day", "night"]) { const raw = c[k]; if (raw == null || raw === "") continue;
+      const n = shiftRunValue(raw);
+      if (!validShiftRun(n)) { if (P.state("shift_run_max") !== "off") throw new Error(P.msg("SHIFT_RUN_BAD_MAX", { field: `shift_run_max.${k}` })); continue; }
+      out[k] = n;
+    }
+    return { max: out }; },
   solve(ctx, prm) {
     const { P, LP } = ctx;
     for (const [k, K] of Object.entries(prm.max)) for (const n of ctx.names) { if (P.isFixedOnly(n)) continue;
@@ -52,8 +63,10 @@ T.rules.register({
       if (shown) R.shift_run_max = out; }, // Preserve hidden limits; clearing a visible cell still removes its limit.
   },
   summary(P, prm, tv) { return Object.entries(prm.max).map(([k, K]) => tv("{shift}は連続 {n} 日まで", { shift: P.shiftLabel(k), n: K })).join(T.listSep()); },
-  messages: { SHIFT_RUN_TOO_LONG: { en: "{who}: more than {max} {shift} shifts in a row from {from}", ja: "{who}: {from}から{shift}が {max} 日を超えて続く" },
+  messages: { SHIFT_RUN_BAD_MAX: { en: "{field} must be a whole number from 1 to 31 (blank means no limit)", ja: "設定の {field} は1〜31の整数にしてください（空欄は上限なし）" },
+    SHIFT_RUN_TOO_LONG: { en: "{who}: more than {max} {shift} shifts in a row from {from}", ja: "{who}: {from}から{shift}が {max} 日を超えて続く" },
     SHIFT_RUN_FORCED_WINDOW: { en: "Assigning {who} here would exceed the limit of {max} consecutive {shift} shifts in {from}–{to}; every other shift in that window is fixed work", ja: "ここに{who}を入れると、{from}〜{to}の{shift}が連続{max}日を超える（この並びのほかの枠はすべて勤務の固定）" } },
   fixtures: [{ label: "勤務帯ごとの連続を減点、重み 1", base: "ward-2shift", states: { shift_run_max: "soft" }, rules: { shift_run_max: { day: 1, night: 1 } }, unitWeights: true }],
   python: false,
 });
+})();

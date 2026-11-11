@@ -62,7 +62,7 @@
     initLang();
     A.bindSettingsMonth(); A.bindDoctor(); A.bindFixed(); A.bindSettings(); renderAll();
     A.restoreFolder();
-    window.addEventListener("beforeunload", ev => { if (A.isDirty() || A.hasPendingRulesJsonDraft?.()) { ev.preventDefault(); ev.returnValue = T.t("未保存の変更があります"); } });
+    window.addEventListener("beforeunload", ev => { if (A.isDirty() || A.hasPendingRulesJsonDraft?.() || A.hasPendingInputDrafts?.() || A.hasPendingSettingsDrafts?.()) { ev.preventDefault(); ev.returnValue = T.t("未保存の変更があります"); } });
     document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { A.readAll(); showTab(t.dataset.tab); }));
     document.querySelectorAll(".subnav .sub").forEach(b => b.addEventListener("click", () => {
       A.readAll();

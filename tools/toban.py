@@ -1552,7 +1552,7 @@ def metrics(P: Problem, A: Asg, charge):
         wk = [p for p in P.periods if p["kind"] == "weekend" and any(A.eng(n, s) for s in p["slots"])]
         dual = sum(1 for d in range(1, P.N + 1) if (d, "day") in A.a and
                    ((A.worked(n, (d, "day")) and n in A.oc((d, "night"))) or (n in A.oc((d, "day")) and A.worked(n, (d, "night")))))
-        rows[n] = {"quota": P.doctors[n]["quota"], "target": P.targets[n], "day": day, "night": night, "total": day + night,
+        rows[n] = {"quota": P.quotas[n], "target": P.targets[n], "day": day, "night": night, "total": day + night,
                    "dayoc": doc, "nightoc": noc, "days": days, "ndays": len(days), "hdays": len(hdays),
                    "weekends": len(wk), "weekends_crossing": sum(1 for p in wk if p["crossing"]), "dual": dual}
     rest = rest_days(P, A)
