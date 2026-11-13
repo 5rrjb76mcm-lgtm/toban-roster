@@ -104,7 +104,7 @@ ${on("quota_range") ? `<p class="note">${esc(T.t("下限・上限を入れた人
     // 保存値だけは選択肢に残す（空欄を選んだときにだけ消す）。当月の配置候補は広げない。
     const historicalNameSel = (v, attrs, list = A.names()) => { const name = v == null ? "" : String(v); return A.nameSel(v, attrs, name && !list.includes(name) ? list.concat(name) : list); };
     const who = (v, f) => multi ? listInput(v, f, true) : historicalNameSel(v, `data-f="${f}"`);
-    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-record="${esc(JSON.stringify(e))}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(e.date ?? "")}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
+    const ldRow = i => { const e = ld[i] || {}; return `<tr data-ld="${i}" data-prev-record="${esc(JSON.stringify(e))}" data-prev-oc="${esc(JSON.stringify({ day_oc: e.day_oc || [], night_oc: e.night_oc || [] }))}"><td><input type="number" data-f="date" value="${esc(T.numberInputText(e.date ?? ""))}" style="width:4em"></td><td>${who(e.day, "day")}</td>` +
       (ocOn ? `<td>${listInput(e.day_oc, "day_oc")}</td>` : "") + `<td>${who(e.night, "night")}</td>` +
       (ocOn ? `<td>${listInput(e.night_oc, "night_oc")}</td>` : "") + `</tr>`; };
     h.push(`<div class="box"><h3>${esc(T.t("前月末の接続（前月の最後の{n}日）", { n: LB }))}</h3><table class="grid"><tr><th>${esc(T.t("前月の日付"))}</th><th>${esc(shiftLabel(R, "day"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("日勤OC（・区切り）"))}</th>` : ""}<th>${esc(shiftLabel(R, "night"))}${multi ? esc(T.t("（・区切り）")) : ""}</th>${ocOn ? `<th>${esc(T.t("夜間OC（・区切り）"))}</th>` : ""}</tr>${Array.from({ length: LB }, (_, i) => ldRow(i)).join("")}</table>
@@ -171,10 +171,14 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
           const input = el(f); if (input && input.dataset.prevNames !== undefined && input.value === input.dataset.shown) { try { const ns = JSON.parse(input.dataset.prevNames); if (Array.isArray(ns)) return ns; } catch (e) { } }
           const ns = g(f).split(/[・,、|\n]+/).filter(Boolean); if (input) { input.dataset.prevNames = JSON.stringify(ns); input.dataset.shown = input.value; } return ns; };
         const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
-        const date = g("date"); if (!date) return; let old = oldByDate[+date] || {};
+        const dateText = g("date"); let old = oldByDate[+dateText] || {};
         if (tr.dataset && tr.dataset.prevRecord !== undefined) { try { old = JSON.parse(tr.dataset.prevRecord) || {}; } catch (e) { } }
         else if (tr.dataset && tr.dataset.prevOc !== undefined) { try { old = { ...old, ...JSON.parse(tr.dataset.prevOc) }; } catch (e) { } }
-        const e = { ...old, date: +date }, sameNames = (a, b) => JSON.stringify([].concat(a || [])) === JSON.stringify([].concat(b || []));
+        // A number control cannot display accepted spellings such as " 31 " or "+31".
+        // Read the rendered projection only after an explicit edit; otherwise retain the record's original date.
+        const date = el("date") && !T.numberInputChanged(el("date"), old.date ?? "") ? old.date : dateText === "" ? null : +dateText;
+        if (date == null || date === "") return;
+        const e = { ...old, date }, sameNames = (a, b) => JSON.stringify([].concat(a || [])) === JSON.stringify([].concat(b || []));
         for (const k of ["day", "night"]) {
           const work = w(k), oc = k + "_oc", had = Object.prototype.hasOwnProperty.call(old, k);
           if (work.length) { e[k] = had && sameNames(work, old[k]) ? old[k] : work; const ns = el(oc) ? list(oc) : (old[oc] || []); if (ns.length || Object.prototype.hasOwnProperty.call(old, oc) || !sameNames(work, old[k])) e[oc] = Object.prototype.hasOwnProperty.call(old, oc) && sameNames(ns, old[oc]) ? old[oc] : ns; }
@@ -193,7 +197,7 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
   function bindSettingsMonth() {
     const root = $("#monthSettings");
     const markMonthText = el => { if (el.dataset?.type === "days") el.dataset.daysEdited = "1"; if (el.dataset?.path === "notes" || el.dataset?.dnote !== undefined) el.dataset.textEdited = "1"; };
-    const isMonthNumber = el => ["target", "cmin", "cmax", "bal", "hist"].some(k => el.dataset?.[k] !== undefined) || (el.type === "number" && el.dataset?.path !== undefined);
+    const isMonthNumber = el => ["target", "cmin", "cmax", "bal", "hist"].some(k => el.dataset?.[k] !== undefined) || (el.type === "number" && (el.dataset?.path !== undefined || el.dataset?.f === "date" && el.closest?.("tr[data-ld]")));
     root.addEventListener("input", ev => { markMonthText(ev.target); if (isMonthNumber(ev.target)) ev.target.dataset.numericEdited = "1"; });
     root.addEventListener("change", ev => { markMonthText(ev.target); if (isMonthNumber(ev.target)) ev.target.dataset.numericEdited = "1"; undoPoint("月別条件の変更"); readSettingsMonth(); if (["holidays", "allow_chief_duty"].includes(ev.target.dataset.path) || ev.target.dataset.bal) renderSettingsMonth(); });
     root.addEventListener("click", ev => {

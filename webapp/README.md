@@ -141,6 +141,8 @@ Python 参照実装でも `rule_states.oncall: off` は対応します。設定 
 
 - `test_role_metadata_preservation_node.js` — 同梱プロファイルの役割の多言語表記と、JSON・ファイル・プロファイル選択で読み込んだ複数の役目を、無関係な設定編集・保存・Undoで消さないことを確認。表示名・役目の明示的な変更や解除は反映する（架空データ、実際のHTMLをHTMLParserで読んだDOM代替。実ブラウザ試験ではない）
 
+- `test_previous_date_preservation_dom_node.js` — 前月末の日付が `" 31 "`・`"+31"` 等の受理済み数値文字列でも、無関係な月設定の編集で勤務・OC の履歴を失わないことを確認。日付の明示編集・空欄・再読込も検査（架空データ、jsdom。実ブラウザ試験ではない）
+- `test_uncommitted_input_navigation_dom_node.js` — 保存済みの状態で設定欄の入力が未確定なら、JSON 読込待ちの間も含め置き換えを止めることを確認。設定欄・月メモの入力中は離脱警告が必要で、元の表示値へ戻せば警告しないことも検査。未保存の入力を保存している間に設定欄へ入力した場合も、保存後の再確認で切り替えを止めること、止めたときの知らせが保存ではなく読み込み・切り替えの中止を伝えることも確認（架空データ、jsdom・メモリ内ファイル。実ブラウザ試験ではない）
 - `test_previous_selection_preservation_node.js` — 名簿から外した職員・役割を変えた職員の前月末の勤務・OC・期間責任者の記録を、月別条件の無関係な編集・保存・Undoで消さないことを確認。明示的な空欄・別人への変更は反映し、当月の配置候補は増やさない（架空データ、実際のHTMLをHTMLParserで読んだDOM代替。実ブラウザ試験ではない）
 
 - `test_fixed_only_pairs_node.js` / `test_fixed_only_windows_node.js` — 固定入力だけでは避けられない矛盾だけを W とする契約を、片側固定・全固定・前月末／翌月・勤務と OC・存在する枠・複数名の枠・役割・否定条件／最短連勤で検証。架空の手入力割当、HiGHS 固定解、目的関数と独立採点を突き合わせる
@@ -171,6 +173,7 @@ sh run_tests.sh /path/to/node_modules/highs
 - `test_plugins_node.js` — 施設の部品の見本（`../plugin-example`）が登録の検査を通り、解けて、`build.py --plugins` で取り込めるか
 - `test_save_doc_failure_record_node.js` `test_save_failure_record_dom_node.js` `test_save_catalog_node.js` `test_save_catalog_dom_node.js` `test_header_layout_contract_dom_node.js` `test_start_note_dom_node.js` — 保存できなかった記録（種類・解除の条件・帳票の完了判定）、月の一覧、通知欄の配置の約束、開始画面が出ている間の知らせ。`*_dom_*` は jsdom（`TOBAN_DOM_MODULE` で場所を指定）が要る。どれも、途中で止まったり場面の数が合わなかったりすると 0 以外で終わる
 - `test_profile_export_node.js` `test_save_node.js` `test_solve_guard_node.js` — 画面の層の検査（共有用プロファイルの匿名化、フォルダ保存の版と署名・保存中の切替、計算の入口の守り）。DOM・フォルダ・帳票の生成は代替
+- `test_save_result_clock_skew_node.js` — 共通の保存結果から片側だけ再計算したとき、別 PC の時計が遅くても変更した結果を採る。自動保存・手動保存・再接続を合成データとメモリ上のフォルダで検査する。両側変更・旧形式の基準なしの選び方、統合確認中の計算結果の更新と再試行も対照に含む。
 - `../plugin-example/test_local_data_node.js` — プラグインの独自データの約束（`plugin-example/README.md` 6）のひな形の試験。施設の `plugins/` に複製して使う。一式では見本のプラグインに対して走らせる
 - `test_result_calendar_language_node.js` — 結果の職員別カレンダーで午前・午後の表示を言語ごとに切り替え、訳文の HTML をエスケープすることを確認する（本番 i18n と model の翻訳・エスケープ、模擬 DOM と問題オブジェクト。実ブラウザ試験ではない）。
 - `test_browser_e2e.js` — 実ブラウザの通し試験（Playwright ＋ インストール済みの Google Chrome、ヘッドレス）。編集→保存→閉じる→再読込、同名の別フォルダへ切替、プラグイン欠落時の計算・出力・直接ダウンロードの停止、共有用書き出し、外部 JSON の読込と再開、JSON のダウンロード後の自動保存、医師別カレンダーの読み戻し 2 本（規則を「なし」にした有給の値の保持、日勤と期間責任者の両方の固定の保持）、名簿から外した人の条件が共有用の書き出しに残らないこと、固定配置を開いた後の改名で固定が旧名へ戻らないこと、月の読取り中の保存フォルダの変更と起動時の自動の再接続（読取りを保留して操作）、同じ日の不可と「避」の保持、プラグインの日ごとの欄の旧値の保持、実行時に足した表示言語、照合中の自動保存、施設の設定の言語、日の種別ごとの人数の保持、役割の識別子の変更、改名の後の統合で相手の設定を使う場合、改名の後の統合で相手の新しい計算結果を採る場合、固定配置の画面の 2 人目の固定 OC、配置禁止にした人の目標と累計、結果の職員別カレンダーの休みの日数の 24 本を、画面の操作から保存されたファイルまで確かめる（約 2 分）。偽のフォルダは IndexedDB に場所だけを覚え、同じ context で開き直すと権限が残っているときの自動の再接続を通る。フォルダは Node 側に置いた偽の FileSystemDirectoryHandle。`cd ~/.toban-test && npm i playwright` で入れると `run_tests.sh` が走らせる（無ければ省略）

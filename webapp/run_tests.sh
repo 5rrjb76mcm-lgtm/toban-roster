@@ -24,12 +24,16 @@ if [ -x "$ESL" ]; then
   echo "== 未定義の変数（eslint no-undef）"
   "$ESL" --no-eslintrc --env browser,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --global T,A,state,JSZip,Module src/*.js src/rules/*.js src/calendars/*.js ../plugin-example/*/*.js || fail=1
 else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i eslint@8 で入れると走る）"; fi
+# post59: reject invalid shift-specific run limits before solving
+run test_shift_run_max_validation_node.js "$HP"
+run test_shift_run_max_history_dom_node.js
 run test_golden_node.js "$HP"
 run test_refine_node.js "$HP"
 run test_timeout_objective_node.js "$HP"
 run test_merge_node.js
 # post58: regression candidates
 run test_save_same_timestamp_node.js
+run test_save_result_clock_skew_node.js
 run test_result_calendar_language_node.js
 # post57: person-key merge preservation and autosave
 run test_merge_person_keys_node.js
@@ -41,6 +45,7 @@ run test_rules_json_apply_guard_dom_node.js
 # post56: candidate regressions; see review package for execution scope
 run test_rules_json_navigation_dom_node.js
 run test_save_settings_draft_dom_node.js
+run test_uncommitted_input_navigation_dom_node.js
 run test_same_weekday_cap_validation_node.js "$HP"
 # post55: static-authored candidates; local runtime validation required
 run test_save_rules_json_draft_dom_node.js
@@ -142,6 +147,7 @@ run test_calendar_boundary_count_node.js
 run test_calendar_value_preservation_dom_node.js
 run test_month_day_flag_preservation_dom_node.js
 run test_previous_selection_preservation_node.js
+run test_previous_date_preservation_dom_node.js
 run test_fixed_condition_readback_node.js
 run test_role_merge_preservation_node.js
 run test_empty_roster_node.js
@@ -266,6 +272,8 @@ run test_optional_slot_lint_node.js "$HP"
 run test_count_limits_node.js "$HP"
 if [ -x "$PY" ]; then
   run test_python_quota_candidate_scope_node.js "$HP" "$PY"
+  echo "== Python normalized quota report"
+  "$PY" ../tools/test_report_normalized_quota.py || fail=1
   echo "== Python quota candidate scope"
   "$PY" ../tools/test_quota_candidate_scope.py || fail=1
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
