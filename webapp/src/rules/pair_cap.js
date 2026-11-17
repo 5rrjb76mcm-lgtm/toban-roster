@@ -4,7 +4,12 @@ T.rules.register({
   id: "pair_cap", api: 1, order: 950, group: "team",
   label: "同じ勤務帯で同じ人と組む回数の上限（例: 夜勤で同じ人と顔を合わせるのは月 2 回まで）", states: ["soft", "off"], def: "off",
   weight: "pair_cap", w0: 15,
-  read(P) { const c = P.rules.pair_cap || {}; return { shift: ["day", "night"].includes(c.shift) ? c.shift : "night", max: c.max === "" || c.max == null ? 2 : Math.max(0, Math.round(+c.max)) }; },
+  read(P) { const c = P.rules.pair_cap || {}; const raw = c.max, blank = raw === "" || raw == null;
+    const numeric = typeof raw === "number" || typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+    if (P.state("pair_cap") !== "off" && !blank && !Number.isFinite(numeric))
+      throw new Error(T.t("設定の {field} は有限の数値にしてください（空欄は既定値）", { field: "pair_cap.max" }));
+    const value = blank ? 2 : Math.max(0, Math.round(+raw));
+    return { shift: ["day", "night"].includes(c.shift) ? c.shift : "night", max: value }; },
   solve(ctx, prm) {
     const { P, LP, lp } = ctx, S = ctx.names.filter(n => !P.isRole(n, "reserve") && !P.isFixedOnly(n)), ss = ctx.slots.filter(s => s[1] === prm.shift);
     for (let i = 0; i < S.length; i++) for (let j = i + 1; j < S.length; j++) { const zs = [];
