@@ -1671,9 +1671,11 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         if not P.is_holiday(d):
             continue
         wd, wn = A.work((d, "day")), A.work((d, "night"))
-        td, tn = T[wd], T[wn]
+        td, tn = T.get(wd), T.get(wn)
         combo = f"{td}+{tn}"
-        if tn == "Y" and td in ("I", "A"):
+        if td is None or tn is None:
+            res = "勤務者が未設定または不正（第1節参照）"
+        elif tn == "Y" and td in ("I", "A"):
             res = f"若手夜勤者{wn}が日勤帯の若手OC（適用）" if wn in A.oc((d, "day")) else f"別担当（日勤帯若手OC={'・'.join(x for x in A.oc((d,'day')) if T[x]=='Y')}）"
         elif td == "Y" and tn in ("I", "A"):
             res = f"若手日勤者{wd}が夜間の若手OC（適用）" if wd in A.oc((d, "night")) else f"別担当（夜間若手OC={'・'.join(x for x in A.oc((d,'night')) if T[x]=='Y')}）"
@@ -1729,7 +1731,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     for n, days in P.wish_night.items():
         for d in days:
             soft.append(f"- {n} の{P.label(d)}当直希望: {'反映' if A.worked(n,(d,'night')) else '未反映'}")
-    my = [f"{P.label(s[0])}{'日勤' if s[1] == 'day' else '夜勤'}（{A.work(s)}）" for s in P.slots if T[A.work(s)] == "A" and sum(1 for n in A.oc(s) if T.get(n) == "Y") < int((P.oc_req.get("A") or {}).get("Y", 0))]  # 必要数に足りない枠
+    my = [f"{P.label(s[0])}{'日勤' if s[1] == 'day' else '夜勤'}（{A.work(s)}）" for s in P.slots if T.get(A.work(s)) == "A" and sum(1 for n in A.oc(s) if T.get(n) == "Y") < int((P.oc_req.get("A") or {}).get("Y", 0))]  # 必要数に足りない枠
     soft.append(f"- 副担当医師の勤務で若手OCを置けなかった枠（減点 missing_young_oc）: {'、'.join(my) if my else 'なし'}")
     for n in P.duty_names:
         av = P.avoid_slots(n)
@@ -1801,7 +1803,7 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         if g1 or g2:
             parts = [x for x in ["中1日 " + "、".join(g1) if g1 else "", "中2日 " + "、".join(g2) if g2 else ""] if x]
             soft.append(f"- {n} の勤務間隔が短い組（減点対象）: {'／'.join(parts)}")
-    aa = [P.label(d) for d in range(1, P.N + 1) if P.is_holiday(d) and T[A.work((d, "day"))] == "A" and T[A.work((d, "night"))] == "A"]
+    aa = [P.label(d) for d in range(1, P.N + 1) if P.is_holiday(d) and T.get(A.work((d, "day"))) == "A" and T.get(A.work((d, "night"))) == "A"]
     soft.append(f"- 休日の A+A の日: {'、'.join(aa) if aa else 'なし'}")
     sp = []
     for d in range(1, P.N + 1):

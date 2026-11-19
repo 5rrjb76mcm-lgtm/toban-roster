@@ -4,7 +4,12 @@ T.rules.register({
   id: "days_off_max", api: 1, order: 731, group: "rest",
   label: "月の休みの日数の上限（決まった日数 ＋ 余裕。超えた分を減点）", states: ["soft", "off"], def: "off",
   weight: "days_off_over", w0: 40,
-  read(P) { const x = (P.rules.days_off || {}).max_extra; return { extra: x === "" || x == null ? 1 : Math.max(0, Math.round(+x)) }; },
+  read(P) { const x = (P.rules.days_off || {}).max_extra; const raw = x, blank = raw === "" || raw == null;
+    const numeric = typeof raw === "number" || typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+    if (P.state("days_off_max") !== "off" && !blank && !Number.isFinite(numeric))
+      throw new Error(T.t("設定の {field} は有限の数値にしてください（空欄は既定値）", { field: "days_off.max_extra" }));
+    const value = blank ? 1 : Math.max(0, Math.round(+raw));
+    return { extra: value }; },
   solve(ctx, prm) {
     const { P, LP } = ctx;
     for (const n of ctx.names) { if (P.isRole(n, "reserve") || P.isFixedOnly(n)) continue; const busy = []; for (let d = 1; d <= P.N; d++) busy.push(ctx.busy(d, n));

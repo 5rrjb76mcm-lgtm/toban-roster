@@ -24,6 +24,8 @@ if [ -x "$ESL" ]; then
   echo "== 未定義の変数（eslint no-undef）"
   "$ESL" --no-eslintrc --env browser,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --global T,A,state,JSZip,Module src/*.js src/rules/*.js src/calendars/*.js ../plugin-example/*/*.js || fail=1
 else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i eslint@8 で入れると走る）"; fi
+# post60: finite soft-cap settings (bundled HiGHS)
+run test_soft_cap_finite_node.js
 # post59: reject invalid shift-specific run limits before solving
 run test_shift_run_max_validation_node.js "$HP"
 run test_shift_run_max_history_dom_node.js
@@ -274,6 +276,8 @@ if [ -x "$PY" ]; then
   run test_python_quota_candidate_scope_node.js "$HP" "$PY"
   echo "== Python normalized quota report"
   "$PY" ../tools/test_report_normalized_quota.py || fail=1
+  echo "== Python incomplete assignment report regression"
+  "$PY" ../tools/test_report_missing_work.py || fail=1
   echo "== Python quota candidate scope"
   "$PY" ../tools/test_quota_candidate_scope.py || fail=1
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi
@@ -313,4 +317,7 @@ if [ -x "$PY" ] && [ -f ../tools/toban.py ]; then
     run test_node.js "$TMP/202611_py_assignment.json" "$HP" 60
   else echo "FAIL Python 版の実行に失敗（突合できない）"; fail=1; fi
 else echo "警告: Python 版との突合を省略（../tools/.venv か ../tools/toban.py が無い）"; PYSKIP=1; fi
+# post60: keep explicit empty shift-run limits in persistence signatures
+run test_shift_run_signature_node.js
+run test_shift_run_signature_dom_node.js
 [ "$fail" = 0 ] && echo "ALL OK${PYSKIP:+（Python 突合は省略）}" || { echo "FAILED"; exit 1; }

@@ -68,3 +68,9 @@ LLM の仕事は「原資料 → 月別条件YAML の転記」と「結果 → �
 ## Webアプリ版
 
 `../webapp/toban.html`は同じ考え方の制約を JavaScript で実装し、HiGHS（WASM）で解く単一HTML（規則の範囲は Web 版の方が広い。Python 版は既定の構成の参照実装で、突き合わせは既定の構成だけ）。LLM不要で、職場のファイルサーバーに置いて Edge で開く。組立は `webapp/build.py`、Python版との照合は `webapp/test_node.js`。共通ルールを改版したら両方を直す。
+
+### 不完全な割当の検算レポート
+
+`python tools/test_report_missing_work.py` は、合成データで勤務枠の欠落や
+勤務者の null・空文字を検算し、違反を残したまま最後までレポートを生成できることを確認します。
+`TOBAN_PYTHON_ROOT` で比較対象のソースを指定できます。ソルバーの実行は不要です。
