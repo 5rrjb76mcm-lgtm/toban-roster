@@ -622,7 +622,7 @@
   // 無ければ null（NotFoundError だけを「無い」とみなす）。あるのに読めない（壊れている）・あるかどうかを確かめられない（権限・読取り障害）ときは { __corrupt: true, error } を返し、呼ぶ側は新規扱いで上書きしない
   const notFound = e => !!e && e.name === "NotFoundError";
   async function readJson(dir, name) { let fh; try { fh = await dir.getFileHandle(name); } catch (e) { if (notFound(e)) return null; return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } let text; try { const f = await fh.getFile(); text = await f.text(); } catch (e) { return { __corrupt: true, unreadable: true, error: e && e.message || String(e) }; } // 読めない（権限・読取り障害）は「壊れている」ではない
-    let v; try { v = JSON.parse(text); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; }
+    let v; try { v = T.requireFiniteJson(JSON.parse(text)); } catch (e) { return { __corrupt: true, error: e && e.message || String(e) }; }
     if (!v || typeof v !== "object" || Array.isArray(v)) return { __corrupt: true, error: T.t("勤務表データではありません（year / month がありません）") }; // JSON として有効な null・数値・文字列・配列は「ファイルなし」ではない（存在するが勤務表データでない）
     return v; }
   async function writeFile(dir, name, blob) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(blob); await w.close(); }
@@ -838,6 +838,7 @@
   // 「前月のデータから作成」: 同じく当てる直前に保存の確認
   // 読み込む JSON の形の検証（「JSONを読込」と「前月のデータから作成」で共用）: 勤務表データ（year / month を持つ月。{rules, month, result} の形か月そのもの）で、設定があれば名簿の要素が氏名を持つ物であること。問題があれば理由の文を返す
   function loadedShape(o) {
+    try { T.requireFiniteJson(o); } catch (e) { return { error: e.message }; }
     if (!o || typeof o !== "object" || Array.isArray(o)) return { error: T.t("勤務表データではありません（year / month がありません）") };
     let month, rules = null, result = null;
     if (A.isMonthObj(o.month)) { month = o.month; rules = o.rules || null; result = o.result || null; } else if (A.isMonthObj(o)) { month = o; } else return { error: T.t("勤務表データではありません（year / month がありません）") };
