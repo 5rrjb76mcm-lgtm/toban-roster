@@ -14,6 +14,7 @@
   "list_sep": ", ",
   "name_sep": ", ",
   "ui": {
+    "JSON に扱える範囲を超えた数値が含まれています。元の JSON の数値を修正してから、もう一度読み込んでください。": "The JSON contains a number outside the supported finite range. Correct the number in the original JSON and import it again.",
     "切り替えを中止しました。設定のJSONを反映するか、JSONの編集を破棄してから、もう一度操作してください。": "Switch canceled. Apply the settings JSON or discard the JSON edits, then try again.",
     "候補＝資格者から外来・病棟番・外勤・不在・不可を除いた人。設定により、夜勤明けも午前・午後とも通常の候補に含める（夜勤明けによる除外・減点なし）。* は前夜の夜間OC。実際の配置は当月条件で確定させる。": "Available = qualified people minus clinic, ward, outside work, absence and unavailability. With this setting, someone off a night shift is an ordinary candidate both morning and afternoon (no exclusion or penalty for being post-night). * marks night on-call the evening before. The actual assignment is settled against this month's conditions.",
     "手元の改名を相手の名簿に当てると、別の2人が同じ氏名になります。入力や計算結果を混ぜないよう、自動統合を止めました。設定と月データを一緒に、どちらかの版から選んでください。": "Local renames would assign two people in the other roster to the same name. Automatic merging was stopped to avoid mixing their inputs or results. Choose the settings and month data together from one version.",

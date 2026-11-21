@@ -879,6 +879,7 @@ ${candidates.length ? `<ul>${candidates.map((c, i) => `<li><label><input type="r
   }
   // 設定と月の正規化は複製で完了させる。不正な名簿や正規化の失敗で、編集中の状態・取り消し履歴を壊さない。
   function prepareRulesImport(input, keepRoster = false) {
+    T.requireFiniteJson(input);
     const clone = x => JSON.parse(JSON.stringify(x));
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error(T.t("doctors（{person}一覧）がありません"));
     const rules = clone(input), month = clone(state.month);

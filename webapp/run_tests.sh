@@ -24,6 +24,8 @@ if [ -x "$ESL" ]; then
   echo "== 未定義の変数（eslint no-undef）"
   "$ESL" --no-eslintrc --env browser,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --global T,A,state,JSZip,Module src/*.js src/rules/*.js src/calendars/*.js ../plugin-example/*/*.js || fail=1
 else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i eslint@8 で入れると走る）"; fi
+# Reject JSON numeric overflow before lossy cloning at import boundaries
+run test_json_nonfinite_import_dom_node.js
 # post60: finite soft-cap settings (bundled HiGHS)
 run test_soft_cap_finite_node.js
 # post59: reject invalid shift-specific run limits before solving

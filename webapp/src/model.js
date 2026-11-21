@@ -1,5 +1,21 @@
 // 当直表アプリ: 入力（rules + month）から問題オブジェクトを作る。toban.py の Problem に対応
 (function (T) {
+  // JSON.parse accepts overflowing numbers (1e999 -> Infinity), but a JSON clone
+  // would silently turn them into null. Reject imported data before any clone.
+  // Do not include property names or values: they may contain personal data.
+  function requireFiniteJson(value) {
+    const pending = [value], seen = new Set();
+    while (pending.length) {
+      const v = pending.pop();
+      if (typeof v === "number" && !Number.isFinite(v)) {
+        const msg = "JSON に扱える範囲を超えた数値が含まれています。元の JSON の数値を修正してから、もう一度読み込んでください。";
+        throw new Error(T.t ? T.t(msg) : msg);
+      }
+      if (v && typeof v === "object" && !seen.has(v)) { seen.add(v); for (const k of Object.keys(v)) pending.push(v[k]); }
+    }
+    return value;
+  }
+  T.requireFiniteJson = requireFiniteJson;
   const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const DOW_JA = ["月", "火", "水", "木", "金", "土", "日"];
   const PARTS = { am: ["am"], pm: ["pm"], full: ["am", "pm"] };
