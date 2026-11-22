@@ -499,6 +499,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
   // ---------- 固定配置（決定済みの配置をまとめて入力する画面。{person}別カレンダーの「固定」欄と同じデータを枠ごとに編集） ----------
   const NONE_Y = "__noneY__";
   const extrasText = (arr, shown) => { const rest = (arr || []).filter(n => !shown.includes(n)); return rest.length ? "＋" + rest.join(T.nameSep()) : ""; }; // 欄に出していない固定の OC（欄の横に見せる）
+  const fixedNameWithTag = (name, mark) => mark ? `${name}(${mark})` : name;
   function renderFixed() {
     const m = state.month; A.ensureMonth(m);
     const y = +m.year, mo = +m.month, N = A.daysIn(y, mo), hol = new Set((m.holidays || []).map(Number));
@@ -521,10 +522,10 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       const multi = T.isMultiWork(R); // 1 枠に複数名の施設は、勤務者を「・」区切りで書く（前月末の接続と同じ）
       const tagOf = (k, n) => (m.fixed_tags || {})[`${d}:${k}|${n}`] || "";
       const SW = (val, k, exists = true) => {
-        if (!exists) { const cur = [].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep());
+        if (!exists) { const cur = [].concat(val || []).map(n => fixedNameWithTag(n, tagOf(k, n))).join(T.nameSep());
           return cur ? A.sel([["", "―"], [cur, cur + T.t("（現在は使わない値）")]], cur, `data-fx="${k}" data-d="${d}" data-keep`) : ""; } // 枠のない日の旧固定は複数名も印も保持し、空欄でだけ解除する
         // 必要人数を減らした後の複数名の固定も、名前と印をすべて見せて明示的に直せるようにする
-        if (multi || [].concat(val || []).length > 1) { const shown = [].concat(val || []).map(n => tagOf(k, n) ? `${n}(${tagOf(k, n)})` : n).join(T.nameSep());
+        if (multi || [].concat(val || []).length > 1) { const shown = [].concat(val || []).map(n => fixedNameWithTag(n, tagOf(k, n))).join(T.nameSep());
           return `<input data-fx="${k}" data-d="${d}" data-multi value="${esc(shown)}" style="width:14em" placeholder="${esc(T.t("名前・名前(印)"))}">`; }
         const cur = [].concat(val || [])[0] || "", opts = next ? nextNameOpts : nameOpts;
         return S(cur && !opts.some(o => o[0] === cur) ? opts.concat([[cur, cur + T.t("（現在は使わない値）")]]) : opts, cur, k); }; // 候補から外れても既存の固定は消さない（明示的に空欄を選ぶまで保持）
@@ -562,13 +563,31 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       if (was === undefined) { delete fx[tbl][d]; delete fx[tbl + "_none"][d]; } else drop(was);
       if (v === NONE_Y) { if (jr) fx[tbl + "_none"][d] = [...new Set([].concat(fx[tbl + "_none"][d] || [], [jr]))]; } else if (v) fx[tbl][d] = [...new Set([].concat(fx[tbl][d] || [], [v]))];
       el.dataset.shown = v; });
-    const splitNames = v => [...new Set(String(v || "").split(/[・,、|\n]+/).map(x => x.trim()).filter(Boolean))]; // 「・」区切り → 名前の配列（1 名なら文字列で保存）。名前に空白があるので空白では切らない
+    const splitNames = v => String(v || "").split(/[・,、|\n]+/).map(x => x.trim()).filter(Boolean); // 「・」区切り → 名前の配列（1 名なら文字列で保存）。名前に空白があるので空白では切らない
     const tags = Object.assign({}, m.fixed_tags || {}); // 固定の印「名前(印)」。出ている欄の分は作り直す
     root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { if (unchangedMulti(el)) return; const pre = `${+el.dataset.d}:${el.dataset.fx}|`; for (const key of Object.keys(tags)) if (key.startsWith(pre)) delete tags[key]; });
-    const nameTag = x => { const mt = x.match(/^(.*?)[\s]*[（(]([^（）()]*)[)）]\s*$/); return mt ? [mt[1].trim(), mt[2].trim()] : [x, ""]; };
+    const rosterNames = new Set(state.rules.doctors.map(doc => doc.name));
+    const nameTag = x => { if (rosterNames.has(x)) return [x, ""]; const mt = x.match(/^(.*?)[\s]*[（(]([^（）()]*)[)）]\s*$/); return mt ? [mt[1].trim(), mt[2].trim()] : [x, ""]; };
+    const readWorkers = (v, d, k) => {
+      // 同じ欄に人を追加・削除しても、残した表記の氏名・印は解釈し直さない。
+      // たとえば「甲(研修)」が氏名そのものの人と、甲に研修の印を付けた人が共存できる。
+      const prior = new Map(), seen = new Set(), parts = [];
+      for (const n of [].concat(cur[k]?.[d] || [])) {
+        const mark = (m.fixed_tags || {})[`${d}:${k}|${n}`] || "", token = fixedNameWithTag(n, mark).trim();
+        if (!prior.has(token)) prior.set(token, []);
+        prior.get(token).push([n, mark]);
+      }
+      for (const token of splitNames(v)) {
+        const matches = prior.get(token);
+        if (matches?.length) parts.push(matches.shift()); // 同じ表記が複数なら元の並び順で対応する。
+        else if (!seen.has(token)) parts.push(nameTag(token));
+        seen.add(token);
+      }
+      return parts;
+    };
     root.querySelectorAll("select[data-fx],input[data-fx]").forEach(el => {
       const d = +el.dataset.d, k = el.dataset.fx, v = el.value; if (!v || el.hasAttribute("data-keep") || unchangedMulti(el)) return; // 保持専用の欄は元の配列・氏名・印を再解釈しない
-      if (k === "day" || k === "night") { const parts = el.hasAttribute("data-multi") ? splitNames(v).map(nameTag) : [[v, ""]]; const ns = [...new Set(parts.map(p => p[0]).filter(Boolean))];
+      if (k === "day" || k === "night") { const parts = el.hasAttribute("data-multi") ? readWorkers(v, d, k) : [[v, ""]]; const ns = [...new Set(parts.map(p => p[0]).filter(Boolean))];
         for (const [n, tg] of parts) if (n && tg) tags[`${d}:${k}|${n}`] = tg;
         if (ns.length) fx[k][d] = ns.length === 1 ? ns[0] : ns; } else if (k === "charge") fx.weekend_charge[d] = v;
     });

@@ -40,7 +40,7 @@ const CASE_LABELS = [
   'collision pair stays two cells, never merely flatten-equal',
   'independent edits keep both owners and change counts',
   'deletion/change conflicts are independent and labels decode exact ownership',
-  'existing empty/false semantics and unrelated merge keys remain unchanged',
+  'preserve imported false but keep empty cells and unrelated merge keys unchanged',
   'ordinary roster no longer falsely rejects a valid colon field',
   'existing lookalike roster name must not receive the value',
   'both colliding cells survive the actual autosave path',
@@ -97,11 +97,12 @@ async function test(label, fn) {
       assert.strictEqual(own.mine, '（なし）'); assert.strictEqual(own.theirs, 'theirs');
     }
   });
-  await test('existing empty/false semantics and unrelated merge keys remain unchanged', () => {
+  await test('preserve imported false but keep empty cells and unrelated merge keys unchanged', () => {
     const b = fixture(); Object.assign(b.person_days[id][owner], { 6: false, 7: '', 8: null });
     b.day_notes = { 5: 'Synthetic note' }; b.unavailable_night = { [other]: [5] };
     const flat = T.flattenMonth(b), back = T.unflattenMonth(flat, b);
-    assert.deepStrictEqual(back.person_days, fixture().person_days);
+    const expected = fixture().person_days; expected[id][owner][6] = false;
+    assert.deepStrictEqual(back.person_days, expected); // Boolean false is a value; null and empty string still clear the cell.
     assert.strictEqual(flat['dnote:5'], JSON.stringify('Synthetic note')); assert.strictEqual(flat[`cal:${other}:5`], JSON.stringify('night'));
     assert.deepStrictEqual(back.unavailable_night, b.unavailable_night);
   });

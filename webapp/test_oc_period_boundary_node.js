@@ -10,7 +10,7 @@ for (const f of fs.readdirSync(path.join(root, "src/rules")).filter(f => f.endsW
 T.DEFAULT_RULES = JSON.parse(fs.readFileSync(path.join(root, "data/rules.json"), "utf8"));
 const [alpha, beta, staff] = ["Synthetic Alpha", "Synthetic Beta", "Synthetic Staff"];
 
-function fixture({ day = "none", night = "all", month = 10, boundary = "next", a = "O", b = "O", charge = true, explicit = false, nextKind }) {
+function fixture({ day = "none", night = "all", month = 10, boundary = "next", a = "O", b = "O", charge = true, explicit = false, nextKind, currentKind = "night", extraNextNight = false }) {
   const R = {
     profile: { id: "synthetic-oc-period-boundary", roles: [
       { id: "I", label: "Charge", refs: charge ? ["charge"] : [], standby: true },
@@ -34,10 +34,11 @@ function fixture({ day = "none", night = "all", month = 10, boundary = "next", a
   } else {
     // Keep the current day's first-slot charge consistent when a day slot exists.
     if (charge && initial.slotExists(initial.N, "day")) put(initial.N, "day", a);
-    put(initial.N, "night", a);
+    put(initial.N, currentKind, a);
     const kind = nextKind || initial.nextFirstSlotKind(), e = entry(b);
     if (explicit) M.fixed.weekend_charge[initial.N + 1] = alpha;
     else { M.fixed[kind][initial.N + 1] = e.work; M.fixed[kind + "_oc"][initial.N + 1] = e.oc; }
+    if (extraNextNight) { assert.equal(kind, "day"); assert.ok(initial.nextSlotExists("night")); M.fixed.night_oc[initial.N + 1] = [alpha]; }
   }
   return { P: new T.Problem(R, M), asg };
 }
@@ -53,6 +54,18 @@ let passed = 0, failed = 0;
       assert.equal(solved.status, "Optimal"); assert.ok(solved.asg);
       assert.equal(solved.objective, penalty.total, "solver/penalty agreement");
       assert.equal(penalty.total, want, `rule expectation: got ${penalty.total}, expected ${want}`);
+      if (opts.currentKind) {
+        const lines = [];
+        T.rules.runReport(T.rules.checkCtx(P, T.check(P, asg).A, "report", line => lines.push(line)), ["oc_consecutive"]);
+        const line = lines.find(line => line.includes(alpha + ":"));
+        assert.equal(!!line, want > 0, "report includes exactly the scored kind of boundary");
+        if (want > 0) {
+          const first = P.label(P.N) + P.shiftLabel(opts.currentKind);
+          const last = P.label(P.N + 1) + P.shiftLabel(opts.nextKind || P.nextFirstSlotKind());
+          assert.ok(line.includes(first + "→" + last), "report uses the actual boundary shifts");
+          if (opts.extraNextNight) assert.ok(!line.includes("→" + P.label(P.N + 1) + P.shiftLabel("night")), "day does not gain the separate night-to-night term");
+        }
+      }
       passed++; console.log("PASS", label);
     } catch (e) { failed++; console.error("FAIL", label, e.message); }
   };
@@ -79,5 +92,20 @@ let passed = 0, failed = 0;
   test("next day exists but absent next night adds no second adjacency", { month: 7, day: "all", night: "weekdays", charge: false, nextKind: "night" }, 0, P => {
     assert.equal(P.nextSlotExists("day"), true); assert.equal(P.nextSlotExists("night"), false);
   });
+  // The last calendar day can have a day shift but no night shift.
+  // July 31, 2026 is Friday. Its next day is a Saturday.
+  for (const a of modes) for (const b of modes) {
+    const want = a === "W" && b === "W" ? 0 : 6;
+    test(`month-end day with no night → next day ${a}->${b}`, { month: 8, day: "all", night: "off_days", currentKind: "day", charge: false, a, b }, want, P => {
+      assert.ok(P.slotExists(P.N, "day")); assert.ok(!P.slotExists(P.N, "night"));
+      assert.equal(P.nextFirstSlotKind(), "day"); assert.ok(!P.nextSlotExists("night"));
+    });
+    test(`month-end day → next month night ${a}->${b}`, { month: 7, day: "weekdays", night: "off_days", currentKind: "day", charge: false, a, b }, want, P => {
+      assert.ok(P.slotExists(P.N, "day")); assert.ok(!P.slotExists(P.N, "night"));
+      assert.equal(P.nextFirstSlotKind(), "night"); assert.ok(P.nextSlotExists("night"));
+    });
+  }
+  test("month-end day uses only the next first slot, not the extra night term", { month: 7, day: "all", night: "off_days", currentKind: "day", charge: false, extraNextNight: true }, 6);
+  test("month-end day crossing weekend keeps the charge exemption", { month: 10, day: "all", night: "weekdays", currentKind: "day" }, 0, P => assert.ok(P.lastCrossingPeriod()));
   console.log(`OC period boundary: ${passed} passed, ${failed} failed`); process.exitCode = failed ? 1 : 0;
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -67,7 +67,9 @@ for(const id of ids){
   cases.push(['roundtrip '+id,async()=>{const x=realm(id);try{
     const T=x.c.T, expected=tree(id);checkTree(x.M,id,expected);assert.strictEqual(new T.Problem(x.R,x.M).personDay(id,owner,6),0);
     for(const template of [undefined,x.M]){const back=T.unflattenMonth(T.flattenMonth(x.M),template);checkTree(back,id,expected);checkTree(JSON.parse(JSON.stringify(back)),id,expected);assert.strictEqual(Object.getPrototypeOf(back.person_days),vm.runInContext('Object.prototype',x.c));}
-    const empty=clone(x.M);Object.assign(empty.person_days[id][owner],{8:false,9:null,10:''});checkTree(T.unflattenMonth(T.flattenMonth(empty)),id,expected);
+    // For any field ID, boolean false is a present value; null and empty string still clear a cell.
+    const mixed=clone(x.M);Object.assign(mixed.person_days[id][owner],{8:false,9:null,10:''});
+    checkTree(T.unflattenMonth(T.flattenMonth(mixed)),id,tree(id,{5:'active',6:0,7:true,8:false}));
   }finally{x.done();}}]);
   cases.push(['merge conflict/delete '+id,async()=>{const x=realm(id);try{
     const T=x.c.T,b=x.M,m=clone(b),t=clone(b);m.person_days[id][owner][5]='mine';t.person_days[id][owner][5]='peer';
