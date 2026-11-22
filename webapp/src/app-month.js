@@ -188,6 +188,12 @@
     if (A.dirHandle) {
       await A.refreshMonths();
       const f = await A.findMonthData(t); if (stale()) return;
+      // 一覧を読み直した結果、最初の検索では知らなかった月フォルダが見つかることがある。
+      // あるのに開けない月は、無いものとして作成しない（openMonth と同じ）。
+      if (!f.data && f.corrupt) {
+        A.toast(f.mismatch ? T.t("フォルダの {file} は {tag} のデータではありません（{err}）。月を開けません。ファイルを退避するか正しい場所に移してください", { file: f.corrupt, tag: t, err: f.error }) : T.t("フォルダの {file} を読めません（{err}）。月を開けません", { file: f.corrupt, err: f.error }));
+        A.renderSettingsMonth(); A.renderHeader(); return;
+      }
       if (f.data) { const v = await A.choose(T.t("{y}年{m}月 の保存データがあります（{where}）。", { y: ny, m: nm, where: f.where }), [{ label: T.t("この保存データを開く"), value: "open", primary: true }, { label: T.t("やめる（今の月のまま）"), value: null, cancel: true }]); if (v === "open") { if (await again()) A.applyLoaded(f.data, T.t("{where} を開きました", { where: f.where })); } else A.renderSettingsMonth(); return; }
       // 直前の月（同じ年月がなければそれより前で最新）のデータを探す
       const cands = [...new Set(A.monthDirs.map(x => x.slice(0, 6)))].filter(x => x < t).sort().reverse();

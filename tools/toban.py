@@ -1221,7 +1221,8 @@ class Asg:
         current = {f"{d}:{kind}": (d, kind) for d, kind in P.slots}
         for k, v in asg.items():
             if k in current:
-                self.a[current[k]] = {"work": v["work"], "oc": list(v.get("oc") or [])}
+                # A present slot can still have no worker; retain its OC for checking/reporting.
+                self.a[current[k]] = {"work": v.get("work"), "oc": list(v.get("oc") or [])}
 
     def work(self, s):
         return self.a.get(s, {}).get("work")
@@ -1529,12 +1530,12 @@ def rest_days(P: Problem, A: Asg):
     for d in range(1, P.N + 1):
         if P.is_holiday(d):
             w = A.work((d, "day"))
-            if w:
+            if isinstance(w, str) and w in out:
                 out[w].append(f"{P.month}/{d}日勤")
         nh = P.next_is_holiday(d)
         if nh:
             w = A.work((d, "night"))
-            if w:
+            if isinstance(w, str) and w in out:
                 out[w].append(f"{P.month}/{d}夜勤(翌日休日)")
     return out
 
@@ -1676,11 +1677,11 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
         if td is None or tn is None:
             res = "勤務者が未設定または不正（第1節参照）"
         elif tn == "Y" and td in ("I", "A"):
-            res = f"若手夜勤者{wn}が日勤帯の若手OC（適用）" if wn in A.oc((d, "day")) else f"別担当（日勤帯若手OC={'・'.join(x for x in A.oc((d,'day')) if T[x]=='Y')}）"
+            res = f"若手夜勤者{wn}が日勤帯の若手OC（適用）" if wn in A.oc((d, "day")) else f"別担当（日勤帯若手OC={'・'.join(x for x in A.oc((d,'day')) if T.get(x)=='Y')}）"
         elif td == "Y" and tn in ("I", "A"):
-            res = f"若手日勤者{wd}が夜間の若手OC（適用）" if wd in A.oc((d, "night")) else f"別担当（夜間若手OC={'・'.join(x for x in A.oc((d,'night')) if T[x]=='Y')}）"
+            res = f"若手日勤者{wd}が夜間の若手OC（適用）" if wd in A.oc((d, "night")) else f"別担当（夜間若手OC={'・'.join(x for x in A.oc((d,'night')) if T.get(x)=='Y')}）"
         elif td == "A" and tn == "A":
-            res = f"若手OCを日勤・夜間に各1名（{'・'.join(x for x in A.oc((d,'day')) if T[x]=='Y')} / {'・'.join(x for x in A.oc((d,'night')) if T[x]=='Y')}）"
+            res = f"若手OCを日勤・夜間に各1名（{'・'.join(x for x in A.oc((d,'day')) if T.get(x)=='Y')} / {'・'.join(x for x in A.oc((d,'night')) if T.get(x)=='Y')}）"
         elif td == "Y" and tn == "Y":
             res = "若手OC不要（主担当OCのみ）"
         else:
@@ -1815,7 +1816,9 @@ def report(P: Problem, asg: dict, status: str, objective, base_label="", avoid_r
     soft.append(f"- 休日の若手OCが日勤帯と夜間で別人の日（減点 young_oc_split）: {'、'.join(sp) if sp else 'なし'}")
     ia = [P.label(d) for d in range(1, P.N + 1) if P.is_holiday(d) and {T.get(A.work((d, "day"))), T.get(A.work((d, "night")))} == {"I", "A"}]
     soft.append(f"- 休日の I+A／A+I の日: {'、'.join(ia) if ia else 'なし'}")
-    staff = sum(len({n for k in ("day", "night") if (d, k) in P.all_slots_set for n in [A.work((d, k))] + list(A.oc((d, k)))}) for d in range(1, P.N + 1))
+    # A vacant worker is not a person. Reuse slot engagement to keep OC-only
+    # entries while counting people with multiple duties that day just once.
+    staff = sum(len(A.engaged((d, "day")) | A.engaged((d, "night"))) for d in range(1, P.N + 1))
     soft.append(f"- 当番に入った延べ人数（1人・1日を1と数える）: {staff}")
     for n in P.duty_names:
         cnt = defaultdict(int)

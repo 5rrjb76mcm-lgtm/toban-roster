@@ -80,6 +80,7 @@ run test_run_min_lint_bound_node.js
 run test_merge_scalar_clear_node.js
 run test_merge_paid_entry_node.js
 run test_merge_person_day_tuple_node.js
+run test_merge_person_day_false_node.js
 run test_merge_shift_import_atomic_dom_node.js
 # post50: static-authored candidates; execute in the local verification environment
 run test_merge_rename_projection_dom_node.js
@@ -148,6 +149,7 @@ run test_calendar_day_readback_node.js
 run test_calendar_clear_confirmation_dom_node.js
 run test_calendar_person_selection_dom_node.js
 run test_calendar_boundary_count_node.js
+run test_jp_holidays_node.js
 run test_calendar_value_preservation_dom_node.js
 run test_month_day_flag_preservation_dom_node.js
 run test_previous_selection_preservation_node.js

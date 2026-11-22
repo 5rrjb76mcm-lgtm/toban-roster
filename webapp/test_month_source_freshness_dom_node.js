@@ -61,7 +61,7 @@ async function makeApp() {
   return { dom, w, A, root, q, change, manual, errors, alerts };
 }
 
-const EXPECTED_CASES = 13; let passed = 0, failed = 0, finished = false;
+const EXPECTED_CASES = 17; let passed = 0, failed = 0, finished = false;
 const watchdog = setTimeout(() => { console.error('Month-source tests timed out'); process.exit(1); }, 60000);
 process.on('exit', () => { if (!finished || passed + failed !== EXPECTED_CASES || failed) { console.error(`NOT PASSED: ${passed}/${EXPECTED_CASES}, failed=${failed}, finished=${finished}`); process.exitCode = 1; } });
 async function scenario(label, fn) { const app = await makeApp(); try { await fn(app); assert.deepEqual(app.errors, []); assert.deepEqual(app.alerts, []); passed++; console.log('PASS ' + label); } catch (e) { failed++; console.error('FAIL ' + label + ': ' + e.message); } finally { app.dom.window.close(); } }
@@ -139,5 +139,37 @@ function retained(app, monthRef, balance = 8) {
     await app.A.refreshMonths(); app.A.renderHeader();
     const resume = await start(app, { target: '202611', source: '202610' }); editBalance(app, 8); await resume(); await answer(app); assert.equal(app.A.tag(), '202611'); assert.equal(app.A.state.month.history.work_balance[alpha], 9);
   });
+  // Another PC can add a prefixed folder after this window built the selector.
+  // The first lookup misses the unknown name; the second lookup after refresh must
+  // not offer to create a duplicate month when that existing month is unreadable.
+  for (const kind of ['broken JSON', 'numeric overflow', 'different month', 'permission denied']) {
+    await scenario('newly discovered target cannot be created over ' + kind, async app => {
+      await prepare(app); const { A, root, q } = app, ref = A.state.month;
+      const current = JSON.stringify(A.state.month), undo = q('#undoNote').textContent, writes = root.writes.slice();
+      const folderName = '202612 archived', targetFile = '202612_data.json';
+      const dir = await root.getDirectoryHandle(folderName, { create: true });
+      const data = kind === 'broken JSON' ? '{' : kind === 'numeric overflow' ? '{"year":2026,"month":12,"local_number":1e999}' : '{"year":2027,"month":1}';
+      dir.files.set(targetFile, data);
+      const getFileHandle = dir.getFileHandle;
+      if (kind === 'permission denied') dir.getFileHandle = async (name, opts) => {
+        if (name === targetFile) throw Object.assign(new Error('Synthetic permission denial'), { name: 'NotAllowedError' });
+        return getFileHandle.call(dir, name, opts);
+      };
+      assert(!A.monthDirs.includes(folderName), 'peer folder has not been listed yet');
+      const sel = q('#monthSel'); sel.value = '202612'; assert.equal(sel.value, '202612');
+      sel.dispatchEvent(new app.w.Event('change', { bubbles: true }));
+      await until(() => A.switching === 0 || !q('#modal').hidden, 'stop or unexpected creation choice');
+      assert(q('#modal').hidden, 'no option to create a duplicate month over unreadable data');
+      assert.equal(A.switching, 0);
+      assert(A.monthDirs.includes(folderName), 'second lookup refreshed the listing');
+      assert(q('#toast').textContent.includes('月を開けません'), 'display the load problem, not a missing-file message');
+      if (kind === 'different month') assert(q('#toast').textContent.includes('2027年1月'));
+      assert.equal(q('#monthSel').value, '202611', 'selector restored to the current month');
+      assert.equal(A.state.month, ref); assert.equal(JSON.stringify(A.state.month), current);
+      assert.equal(q('#undoNote').textContent, undo);
+      assert.equal(dir.files.get(targetFile), data);
+      assert.equal(root.dirs.has('202612'), false); assert.deepEqual(root.writes, writes);
+    });
+  }
   finished = true; clearTimeout(watchdog); console.log(`Month source freshness: ${passed} passed, ${failed} failed`);
 })().catch(e => { console.error(e); process.exitCode = 1; clearTimeout(watchdog); });

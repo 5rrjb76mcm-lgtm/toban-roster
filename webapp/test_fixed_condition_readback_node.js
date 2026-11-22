@@ -42,14 +42,14 @@ function pane() {
       if (el.id) elements.set("#" + el.id, el); return el;
     }); }, get innerHTML() { return this.html; } };
 }
-function setup(fixed, { team = 'I', next = false, tags = {} } = {}) {
+function setup(fixed, { team = 'I', next = false, tags = {}, roster = names, multi = false } = {}) {
   pending.length = 0; elements.clear();
-  const R = { profile: { id: "synthetic-fixed-readback", roles: [{ id: "S", label: "Staff", refs: [] }, { id: "I", label: "Lead", refs: ['charge'], standby: true }], shifts: [{ id: "day", on: 'all' }, { id: "night", on: "all" }] }, doctors: [{ name: names[0], team, quota: 30 }, { name: names[1], team: 'I', quota: 30 }], rule_states: {}, weights: {} };
+  const R = { profile: { id: "synthetic-fixed-readback", roles: [{ id: "S", label: "Staff", refs: [] }, { id: "I", label: "Lead", refs: ['charge'], standby: true }], shifts: [{ id: "day", on: 'all' }, { id: "night", on: "all" }], positions: { work: { count: multi ? 2 : 1 } } }, doctors: roster.map((name, i) => ({ name, team: i ? 'I' : team, quota: 30 })), rule_states: {}, weights: {} };
   T.fillDefaultRules(R); for (const def of T.RULE_DEFS) if (def.states.includes("off")) R.rule_states[def.id] = "off";
   const M = T.normalizeMonth({ year: 2026, month: 11, next_first_day_in_calendar: next, fixed, fixed_tags: tags }, R);
   Object.assign(A.state, { rules: R, month: M, ui: { doctor: 0 }, result: null });
   const doctor = pane(), grid = pane(); grid.hidden = true; elements.set('#doctorPane', doctor); elements.set('#fixedPane', grid);
-  A.bindDoctor(); A.bindFixed(); A.renderDoctor(); doctor.handlers.change({ target: { id: "docSel", value: names[0] } }); A.renderFixed();
+  A.bindDoctor(); A.bindFixed(); A.renderDoctor(); doctor.handlers.change({ target: { id: "docSel", value: roster[0] } }); A.renderFixed();
   const change = (root, sel, value) => { const el = root.querySelector(sel); assert.ok(el, sel); el.value = value; root.handlers.change({ target: el }); while(pending.length) pending.shift()(); };
   return { R, M, doctor, grid, change };
 }
@@ -95,5 +95,41 @@ test('rejected tagged work to occupied charge retains work and tag',()=>{
 test('accepted ordinary fixed edits do not queue a focus-destroying redraw',()=>{
  const {M,doctor}=setup({}); const el=doctor.querySelector(at(1,'night')); el.value='night'; doctor.handlers.change({target:el});
  assert.equal(M.fixed.night[1],names[0]); assert.equal(pending.length,0);
+});
+for (const kind of ["day", "night"]) test(`adding a worker to the same ${kind} field retains the literal parenthesized name`, () => {
+  const base = "Synthetic Alpha", literal = base + " (senior)", other = "Synthetic Beta";
+  const { M, grid, change } = setup({ [kind]: { 1: literal } }, { roster: [literal, base, other], multi: true });
+  assert.equal(grid.querySelector(fx(1, kind)).value, literal);
+  change(grid, fx(1, kind), literal + "・" + other);
+  assert.deepStrictEqual(M.fixed[kind][1], [literal, other]);
+  assert.deepStrictEqual(M.fixed_tags, {});
+});
+test("stored tagged worker keeps its identity even when its token is another roster name", () => {
+  const base = "Synthetic Alpha", literal = base + "(senior)", other = "Synthetic Beta";
+  const { M, grid, change } = setup({ night: { 1: base } }, { roster: [base, literal, other], multi: true, tags: { [`1:night|${base}`]: "senior" } });
+  assert.equal(grid.querySelector(fx(1, "night")).value, literal);
+  change(grid, fx(1, "night"), literal + "・" + other);
+  assert.deepStrictEqual(M.fixed.night[1], [base, other]);
+  assert.deepStrictEqual(M.fixed_tags, { [`1:night|${base}`]: "senior" });
+});
+test("a new exact roster name wins over the tag shorthand; explicit tags still work", () => {
+  const base = "Synthetic Alpha", literal = base + "（senior）", other = "Synthetic Beta";
+  const { M, grid, change } = setup({}, { roster: [base, literal, other], multi: true });
+  change(grid, fx(1, "night"), literal + "・" + other + "(training)");
+  assert.deepStrictEqual(M.fixed.night[1], [literal, other]);
+  assert.deepStrictEqual(M.fixed_tags, { [`1:night|${other}`]: "training" });
+  change(grid, fx(1, "night"), literal + "(review)");
+  assert.strictEqual(M.fixed.night[1], literal);
+  assert.deepStrictEqual(M.fixed_tags, { [`1:night|${literal}`]: "review" });
+  change(grid, fx(1, "night"), "");
+  assert.strictEqual(M.fixed.night[1], undefined);
+  assert.deepStrictEqual(M.fixed_tags, {});
+});
+test("colliding saved tokens retain both worker identities when another worker is removed", () => {
+  const base = "Synthetic Alpha", literal = base + "(senior)", other = "Synthetic Beta";
+  const { M, grid, change } = setup({ night: { 1: [base, literal, other] } }, { roster: [base, literal, other], multi: true, tags: { [`1:night|${base}`]: "senior" } });
+  change(grid, fx(1, "night"), literal + "・" + literal);
+  assert.deepStrictEqual(M.fixed.night[1], [base, literal]);
+  assert.deepStrictEqual(M.fixed_tags, { [`1:night|${base}`]: "senior" });
 });
 console.log(`fixed condition readback: ${passed} passed, ${failed} failed`); if(failed) process.exitCode=1;

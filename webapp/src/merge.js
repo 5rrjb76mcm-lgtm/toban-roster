@@ -52,7 +52,8 @@
     for (const [d, txt] of Object.entries(m.day_notes || {})) if (txt) put(`dnote:${+d}`, txt); // 日ごとの予定
     // 欄 ID と氏名の両方が ':' を含められる。ID の UTF-16 長を持たせて境界を確定する。
     // 氏名の生 NUL は app-folder の削除・改名保護が検出するので、JSON/URI 符号化で隠さない。
-    for (const [id, byName] of Object.entries(m.person_days || {})) for (const [n, byDay] of Object.entries(byName || {})) for (const [d, v] of Object.entries(byDay || {})) if (v !== "" && v != null) put(`pday2:${id.length}:${id}${n}:${+d}`, v); // 一時的な統合キーだけ。保存する person_days の形は変えない
+    // 施設の欄では false も入力値。一般の put は false を欠落扱いにするので使わない。
+    for (const [id, byName] of Object.entries(m.person_days || {})) for (const [n, byDay] of Object.entries(byName || {})) for (const [d, v] of Object.entries(byDay || {})) if (v !== "" && v != null) f[`pday2:${id.length}:${id}${n}:${+d}`] = J(v); // 一時的な統合キーだけ。保存する person_days の形は変えない
     for (const [d, n] of Object.entries(fx.weekend_charge || {})) put(`fc:${d}`, n);
     for (const [d, ns] of Object.entries(fx.day_oc || {})) for (const n of ns || []) f[`fdo:${d}:${n}`] = "1";
     for (const [d, ns] of Object.entries(fx.night_oc || {})) for (const n of ns || []) f[`fno:${d}:${n}`] = "1";
