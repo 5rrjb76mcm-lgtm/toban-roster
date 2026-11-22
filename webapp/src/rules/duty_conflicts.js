@@ -52,18 +52,18 @@ T.rules.register({
   // 入力チェック: 固定した夜勤・オンコールが日中の業務（翌朝の外勤・翌日の午後業務・午後外勤）と重なる（解く側は固定した枠に当てはめないので、ここで知らせる）
   lint(ctx, prm) {
     const { P } = ctx, lab = ctx.lab, sl = P.shiftLabel("night");
-    for (const [ds, ns] of Object.entries(P.fixedNight)) for (const n of ns) { const d = +ds; if (!P.dutyNames.includes(n)) continue; // 1 枠に複数名の固定
+    for (const [ds, ns] of Object.entries(P.fixedNight)) for (const n of ns) { const d = +ds; if (!P.slotExists(d, "night") || !P.dutyNames.includes(n)) continue; // 1 枠に複数名の固定
       const nd = d + 1;
-      if (nd <= P.N) {
+      if (nd <= P.N + 1) {
         if (P.busy(n, nd, "am", ["external"]) || P.busy(n, nd, "pm", ["external"])) ctx.push("LINT_FIXED_NIGHT_NEXT_EXTERNAL", { day: lab(d), slot: sl, who: n, next: lab(nd) });
         else if (P.busy(n, nd, "pm")) ctx.push("LINT_FIXED_NIGHT_NEXT_PM", { day: lab(d), slot: sl, who: n, next: lab(nd) }, { who: n, next: lab(nd) });
       }
       if (P.busy(n, d, "pm", ["external"]) && P.pmExtNightBanned(d, n)) ctx.push("LINT_FIXED_NIGHT_PM_EXTERNAL", { day: lab(d), slot: sl, who: n }); }
     for (const [kind, table] of [["day", P.fixedDayOc], ["night", P.fixedNightOc]]) for (const [ds, ns] of Object.entries(table)) {
       const d = +ds, lbl = kind === "day" ? "日勤OC" : "夜間OC";
-      if (kind === "day" && !P.slotExists(d, "day")) continue; if (ns.length && !P.shiftHasOncall(kind)) continue; // 枠が無い・オンコールを付けない勤務帯は本体が指摘する
+      if (!P.slotExists(d, kind)) continue; if (ns.length && !P.shiftHasOncall(kind)) continue; // 枠が無い・オンコールを付けない勤務帯は本体が指摘する
       for (const n of ns) { if (!P.dutyNames.includes(n)) continue;
-        if (kind === "night" && d + 1 <= P.N && P.busy(n, d + 1, "am", ["external"])) ctx.push("LINT_FIXED_OC_NEXT_EXTERNAL", { day: lab(d), slot: lbl, who: n, next: lab(d + 1) }, { who: n, next: lab(d + 1) });
+        if (kind === "night" && d + 1 <= P.N + 1 && P.busy(n, d + 1, "am", ["external"])) ctx.push("LINT_FIXED_OC_NEXT_EXTERNAL", { day: lab(d), slot: lbl, who: n, next: lab(d + 1) }, { who: n, next: lab(d + 1) });
         if (P.busy(n, d, "pm", ["external"]) && (kind === "day" || P.pmExtNightBanned(d, n))) ctx.push("LINT_FIXED_OC_PM_EXTERNAL", { day: lab(d), slot: lbl, who: n, why: P.msg(kind === "day" ? "LINT_FIXED_OC_PM_EXTERNAL_DAY" : "LINT_FIXED_OC_PM_EXTERNAL_NIGHT") }, { day: lab(d), who: n, extra: kind === "night" ? P.msg("LINT_FIXED_OC_PM_EXTERNAL_HINT_EXTRA") : "" }); } }
   },
   python: true,

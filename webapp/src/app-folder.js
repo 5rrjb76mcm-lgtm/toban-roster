@@ -244,9 +244,13 @@
       const out = clone(res), fix = a => { for (const v of Object.values(a || {})) { if (v && v.work !== undefined) v.work = Array.isArray(v.work) ? v.work.map(rn) : rn(v.work); if (v && v.oc) v.oc = v.oc.map(rn); } }; fix(out.asg); fix(out.base_asg); if (out.avoid_ref) out.avoid_ref = Object.fromEntries(Object.entries(out.avoid_ref).map(([k, v]) => [rn(k), v])); return out; };
     for (const n of newFolk) back.set(n, T.NEW + n); // 足した人は相手の名簿の同じ氏名の人ではない
     const theirFit = fit(theirResult, theirRoster, rulesPick === "mine" ? fwd : new Map()), mineFit = fit(mineResult, myRoster, rulesPick === "theirs" ? back : new Map()), theirsNewer = theirResult && (!mineResult || (theirResult.at || "") > (mineResult.at || ""));
-    const lostResult = !!(theirResult || mineResult) && !theirFit && !mineFit;
+    // Undo can restore an explicitly uncalculated state (null). When only one
+    // side changed the shared result, this is a change, not a failed name match.
+    // Keep the fallback for non-null results that cannot be mapped, and legacy files that omit result.
+    const clearedResult = (baselineResultPick === "theirs" && theirResult === null) || (baselineResultPick === "mine" && mineResult === null);
+    const lostResult = !clearedResult && !!(theirResult || mineResult) && !theirFit && !mineFit;
     state.month = r.merged; state.ui.doctor = 0;
-    state.result = (baselineResultPick === "theirs" || (baselineResultPick !== "mine" && theirsNewer)) ? (theirFit || mineFit) : (mineFit || theirFit);
+    state.result = clearedResult ? null : (baselineResultPick === "theirs" || (baselineResultPick !== "mine" && theirsNewer)) ? (theirFit || mineFit) : (mineFit || theirFit);
     if (rulesPick === "theirs") { state.rules = f.data.rules; state.renames = []; } // 相手の名簿を採る: 改名の記録は消す
     // 相手の版を「見た」ことにし、次の保存で統合結果を書き戻す（共通の元は相手の版になる）
     A.saveGen++; state.meta = Object.assign({}, state.meta || {}, { savedAt: f.data.saved_at || "", savedTag: A.tag() }); state.base = theirs0; state.baseResult = clone(theirResult || null); if (f.data.rules) state.baseRules = JSON.parse(JSON.stringify(f.data.rules)); // 共通の元は、相手の保存内容を相手の氏名のまま持つ（共通の元の設定と同じ氏名。改名を当てるのは、比べるときの複製だけ。書き込みに失敗して再び統合するときも、同じ改名を正しく当てられる）

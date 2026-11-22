@@ -219,7 +219,8 @@
       // 候補外の人、別の帯・OC・期間責任者・不存在枠の固定はこの例外にしない。
       if (P.slotExists(d, k) && P.isFixedWork(s, n)) return true;
       if (k === "night") { if (unN(n, d) || unO(n, d) === "allday") return false; if (!dutyOn) return true;
-        if (d + 1 <= N && (P.busy(n, d + 1, "am", ["external"]) || P.busy(n, d + 1, "pm"))) return false;
+        // 翌月1日も解く側・検算と同じ扱いにする（次の日の業務は P.busy が読む）。
+        if (d + 1 <= N + 1 && (P.busy(n, d + 1, "am", ["external"]) || P.busy(n, d + 1, "pm"))) return false;
         if (P.busy(n, d, "pm", ["external"]) && P.pmExtNightBanned(d, n)) return false; return true; }
       return !unO(n, d); };
     let fw = null;

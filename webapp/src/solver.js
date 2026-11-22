@@ -178,7 +178,7 @@
     T.rules.runSolve(ctx, 950); // プラグイン: 夜勤・夜間 OC の翌日の業務（950）があった位置
     T.rules.runSolve(ctx, 980); // プラグイン: 隣接しない連日（960）・勤務の間隔（970）・オンコール・休日勤務の偏り（980）があった位置
     // 既存案からの変更
-    if (base) for (const s of slots) { const b = base[key(s)]; if (!b) continue; for (const n of names) { const w = W.base_change || 1; if ([].concat(b.work || []).includes(n)) lp.objAdd(-w, work[key(s) + "|" + n]); else lp.objAdd(w, work[key(s) + "|" + n]); if ((b.oc || []).includes(n)) lp.objAdd(-w, oc[key(s) + "|" + n]); else lp.objAdd(w, oc[key(s) + "|" + n]); } }
+    if (base) for (const s of slots) { const b = base[key(s)]; if (!b) continue; for (const n of names) { const w = W.base_change ?? 1; if ([].concat(b.work || []).includes(n)) lp.objAdd(-w, work[key(s) + "|" + n]); else lp.objAdd(w, work[key(s) + "|" + n]); if ((b.oc || []).includes(n)) lp.objAdd(-w, oc[key(s) + "|" + n]); else lp.objAdd(w, oc[key(s) + "|" + n]); } }
     T.rules.runSolve(ctx); // 残りのプラグイン（順が後ろのもの）
     return { lp, work, oc, names, slots };
   }
