@@ -2032,7 +2032,7 @@ def main():
     s.add_argument("--rules")
     s.add_argument("--base", help="既存案の割当JSON（変更量を最小化）")
     s.add_argument("--base-docx", help="既存案の当直表docx（変更量を最小化）")
-    s.add_argument("--out", help="出力先ディレクトリ（既定: 月別条件と同じ）")
+    s.add_argument("--out", help="出力先ディレクトリ（未作成なら作成。既定: 月別条件と同じ）")
     s.add_argument("--time", type=float, default=60)
     s.add_argument("--base-weight", type=int, help="既存案からの変更1箇所あたりの重み（既定は rules.yaml の base_change。20以上で最小変更に近づく）")
     s.add_argument("--log", action="store_true")
@@ -2057,7 +2057,7 @@ def main():
     args = ap.parse_args()
     P = load(args)
     tag = f"{P.year}{P.month:02d}"
-    outdir = args.out if getattr(args, "out", None) and os.path.isdir(args.out) else os.path.dirname(os.path.abspath(args.month))
+    month_dir = os.path.dirname(os.path.abspath(args.month))
 
     if args.cmd == "solve":
         base, base_label = None, ""
@@ -2085,6 +2085,12 @@ def main():
             print("対応: 作成責任者の承認を得たうえで、月別条件YAMLの exceptions / fixed / confirmed_pm_external_night 等を修正して再実行する")
             sys.exit(2)
         md, V = report(P, asg, status, obj, base_label, avoid_ref=avoid_ref)
+        outdir = month_dir if args.out is None else args.out
+        if args.out is not None:
+            try:
+                os.makedirs(outdir, exist_ok=True)
+            except OSError as exc:
+                s.error(f"--out: 出力先ディレクトリを用意できません: {exc}")
         jpath = os.path.join(outdir, f"{tag}_py_assignment.json")
         mpath = os.path.join(outdir, f"{tag}_py_result.md")
         json.dump(asg, open(jpath, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -2104,7 +2110,10 @@ def main():
         if missing:
             print("割当のない枠:", missing)
         md, V = report(P, asg, "check", "-", src)
-        mpath = args.out if args.out and not os.path.isdir(args.out) else os.path.join(outdir, f"{tag}_py_check.md")
+        if args.out and not os.path.isdir(args.out):
+            mpath = args.out
+        else:
+            mpath = os.path.join(args.out or month_dir, f"{tag}_py_check.md")
         open(mpath, "w", encoding="utf-8").write(md)
         print(f"検算: 必須条件の違反 {len(V)} 件 → {mpath}")
         for v in V:

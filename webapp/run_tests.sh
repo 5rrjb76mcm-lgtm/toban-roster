@@ -282,6 +282,8 @@ if [ -x "$PY" ]; then
   "$PY" ../tools/test_report_normalized_quota.py || fail=1
   echo "== Python incomplete assignment report regression"
   "$PY" ../tools/test_report_missing_work.py || fail=1
+  echo "== Python solve output directory regression"
+  "$PY" ../tools/test_solve_output_dir.py || fail=1
   echo "== Python quota candidate scope"
   "$PY" ../tools/test_quota_candidate_scope.py || fail=1
 else echo "--  Python quota candidate checks skipped (../tools/.venv is unavailable)"; fi

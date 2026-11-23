@@ -2,7 +2,7 @@
 // Synthetic fixtures only. Authored for later local validation; not run during the audit.
 // node test_fixed_work_candidate_lint_node.js /path/to/highs [pristine-webapp-directory]
 const fs = require("fs"), vm = require("vm"), path = require("path"), assert = require("assert");
-const EXPECTED = 24;
+const EXPECTED = 35;
 let registered = 0, started = 0, completed = 0, passed = 0, finished = false;
 const counts = () => ({ registered, started, completed, passed });
 process.on("exit", code => {
@@ -161,10 +161,76 @@ function test(label, fn) { cases.push({ label, fn }); registered++; }
     assert.strictEqual(lint.filter(x => x.code === "LINT_FIXED_VS_UNAVAIL").length, removeOne ? 3 : 4);
     assert.strictEqual(solve(P).status, removeOne ? "Infeasible" : "Optimal");
   });
+  // 2026/11/30 is Monday; 12/1 is Tuesday. Use both an authoritative
+  // extended calendar and legacy recurring duties to supply 12/1.
+  function nextBoundary({ part = "am", kind = "external", source = "calendar",
+    fixedKind, nightOn = "all", dutyState = "hard" } = {}) {
+    const seed = problem({ fixed: false, quotaState: "off", dutyState });
+    const R = seed.rules, M = seed.m;
+    M.unavailable_night = {}; M.fixed = {};
+    M.next_first_day_in_calendar = source !== "pattern";
+    M.duty_days = source === "calendar" ? { [A]: { 31: { [part]: kind } } } : {};
+    if (source !== "calendar") M.regular_duties = { [A]: [{ dow: "Tue", nth: [1], part, kind }] };
+    R.profile.shifts.find(s => s.id === "night").on = nightOn;
+    if (fixedKind === "work") M.fixed.night = { 30: A };
+    if (fixedKind === "oc") {
+      const B = "Synthetic Standby Staff";
+      M.fixed.night_oc = { 30: [A] };
+      R.doctors.push({ name: B, team: "Staff" });
+      R.profile.roles[0].standby = true;
+      R.rule_states.oncall = "hard"; R.oncall_requirement = { Staff: { Staff: 1 } };
+    }
+    return new T.Problem(R, T.normalizeMonth(M, R));
+  }
+  for (const [label, opts] of [
+    ["explicit Dec 1 AM external", {}],
+    ["explicit Dec 1 PM ward", { part: "pm", kind: "ward" }],
+    ["recurring Dec 1 AM external", { source: "pattern" }]
+  ]) test(`last night excludes the only unfixed candidate: ${label}`, () => {
+    const P = nextBoundary(opts);
+    assert(P.busy(A, 31, opts.part || "am"), "Dec 1 duty is present");
+    assert.strictEqual(solve(P).status, "Infeasible", "solver already forbids this assignment");
+    assert.strictEqual(candidate(P, [30, "night"]), false);
+    const lint = warnings(P).filter(w => w.code === "LINT_SLOT_NO_CANDIDATE");
+    assert.strictEqual(lint.length, 1); assert.strictEqual(lint[0].args.day, P.label(30));
+  });
+  for (const [label, opts] of [
+    ["AM outpatient", { kind: "outpatient" }],
+    ["explicit empty Dec 1 trumps recurring pattern", { source: "empty" }],
+    ["disabled duty rule", { dutyState: "off" }]
+  ]) test(`last night remains a valid candidate: ${label}`, () => {
+    const P = nextBoundary(opts);
+    assert.strictEqual(candidate(P, [30, "night"]), true);
+    assert(!warnings(P).some(w => w.code === "LINT_SLOT_NO_CANDIDATE"));
+    assert.strictEqual(solve(P).status, "Optimal");
+  });
+  for (const [opts, wantLint, wantCheck] of [
+    [{ fixedKind: "work" }, "LINT_FIXED_NIGHT_NEXT_EXTERNAL", "NIGHT_THEN_DUTY"],
+    [{ fixedKind: "work", part: "pm", kind: "ward" }, "LINT_FIXED_NIGHT_NEXT_PM", "NIGHT_THEN_DUTY"],
+    [{ fixedKind: "oc" }, "LINT_FIXED_OC_NEXT_EXTERNAL", "NIGHT_OC_THEN_EXTERNAL"]
+  ]) test(`last-night fixed exception warns before solve: ${wantLint}`, () => {
+    const P = nextBoundary(opts);
+    const result = solve(P); assert.strictEqual(result.status, "Optimal");
+    const checked = T.check(P, result.asg);
+    assert.deepStrictEqual(checked.VC, []); assert(checked.WC.some(w => w.code === wantCheck));
+    const lint = warnings(P).filter(w => w.code === wantLint);
+    assert.strictEqual(lint.length, 1);
+    assert.strictEqual(lint[0].args.next, P.label(31));
+    assert.strictEqual(candidate(P, [30, "night"]), opts.fixedKind === "work");
+  });
+  for (const fixedKind of ["work", "oc"]) test(`missing last night: no misleading next-day ${fixedKind} warning`, () => {
+    const P = nextBoundary({ fixedKind, nightOn: "off_days" });
+    assert.strictEqual(P.slotExists(30, "night"), false);
+    const codes = warnings(P).map(w => w.code);
+    assert(codes.includes("LINT_FIXED_NO_SLOT"));
+    assert(!codes.includes("LINT_FIXED_NIGHT_NEXT_EXTERNAL") && !codes.includes("LINT_FIXED_OC_NEXT_EXTERNAL"));
+    assert.strictEqual(solve(P).status, "Optimal");
+  });
   assert.strictEqual(registered, EXPECTED, "registered fixed-work candidate cases");
   for (const { label, fn } of cases) {
     started++;
     try { await fn(); passed++; console.log("ok " + label); }
+    catch (error) { console.error("FAIL " + label, error.message); }
     finally { completed++; }
   }
   assert.deepStrictEqual(counts(), { registered: EXPECTED, started: EXPECTED, completed: EXPECTED, passed: EXPECTED });

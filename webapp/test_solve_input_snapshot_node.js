@@ -127,6 +127,42 @@ const paint = () => { A.renderSettings(); sync(); }; A.renderAll = paint; A.bind
       console.log(`ok solve snapshot: base=${useBase}, restore=${restore}`);
     } catch (e) { failures++; console.error(`FAIL solve snapshot: base=${useBase}, restore=${restore}: ${e.stack}`); }
   }
+  // With an unchanged one-worker base assignment, there are 30 missing
+  // workers against the target (5 points each). The JS base term rewards 30
+  // retained names by minus the given weight, unless that weight is zero.
+  for (const weight of [0, 2, 2.5]) {
+    try {
+      const { previous } = setup(true);
+      const rules = clone(A.state.rules); rules.weights.base_change = weight;
+      const P = new T.Problem(rules, A.state.month);
+      const opts = { base: previous.asg, pin: previous.asg, timeLimit: 5, mipGap: 0 };
+      const sol = T.solve(P, highs, opts), score = T.penalty(P, previous.asg, opts);
+      assert.strictEqual(sol.status, "Optimal");
+      const basePoints = -30 * weight || 0, expected = 150 + basePoints;
+      assert.deepStrictEqual({ objective: sol.objective, penalty: score.total, basePoints: score.items.base_change || 0 },
+        { objective: expected, penalty: expected, basePoints }, "HiGHS and recount use the explicit base weight");
+      console.log("ok pinned objective: base weight " + weight);
+    } catch (e) { failures++; console.error("FAIL pinned objective: base weight " + weight + ": " + e.message); }
+  }
+  for (const [entered, expected] of [["0", 0], ["", 30], ["2.5", 2.5]]) {
+    const { previous } = setup(true);
+    element("#baseWeight").value = entered;
+    A.highs = { isWorker: true, solve: (text, opts) => highs.solve(text, opts) };
+    const solve0 = T.solveWithAvoidRef; let capturedP;
+    try {
+      T.solveWithAvoidRef = (P, h, opts) => { capturedP = P; return solve0(P, h, opts); };
+      await A.runSolve();
+      assert.strictEqual(capturedP.weights.base_change, expected, "calculation reads explicit zero, but defaults blank");
+      assert.strictEqual(A.state.rules.weights.base_change, 13, "run-only base weight must not persist");
+      const r = A.state.result; assert(r && r !== previous && r.base_asg && r.mark_changes, "baseline and change marks are retained at any weight");
+      if (expected === 0) {
+        assert(Object.values(r.asg).every(s => [].concat(s.work).length === 2), "zero cannot override the ordinary two-person target");
+        assert.strictEqual(r.objective, 0);
+      }
+      console.log("ok input and change marks: " + JSON.stringify(entered));
+    } catch (e) { failures++; console.error("FAIL input and change marks: " + JSON.stringify(entered) + ": " + e.message); }
+    finally { T.solveWithAvoidRef = solve0; }
+  }
   if (failures) process.exitCode = 1;
   else console.log("OK solve snapshot: real settings changes, two-phase solve, current-result claims, base weight, repeated-run cleanup");
 })().catch(e => { console.error(e.stack); process.exitCode = 1; });

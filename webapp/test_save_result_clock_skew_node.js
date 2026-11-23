@@ -10,7 +10,7 @@ globalThis.window = globalThis;
 globalThis.location = { pathname: '/synthetic/toban.html', protocol: 'file:', href: 'file:///synthetic/toban.html' };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 globalThis.T = { esc: String };
-for (const f of ['i18n.js', 'rules-core.js', 'model.js', 'messages.js', 'merge.js', 'app-core.js', 'app-folder.js', 'app-month.js'])
+for (const f of ['i18n.js', 'rules-core.js', 'model.js', 'messages.js', 'merge.js', 'app-core.js', 'app-folder.js', 'app-month.js', 'app-settings.js'])
   vm.runInThisContext(fs.readFileSync(f === 'app-folder.js' && process.env.TOBAN_FOLDER_SOURCE || path.join(__dirname, 'src', f), 'utf8'), { filename: f });
 for (const f of fs.readdirSync(path.join(__dirname, 'src/rules')).filter(f => f.endsWith('.js')))
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, 'src/rules', f), 'utf8'), { filename: 'rules/' + f });
@@ -103,6 +103,57 @@ for (const kind of ['both', 'legacy']) cases.push([`${kind}: retain existing new
   clearTimeout(A.autosaveTimer);
 }]);
 
+// A saved result can legitimately return to null: Undo restores the original
+// result along with an input changed before the first calculation. A peer's
+// unrelated input save must not resurrect the common baseline result.
+for (const route of ['auto', 'manual', 'reconnect']) for (const changed of ['peer', 'mine']) {
+  cases.push([`${route}: only ${changed} restored an empty result`, async () => {
+    const f = setup();
+    A.clearUndo();
+    // Stack a genuine input Undo before the first calculation. Simulate only the
+    // numerical result, then establish the same baseline in both windows.
+    A.pushUndo('synthetic note', { auto: true });
+    A.state.month.notes = 'edited before calculating';
+    await Promise.resolve();
+    const baseline = { at: '2026-10-01T12:00:00.000Z', status: 'Optimal', asg: { '1:night': { work: 'Synthetic A', oc: [] } }, seconds: 1 };
+    A.state.result = clone(baseline);
+    A.markSaved(undefined, baseAt);
+    const peer = JSON.parse(A.payloadJson('2026-10-01T12:01:00.000Z'));
+    if (changed === 'mine') {
+      A.undo();
+      assert.strictEqual(A.state.result, null, 'actual Undo restores the pre-calculation result');
+      assert.strictEqual(A.state.month.notes, 'synthetic local edit');
+      peer.month.day_notes = { 7: 'synthetic peer note' };
+    } else {
+      // The other window restored its pre-calculation snapshot and saved it.
+      peer.result = null; peer.month.notes = 'synthetic local edit';
+      A.state.month.day_notes = { 7: 'synthetic peer note' };
+    }
+    f.oldFolder.files.set(fileName, JSON.stringify(peer));
+    let choices = 0; A.choose = async () => { choices++; return null; };
+    if (route === 'reconnect') await A.reconcileWithFolder();
+    else assert.strictEqual(await save(route), 'saved');
+    assert.strictEqual(A.state.result, null, 'the unchanged result must not be resurrected');
+    assert.strictEqual(A.state.month.notes, 'synthetic local edit');
+    assert.strictEqual(A.state.month.day_notes[7], 'synthetic peer note');
+    assert.strictEqual(choices, 0, 'one-sided restoration is not a conflict');
+    if (route !== 'reconnect') assert.strictEqual(JSON.parse(f.oldFolder.files.get(fileName)).result, null, 'saved JSON stays uncalculated');
+  }]);
+}
+
+cases.push(['legacy peer omitting result does not clear the current result', async () => {
+  const f = setup(), baseline = { at: '2026-10-01T12:00:00.000Z', asg: {}, seconds: 1 };
+  A.state.result = clone(baseline); A.markSaved(undefined, baseAt);
+  const peer = JSON.parse(A.payloadJson('2026-10-01T12:01:00.000Z'));
+  delete peer.result; peer.month.day_notes = { 7: 'peer legacy note' };
+  f.oldFolder.files.set(fileName, JSON.stringify(peer));
+  A.state.month.notes = 'local edit to merge';
+  assert.strictEqual(await save('auto'), 'saved');
+  assert.deepStrictEqual(A.state.result, baseline);
+  assert.deepStrictEqual(JSON.parse(f.oldFolder.files.get(fileName)).result, baseline);
+  assert.equal(A.state.month.day_notes[7], 'peer legacy note');
+}]);
+
 // Calculation completion may update only state.result while a merge choice is open.
 // A winner selected before the await must not overwrite that newer local result.
 for (const route of ['auto', 'manual', 'reconnect']) for (const sameSaveTime of [false, true]) for (const inPlace of [false, true]) {
@@ -150,6 +201,6 @@ process.on('exit', () => { if (!finished) { console.error('clock-skew tests did 
 (async () => {
   let passed = 0, failed = 0;
   for (const [name, run] of cases) { try { await run(); passed++; console.log('PASS ' + name); } catch (e) { failed++; console.error('FAIL ' + name + '\n' + e.stack); } finally { clearTimeout(A.autosaveTimer); } }
-  assert.strictEqual(cases.length, 20); finished = true;
+  assert.strictEqual(cases.length, 27); finished = true;
   console.log(`${passed}/${cases.length} passed; ${failed} failed`); if (failed) process.exitCode = 1;
 })().catch(e => { console.error(e); process.exitCode = 1; });

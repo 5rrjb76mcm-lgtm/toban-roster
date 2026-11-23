@@ -133,7 +133,7 @@
     // 勤務回数
     for (const n of names) if (P.isRole(n, "reserve")) add("chief_duty", W.chief_duty, total[n]); // 当月目標からのずれはプラグイン quota_target
     // 既存案からの変更（解く側と同じ式。変えなかった分は負になる）
-    if (opts.base) for (const s of P.slots) { const b = opts.base[key(s)]; if (!b) continue; const w = W.base_change || 1;
+    if (opts.base) for (const s of P.slots) { const b = opts.base[key(s)]; if (!b) continue; const w = W.base_change ?? 1;
       for (const n of names) { add("base_change", w, [].concat(b.work || []).includes(n) ? -w1(n, s) : w1(n, s)); add("base_change", w, (b.oc || []).includes(n) ? -o1(n, s) : o1(n, s)); } }
     T.rules.runPenalty(T.rules.checkCtx(P, A, "penalty", add, opts)); // プラグインにした規則の減点（合計なので順は問わない）
     return { total: Object.values(items).reduce((a, b) => a + b, 0), items };

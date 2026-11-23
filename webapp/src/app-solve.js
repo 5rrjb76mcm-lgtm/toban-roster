@@ -108,7 +108,8 @@
     $("#calcLog").textContent = "";
     const useBase = !!($("#useBase").checked && state.result && state.result.asg);
     // 「最小変更」の重みは今回の計算にだけ使う（設定の重みには残さない）
-    const rulesForRun = useBase ? Object.assign({}, state.rules, { weights: Object.assign({}, state.rules.weights, { base_change: +$("#baseWeight").value || 30 }) }) : state.rules;
+    const baseWeight = useBase ? $("#baseWeight").value : "";
+    const rulesForRun = useBase ? Object.assign({}, state.rules, { weights: Object.assign({}, state.rules.weights, { base_change: baseWeight === "" ? 30 : baseWeight }) }) : state.rules;
     let P;
     // 参照解・本計算・診断は同じ入力の写しを使う。Problem の一部は rules/month を参照するため、
     // 待機中の編集を直接見せると、元の値へ戻した場合に最後の署名チェックだけでは混在を検出できない。
