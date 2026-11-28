@@ -414,7 +414,16 @@
         count[x.dataset.count] = v; if (v > 1) multi = true;
       });
       let minimumEdited = false;
-      const mins = Object.assign({}, kept.min); document.querySelectorAll("#shiftTbl input[data-countmin]").forEach(x => { if (noteStaffingEdit(x)) minimumEdited = true; if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
+      const minInputs = [...document.querySelectorAll("#shiftTbl input[data-countmin]")];
+      const mins = Object.assign({}, kept.min); minInputs.forEach(x => { if (noteStaffingEdit(x)) minimumEdited = true; if (x.value !== "") mins[x.dataset.countmin] = Math.max(0, Math.min(maxOf(count[x.dataset.countmin]), +x.value || 0)); });
+      // 下限を書いていない勤務帯は、ほかに書いた値があれば固定（モデル）。触っていない空欄の勤務帯の意味は保つ: その勤務帯が
+      // 「1 名から」だった（min はあるがその勤務帯の値が無い、または明示的に空）なら、明示的な空（元の値か null）を書いて、
+      // 隣の勤務帯の編集で固定に変わらないようにする。利用者が消した空欄は書かない（＝固定に戻る）。空でない値が残らなければ従来どおり min を外す
+      if (posOld.min !== undefined && Object.values(mins).some(T.staffingWritten)) for (const x of minInputs) {
+        const k = x.dataset.countmin; if (x.value !== "" || mins[k] !== undefined || x.value !== x.getAttribute("value")) continue;
+        const own = isObj(posOld.min) && Object.prototype.hasOwnProperty.call(posOld.min, k) ? posOld.min[k] : undefined;
+        if (own !== undefined) mins[k] = own; else if (!T.workerMinUnwritten(posOld.min, k, false)) mins[k] = null;
+      }
       const idealEdited = new Set(), ideals = Object.assign({}, kept.ideal); document.querySelectorAll("#shiftTbl input[data-countideal]").forEach(x => {
         const edited = noteStaffingEdit(x) || x.dataset.idealEdited === "1", k = x.dataset.countideal;
         if (edited) { staffingEdited = true; idealEdited.add(k); }
