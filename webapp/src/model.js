@@ -62,10 +62,19 @@
   }
   const roleLabelsOf = rules => Object.fromEntries(normalizeRoles(rules).map(r => [r.id, r.label]));
   // 勤務者の配置人数。整数、または勤務帯ごと {day: n, night: m}、または日の種別ごと {weekday: n, off_days: m}
-  // min=true なら下限（positions.work.min。書いていなければ count と同じ＝固定の人数）
+  // min=true なら下限（positions.work.min。書いていなければ count と同じ＝固定の人数）。
+  // 下限が勤務帯ごと（日の種別ごと）の形のとき、書いていない勤務帯は、ほかに空でない値があれば固定（画面の「固定」と同じ）、
+  // 無ければ従来どおり 1。空の min（{}・null・""）と明示的に空の枝（null・""・{}）は従来どおり 1。入れ子の中は見ない
+  const STAFFING_KEYS = ["day", "night", "weekday", "off_days"];
+  const staffingWritten = v => typeof v === "number" || (!!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0); // 空でない下限の値
+  function workerMinUnwritten(m, kind, isHoliday) {
+    if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+    if (m[kind] !== undefined || m[isHoliday ? "off_days" : "weekday"] !== undefined) return false;
+    return STAFFING_KEYS.some(k => m[k] !== undefined && staffingWritten(m[k]));
+  }
   function workerCount(rules, kind, isHoliday, min = false) {
     const c = (((rules || {}).profile || {}).positions || {}).work;
-    if (min) { if (!c || c.min === undefined) return workerCount(rules, kind, isHoliday); return Math.min(workerCount(rules, kind, isHoliday), workerCount({ profile: { positions: { work: { count: c.min } } } }, kind, isHoliday)); }
+    if (min) { const hi = workerCount(rules, kind, isHoliday); if (!c || c.min === undefined || workerMinUnwritten(c.min, kind, isHoliday)) return hi; return Math.min(hi, workerCount({ profile: { positions: { work: { count: c.min } } } }, kind, isHoliday)); }
     const pick = v => {
       if (v == null) return 1;
       if (typeof v === "number") return Math.max(0, Math.round(v));
@@ -1078,6 +1087,7 @@
   T.qualNames = rules => { const out = [], add = v => String(v || "").split(/[・|,、]+/).map(x => x.trim()).filter(Boolean).forEach(x => { if (!out.includes(x)) out.push(x); });
     for (const c of (rules || {}).composition || []) { add(c.qual); add(c.not_qual); } for (const d of (rules || {}).doctors || []) for (const q of [].concat(d.quals || [])) add(q); return out; };
   T.isMultiWork = rules => SHIFT_IDS.some(k => workerCount(rules, k, true) > 1 || workerCount(rules, k, false) > 1); // 1 枠に複数名を置く施設か
+  T.staffingWritten = staffingWritten; T.workerMinUnwritten = workerMinUnwritten; // 設定画面の読み戻しが、下限の「書いていない勤務帯」をモデルと同じ決まりで見るため
   T.DEFAULT_ROLES = DEFAULT_ROLES; T.roleLabels = roleLabelsOf; T.normalizeRolesOf = normalizeRoles; T.normalizeShiftsOf = normalizeShifts; T.DEFAULT_SHIFTS = DEFAULT_SHIFTS;
   T.RULE_DEFS = RULE_DEFS; T.RULE_BY_ID = RULE_BY_ID; T.STATE_JA = STATE_JA; T.ruleState = ruleState;
 

@@ -91,8 +91,10 @@ for(const edit of ['label','upper','ideal'])test('absent minimum: '+edit,{count:
  if(edit==='ideal')a.change('[data-countideal="night"]','1');
  bounds(a,[2,2],edit==='upper'?[3,3]:[2,2]);assert.strictEqual(a.A.state.rules.profile.positions.work.min,undefined);await persisted(a,semantics(a));
 });
-test('scalar zero partial clear keeps established fallback',{count:2,min:0},async a=>{
- a.change('[data-countmin="night"]','');bounds(a,[2,0],[2,1]);assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.min),{day:0});await persisted(a,semantics(a));
+// A cleared minimum beside a written one is absent, and an absent shift minimum is the fixed count
+// (the blank field reads "fixed"). The untouched day keeps its stored zero.
+test('scalar zero partial clear fixes the cleared shift',{count:2,min:0},async a=>{
+ a.change('[data-countmin="night"]','');bounds(a,[2,0],[2,2]);assert.deepStrictEqual(clone(a.A.state.rules.profile.positions.work.min),{day:0});await persisted(a,semantics(a));
 });
 for(const min of [{day:{}},{day:{weekday:0,off_days:1},night:null}])test('hidden minimum branches survive '+JSON.stringify(min),{count:2,min},async a=>{
  const before=semantics(a);a.change('#setProfLabel','Synthetic hidden minimum');a.A.readSettings();assert.deepStrictEqual(semantics(a),before);await persisted(a,before);

@@ -24,6 +24,8 @@ if [ -x "$ESL" ]; then
   echo "== 未定義の変数（eslint no-undef）"
   "$ESL" --no-eslintrc --env browser,es2022 --parser-options=ecmaVersion:2022 --rule '{"no-undef":"error"}' --global T,A,state,JSZip,Module src/*.js src/rules/*.js src/calendars/*.js ../plugin-example/*/*.js || fail=1
 else echo "--  未定義の変数の検査は省略（cd ~/.toban-test && npm i eslint@8 で入れると走る）"; fi
+# post64: a staff name that contains a list separator stays whole in the fixed grid (DOM substitute)
+run test_fixed_grid_separator_names_node.js
 # Reject JSON numeric overflow before lossy cloning at import boundaries
 run test_json_nonfinite_import_dom_node.js
 # post60: finite soft-cap settings (bundled HiGHS)
@@ -101,6 +103,8 @@ else echo "-- Python standby-role guards skipped (venv unavailable)"; fi
 run test_asg_boundary_authority_node.js
 if [ -x "$PY" ]; then echo "== Python assignment boundary authority"; "$PY" ../tools/test_asg_boundary_authority.py || fail=1; else echo "-- Python assignment boundary authority skipped (venv unavailable)"; fi
 run test_delimited_names_node.js "$HP"
+# post64: a staff name that contains a list separator stays whole in the previous-month connection lists (DOM substitute)
+run test_previous_connection_separator_names_node.js
 run test_profile_export_node.js
 run test_profile_export_collision_node.js
 run test_profile_included_roster_dom_node.js
@@ -140,6 +144,8 @@ run test_settings_builder_preservation_dom_node.js "$HP"
 run test_profile_staffing_shorthand_dom_node.js "$HP"
 run test_profile_count_preservation_dom_node.js
 run test_profile_minimum_preservation_dom_node.js
+# post64: a blank shift minimum beside a written one is the fixed count (settings screen, model, summary; DOM substitute)
+run test_partial_minimum_fixed_dom_node.js
 run test_profile_null_ideal_preservation_dom_node.js
 run test_profile_empty_ideal_preservation_dom_node.js
 run test_profile_pending_input_dom_node.js
@@ -274,6 +280,7 @@ run test_fixed_work_candidate_lint_node.js "$HP"
 run test_fixed_only_busy_supply_node.js "$HP"
 run test_fixed_only_targets_node.js "$HP"
 run test_variable_capacity_node.js "$HP"
+run test_partial_minimum_solver_node.js "$HP"
 run test_optional_slot_lint_node.js "$HP"
 run test_count_limits_node.js "$HP"
 if [ -x "$PY" ]; then

@@ -166,10 +166,28 @@ ${on("period_charge") ? `<p>${esc(L(T.t("前月最後の土日の{charge}担当"
     // 履歴・前月末の接続は、画面に出ている欄だけ書き換える（規則を「なし」にして隠している欄の値は残す。出ている欄を空にしたときだけ消える）
     m.history ||= {}; if (root.querySelector("[data-bal]")) { const els = [...root.querySelectorAll("[data-bal]")], b = keepHidden(m.history.work_balance, new Set(els.map(el => el.dataset.bal))); for (const el of els) { const v = historyInput(el, m.history.work_balance?.[el.dataset.bal]); if (v != null && v !== "" && v !== 0) b[el.dataset.bal] = v; } m.history.work_balance = b; }
     m.prev_month = m.prev_month || {};
+    // 前月末の接続の氏名の欄: 区切り文字を含む氏名（名簿にいる人、またはその欄に保存されている人）は、分ける前に 1 人として取り出す。
+    // 区切り（または先頭）から読み、候補のうち最も長く一致して直後が区切りか末尾のものを採る。当てはまらない部分は従来どおり区切り文字で分ける
+    // （空白は削らない。この欄の区切りの決まりは変えていない）。候補が 1 つも無い欄では、結果は従来と同じ
+    const LIST_SEP = /[・,、|\n]/, splitList = s => s.split(/[・,、|\n]+/).filter(Boolean);
+    const splitListKeeping = (s, keep) => {
+      const cands = [...new Set(keep.filter(x => typeof x === "string" && x && LIST_SEP.test(x)))].sort((a, b) => b.length - a.length);
+      if (!cands.length) return splitList(s);
+      const out = []; let i = 0, plain = "";
+      const flush = () => { out.push(...splitList(plain)); plain = ""; };
+      while (i < s.length) {
+        const c = cands.find(c => s.startsWith(c, i) && (i + c.length === s.length || LIST_SEP.test(s[i + c.length])));
+        if (c) { flush(); out.push(c); i += c.length; continue; }
+        let k = i; while (k < s.length && !LIST_SEP.test(s[k])) k++; if (k < s.length) k++; // 1 人分と区切り 1 文字（候補に当たらない部分）
+        plain += s.slice(i, k); i = k;
+      }
+      flush(); return out;
+    };
+    const storedListOf = input => { try { const ns = JSON.parse(input.dataset.prevNames || "[]"); return Array.isArray(ns) ? ns : []; } catch (e) { return []; } }; // その欄に保存されている氏名
     if (root.querySelector("tr[data-ld]")) { const oldByDate = {}; for (const e of m.prev_month.last_days || []) oldByDate[+e.date] = e; m.prev_month.last_days = [];
       root.querySelectorAll("tr[data-ld]").forEach(tr => { const el = f => tr.querySelector(`[data-f="${f}"]`), g = f => (el(f) || {}).value || "", list = f => {
           const input = el(f); if (input && input.dataset.prevNames !== undefined && input.value === input.dataset.shown) { try { const ns = JSON.parse(input.dataset.prevNames); if (Array.isArray(ns)) return ns; } catch (e) { } }
-          const ns = g(f).split(/[・,、|\n]+/).filter(Boolean); if (input) { input.dataset.prevNames = JSON.stringify(ns); input.dataset.shown = input.value; } return ns; };
+          const ns = splitListKeeping(g(f), [...(input ? storedListOf(input) : []), ...state.rules.doctors.map(doc => doc.name)]); if (input) { input.dataset.prevNames = JSON.stringify(ns); input.dataset.shown = input.value; } return ns; }; // 区切り文字を含む氏名（保存済み・名簿）は分けない
         const w = f => el(f) && el(f).hasAttribute("data-multi") ? list(f) : g(f); // 複数名の施設は配列
         const dateText = g("date"); let old = oldByDate[+dateText] || {};
         if (tr.dataset && tr.dataset.prevRecord !== undefined) { try { old = JSON.parse(tr.dataset.prevRecord) || {}; } catch (e) { } }
@@ -564,6 +582,26 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
       if (v === NONE_Y) { if (jr) fx[tbl + "_none"][d] = [...new Set([].concat(fx[tbl + "_none"][d] || [], [jr]))]; } else if (v) fx[tbl][d] = [...new Set([].concat(fx[tbl][d] || [], [v]))];
       el.dataset.shown = v; });
     const splitNames = v => String(v || "").split(/[・,、|\n]+/).map(x => x.trim()).filter(Boolean); // 「・」区切り → 名前の配列（1 名なら文字列で保存）。名前に空白があるので空白では切らない
+    // 区切り文字を含む氏名（名簿にいる人、またはその欄に保存されている表記）は、分ける前に 1 人として取り出す。区切り（または先頭）から読み、
+    // 候補のうち最も長く一致して、直後が（印の括弧と空白を除いて）区切りか末尾のものを採る。当てはまらない部分は splitNames と同じ分け方。
+    // 候補が 1 つも無い欄では、結果は splitNames と同じ
+    const NAME_SEP = /[・,、|\n]/, sepSpace = ch => /\s/.test(ch) && !NAME_SEP.test(ch);
+    const splitNamesKeeping = (v, keep) => {
+      const s = String(v || ""), cands = [...new Set(keep.filter(x => typeof x === "string" && x.trim() && NAME_SEP.test(x)))].sort((a, b) => b.length - a.length);
+      if (!cands.length) return splitNames(s);
+      const out = []; let i = 0, plain = "";
+      const flush = () => { out.push(...splitNames(plain)); plain = ""; };
+      while (i < s.length) {
+        let j = i; while (j < s.length && sepSpace(s[j])) j++;
+        let hit = null;
+        for (const c of cands) { if (!s.startsWith(c, j)) continue; let e = j + c.length; const mark = /^\s*[（(][^（）()]*[)）]/.exec(s.slice(e)); if (mark) e += mark[0].length;
+          let k = e; while (k < s.length && sepSpace(s[k])) k++; if (k === s.length || NAME_SEP.test(s[k])) { hit = [s.slice(j, e), k]; break; } }
+        if (hit) { flush(); out.push(hit[0]); i = hit[1]; continue; }
+        let k = i; while (k < s.length && !NAME_SEP.test(s[k])) k++; if (k < s.length) k++; // 1 人分と区切り 1 文字（候補に当たらない部分）
+        plain += s.slice(i, k); i = k;
+      }
+      flush(); return out;
+    };
     const tags = Object.assign({}, m.fixed_tags || {}); // 固定の印「名前(印)」。出ている欄の分は作り直す
     root.querySelectorAll("input[data-fx][data-multi]").forEach(el => { if (unchangedMulti(el)) return; const pre = `${+el.dataset.d}:${el.dataset.fx}|`; for (const key of Object.keys(tags)) if (key.startsWith(pre)) delete tags[key]; });
     const rosterNames = new Set(state.rules.doctors.map(doc => doc.name));
@@ -577,7 +615,7 @@ ${pats.map((it, i) => `<tr data-i="${i}" data-pat="${esc(JSON.stringify(it))}"><
         if (!prior.has(token)) prior.set(token, []);
         prior.get(token).push([n, mark]);
       }
-      for (const token of splitNames(v)) {
+      for (const token of splitNamesKeeping(v, [...prior.keys(), ...rosterNames])) { // 区切り文字を含む氏名（保存済みの表記・名簿）は分けない
         const matches = prior.get(token);
         if (matches?.length) parts.push(matches.shift()); // 同じ表記が複数なら元の並び順で対応する。
         else if (!seen.has(token)) parts.push(nameTag(token));
